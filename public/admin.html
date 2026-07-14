@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - UFL Bot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans min-h-screen flex flex-col">
+  <!-- Auth Screen -->
+  <div id="auth-screen" class="flex-1 flex items-center justify-center p-4">
+    <div class="max-w-sm w-full bg-white shadow-md rounded-lg p-6">
+      <h2 class="text-xl font-bold text-gray-800 text-center mb-6">Đăng nhập Admin</h2>
+      <form id="auth-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Mật khẩu</label>
+          <input type="password" id="admin-password" required class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <button type="submit" class="w-full bg-blue-600 text-white font-medium py-2 rounded hover:bg-blue-700 transition">
+          Xác thực
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Dashboard Screen -->
+  <div id="dashboard-screen" class="hidden flex-1 flex flex-col">
+    <!-- Header -->
+    <header class="bg-blue-700 text-white shadow-md p-4 flex justify-between items-center">
+      <div class="flex items-center space-x-6">
+        <h1 class="text-lg font-bold">UFL Bot Admin Console</h1>
+        <nav class="flex space-x-4">
+          <button onclick="switchTab('users')" id="tab-users" class="px-3 py-1 rounded bg-blue-800 font-medium">Người dùng</button>
+          <button onclick="switchTab('settings')" id="tab-settings" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Cài đặt hệ thống</button>
+        </nav>
+      </div>
+      <button onclick="logout()" class="text-sm bg-red-600 px-3 py-1.5 rounded hover:bg-red-700 transition">Đăng xuất</button>
+    </header>
+
+    <!-- Users Tab Content -->
+    <main id="content-users" class="max-w-6xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Left Panel: Stats & Controls -->
+      <div class="space-y-6">
+        <div class="bg-white p-6 rounded-lg shadow-md">
+          <h3 class="text-lg font-semibold text-gray-700 mb-4">[^] Trạng thái hệ thống</h3>
+          <div class="space-y-3">
+            <div class="flex justify-between border-b pb-2">
+              <span class="text-sm text-gray-600">Tổng số sinh viên:</span>
+              <span id="stat-total-users" class="font-bold text-gray-800">0</span>
+            </div>
+            <div class="flex justify-between border-b pb-2">
+              <span class="text-sm text-gray-600">Đồng bộ hoàn thành:</span>
+              <span id="stat-complete-users" class="font-bold text-green-600">0</span>
+            </div>
+            <div class="flex justify-between border-b pb-2">
+              <span class="text-sm text-gray-600">AI Engine:</span>
+              <span id="display-ai-engine" class="font-medium text-blue-600">OpenCode Free</span>
+            </div>
+            <div class="flex justify-between items-center pt-2">
+              <span class="text-sm text-gray-600">Trạng thái Bot:</span>
+              <button onclick="toggleBot()" id="btn-bot-status" class="px-3 py-1 rounded text-xs font-bold transition"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md space-y-4">
+          <h3 class="text-lg font-semibold text-gray-700">[*] Điều khiển Scraper</h3>
+          <button onclick="triggerGlobalSync()" class="w-full bg-blue-600 text-white font-medium py-2 rounded hover:bg-blue-700 transition shadow">
+            Chạy đồng bộ toàn hệ thống
+          </button>
+          <p class="text-xs text-gray-500 text-center">Kích hoạt scraper qua Tor cho toàn bộ user đang lưu trong cơ sở dữ liệu.</p>
+        </div>
+      </div>
+
+      <!-- Right Panel: User List -->
+      <div class="md:col-span-2 bg-white p-6 rounded-lg shadow-md flex flex-col">
+        <h3 class="text-lg font-semibold text-gray-700 mb-4">[::] Danh sách người dùng kết nối</h3>
+        <div class="overflow-x-auto flex-1">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mã SV</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">FB ID</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sync Status</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="users-table-body" class="bg-white divide-y divide-gray-200 text-sm">
+              <!-- Dynamic rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- Settings Tab Content -->
+    <main id="content-settings" class="max-w-2xl w-full mx-auto p-4 md:p-6 hidden">
+      <div class="bg-white p-6 rounded-lg shadow-md">
+        <h3 class="text-lg font-bold text-gray-800 mb-6">[*] Cấu hình hệ thống</h3>
+        <form id="sys-settings-form" class="space-y-6">
+          <div>
+            <h4 class="text-sm font-semibold text-gray-700 border-b pb-2 mb-4">[AI] Cài đặt AI Provider (OpenCode)</h4>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">OpenCode API Key</label>
+                <input type="text" id="opencode_api_key" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Model AI</label>
+                <select id="opencode_model" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="deepseek-v4-flash-free">deepseek-v4-flash-free</option>
+                  <option value="nemotron-3-ultra-free">nemotron-3-ultra-free</option>
+                  <option value="mimo-v2.5-free">mimo-v2.5-free</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-sm font-semibold text-gray-700 border-b pb-2 mb-4">[@] Cài đặt Chatbot Messenger</h4>
+            <div class="space-y-4">
+              <div class="p-3 bg-blue-50 border border-blue-200 rounded text-xs">
+                <span class="block font-semibold text-blue-700 mb-1">[~] Facebook Webhook Callback URL:</span>
+                <code id="display-webhook-url" class="font-mono bg-white px-2 py-1 border rounded block select-all"></code>
+                <span class="text-gray-500 mt-1 block">Copy URL này dán vào ô "Callback URL" trên Facebook Developer Console.</span>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">FB Page Access Token</label>
+                <input type="text" id="fb_page_token" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">FB Verify Token (Dùng lúc tạo Webhook)</label>
+                <input type="text" id="fb_verify_token" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">FB App Secret</label>
+                <input type="text" id="fb_app_secret" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-sm font-semibold text-gray-700 border-b pb-2 mb-4">[~] Cài đặt Scraper & Tor</h4>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Chu kỳ đồng bộ tự động (giờ)</label>
+                <input type="number" id="scraper_interval" required min="1" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Chế độ chạy Scraper</label>
+                <select id="scraper_mode" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="parallel">Parallel (Song song - dùng Tor Multi-Instance)</option>
+                  <option value="sequential">Sequential (Tuần tự - dùng 1 Tor Instance)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
+            <h4 class="text-sm font-semibold text-gray-700 border-b pb-2 mb-4">[@] Cài đặt Email SMTP (nhận thông báo)</h4>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">SMTP Host</label>
+                <input type="text" id="smtp_host" placeholder="smtp.gmail.com" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">SMTP Port</label>
+                <input type="number" id="smtp_port" placeholder="587" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Email đăng nhập</label>
+                <input type="email" id="smtp_user" placeholder="bot@example.com" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Mật khẩu ứng dụng (App Password)</label>
+                <input type="password" id="smtp_pass" placeholder="••••••••" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Tên người gửi hiển thị</label>
+                <input type="text" id="smtp_from" placeholder="UFL Bot <bot@example.com>" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" class="w-full bg-green-600 text-white font-medium py-2 rounded hover:bg-green-700 transition">
+            Lưu cấu hình
+          </button>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let token = localStorage.getItem('admin_token') || '';
+
+    function switchTab(tab) {
+      if (tab === 'users') {
+        document.getElementById('tab-users').classList.add('bg-blue-800');
+        document.getElementById('tab-settings').classList.remove('bg-blue-800');
+        document.getElementById('content-users').classList.remove('hidden');
+        document.getElementById('content-settings').classList.add('hidden');
+        loadStats();
+      } else {
+        document.getElementById('tab-users').classList.remove('bg-blue-800');
+        document.getElementById('tab-settings').classList.add('bg-blue-800');
+        document.getElementById('content-users').classList.add('hidden');
+        document.getElementById('content-settings').classList.remove('hidden');
+        loadSettings();
+      }
+    }
+
+    function showDashboard() {
+      document.getElementById('auth-screen').classList.add('hidden');
+      document.getElementById('dashboard-screen').classList.remove('hidden');
+      switchTab('users');
+    }
+
+    function showAuth() {
+      document.getElementById('auth-screen').classList.remove('hidden');
+      document.getElementById('dashboard-screen').classList.add('hidden');
+    }
+
+    document.getElementById('auth-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const password = document.getElementById('admin-password').value;
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        token = data.token;
+        localStorage.setItem('admin_token', token);
+        showDashboard();
+      } else {
+        alert("Sai mật khẩu!");
+      }
+    });
+
+    async function loadStats() {
+      const res = await fetch('/api/admin/stats', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401 || res.status === 403) {
+        logout();
+        return;
+      }
+      const data = await res.json();
+      document.getElementById('stat-total-users').innerText = data.totalUsers;
+      document.getElementById('stat-complete-users').innerText = data.completeUsers;
+
+      const btnBot = document.getElementById('btn-bot-status');
+      if (data.botStatus === "unconfigured") {
+        btnBot.innerText = "CHƯA CẤU HÌNH";
+        btnBot.className = "px-3 py-1 rounded text-xs font-bold bg-yellow-500 text-white cursor-not-allowed";
+        btnBot.disabled = true;
+      } else if (data.botStatus === "running") {
+        btnBot.innerText = "ĐANG CHẠY";
+        btnBot.className = "px-3 py-1 rounded text-xs font-bold transition bg-green-500 text-white hover:bg-green-600";
+        btnBot.disabled = false;
+      } else {
+        btnBot.innerText = "ĐÃ DỪNG";
+        btnBot.className = "px-3 py-1 rounded text-xs font-bold transition bg-red-500 text-white hover:bg-red-600";
+        btnBot.disabled = false;
+      }
+
+      const tbody = document.getElementById('users-table-body');
+      tbody.innerHTML = '';
+      data.users.forEach((u) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-4 py-3 whitespace-nowrap font-medium text-gray-900">${u.username}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-gray-500">${u.fb_id}</td>
+          <td class="px-4 py-3 whitespace-nowrap">
+            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${u.complete ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+              ${u.complete ? 'Đầy đủ (8/8)' : 'Thiếu trang'}
+            </span>
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+            <button onclick="syncSingleUser('${u.username}')" class="text-blue-600 hover:text-blue-900 mr-3">Sync</button>
+            <button onclick="deleteUser('${u.fb_id}')" class="text-red-600 hover:text-red-900">Xóa</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadSettings() {
+      const res = await fetch('/api/admin/settings', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      document.getElementById('opencode_api_key').value = data.opencode_api_key;
+      document.getElementById('opencode_model').value = data.opencode_model;
+      document.getElementById('scraper_interval').value = data.scraper_interval;
+      document.getElementById('scraper_mode').value = data.scraper_mode;
+      document.getElementById('fb_page_token').value = data.fb_page_token;
+      document.getElementById('fb_verify_token').value = data.fb_verify_token;
+      document.getElementById('fb_app_secret').value = data.fb_app_secret;
+      document.getElementById('smtp_host').value = data.smtp_host || '';
+      document.getElementById('smtp_port').value = data.smtp_port || '587';
+      document.getElementById('smtp_user').value = data.smtp_user || '';
+      document.getElementById('smtp_pass').value = data.smtp_pass || '';
+      document.getElementById('smtp_from').value = data.smtp_from || '';
+      document.getElementById('display-webhook-url').innerText = window.location.origin + '/webhook';
+    }
+
+    document.getElementById('sys-settings-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          opencode_api_key: document.getElementById('opencode_api_key').value,
+          opencode_model: document.getElementById('opencode_model').value,
+          scraper_interval: document.getElementById('scraper_interval').value,
+          scraper_mode: document.getElementById('scraper_mode').value,
+          fb_page_token: document.getElementById('fb_page_token').value,
+          fb_verify_token: document.getElementById('fb_verify_token').value,
+          fb_app_secret: document.getElementById('fb_app_secret').value,
+          smtp_host: document.getElementById('smtp_host').value,
+          smtp_port: document.getElementById('smtp_port').value,
+          smtp_user: document.getElementById('smtp_user').value,
+          smtp_pass: document.getElementById('smtp_pass').value,
+          smtp_from: document.getElementById('smtp_from').value
+        })
+      });
+      const data = await res.json();
+      alert(data.message);
+    });
+
+    async function toggleBot() {
+      const res = await fetch('/api/admin/toggle-bot', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) loadStats();
+    }
+
+    async function triggerGlobalSync() {
+      if (!confirm("Bắt đầu chạy scraper ngầm cho toàn bộ hệ thống?")) return;
+      const res = await fetch('/api/admin/sync-all', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      alert(data.message);
+    }
+
+    async function syncSingleUser(username) {
+      const res = await fetch(`/api/admin/sync-user?username=${username}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      alert(data.message);
+    }
+
+    async function deleteUser(fbId) {
+      if (!confirm("Xác nhận xóa tài khoản người dùng và tất cả dữ liệu?")) return;
+      await fetch(`/api/admin/delete-user?fb_id=${fbId}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      loadStats();
+    }
+
+    function logout() {
+      localStorage.removeItem('admin_token');
+      token = '';
+      showAuth();
+    }
+
+    if (token) {
+      showDashboard();
+    } else {
+      showAuth();
+    }
+  </script>
+</body>
+</html>

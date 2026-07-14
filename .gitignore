@@ -1,0 +1,5 @@
+node_modules/
+data/
+accounts.json
+tests/data.json
+.tor-instances/

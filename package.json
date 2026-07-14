@@ -1,0 +1,28 @@
+{
+  "name": "school-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "scrape": "node src/scrape.js",
+    "scrape:no-tor": "node src/scrape.js --no-tor",
+    "scrape:parallel": "node src/scrape.js --parallel",
+    "test": "node tests/login.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.7.4",
+    "nodemailer": "^9.0.3",
+    "playwright": "^1.61.1",
+    "proxy-chain": "^3.0.0"
+  }
+}
