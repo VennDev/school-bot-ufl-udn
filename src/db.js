@@ -115,6 +115,8 @@ module.exports = {
     await User.deleteOne({ fb_id: fbId });
     await Settings.deleteOne({ fb_id: fbId });
     await ScrapedData.deleteOne({ fb_id: fbId });
+    await StudyGoal.deleteOne({ fb_id: fbId });
+    await StudySession.deleteMany({ fb_id: fbId });
   },
 
   async getAllUsers() {
@@ -215,5 +217,13 @@ module.exports = {
     const Model = models[modelName];
     if (!Model) throw new Error("Model not found");
     return Model.find().lean();
+  },
+
+  async deleteRecord(modelName, id) {
+    await ensureInit();
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting };
+    const Model = models[modelName];
+    if (!Model) throw new Error("Model not found");
+    await Model.findByIdAndDelete(id);
   }
 };

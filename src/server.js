@@ -123,12 +123,23 @@ app.post("/api/admin/sync-user", requireAdmin, (req, res) => {
   res.json({ success: true, message: `Bắt đầu chạy scraper cho tài khoản ${username}.` });
 });
 
-app.post("/api/admin/delete-user", requireAdmin, (req, res) => {
+app.post("/api/admin/delete-user", requireAdmin, async (req, res) => {
   const { fb_id } = req.query;
   if (!fb_id) return res.status(400).json({ error: "Missing fb_id" });
 
-  db.deleteUser(fb_id);
+  await db.deleteUser(fb_id);
   res.json({ success: true });
+});
+
+app.post("/api/admin/delete-record", requireAdmin, async (req, res) => {
+  const { model, id } = req.body;
+  if (!model || !id) return res.status(400).json({ error: "Missing model or id" });
+  try {
+    await db.deleteRecord(model, id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/api/admin/data-view", requireAdmin, async (req, res) => {
