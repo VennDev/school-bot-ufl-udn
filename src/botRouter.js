@@ -64,6 +64,18 @@ function formatHocPhi(data) {
   return txt.length > 30 ? txt : "Không có công nợ học phí.";
 }
 
+function formatThongTinSV(data) {
+  if (!data) return "Chưa có dữ liệu hồ sơ sinh viên.";
+  let txt = "[i] THÔNG TIN HỒ SƠ SINH VIÊN:\n";
+  // data is parsed object from thong_tin_sv JSON (typically key-value details)
+  for (const [k, v] of Object.entries(data)) {
+    if (v && typeof v === "string") {
+      txt += `\n- ${k}: ${v}`;
+    }
+  }
+  return txt;
+}
+
 function formatLichHoc(data, dayFilter) {
   if (!data || !data.length) return "Không có lịch học nào sắp tới.";
   const targetTable = data.find((t) => t.headers && t.headers.includes("Tên học phần"));
@@ -332,6 +344,11 @@ async function handleMessage(senderPsid, messageText) {
   if (text === "học phí" || text === "tiền") {
     const raw = data.hoc_phi ? JSON.parse(data.hoc_phi) : null;
     return messenger.sendTextMessage(senderPsid, formatHocPhi(raw));
+  }
+
+  if (text === "hồ sơ" || text === "hồ sơ sinh viên" || text === "ho so" || text === "lý lịch" || text === "ly lich") {
+    const raw = data.thong_tin_sv ? JSON.parse(data.thong_tin_sv) : null;
+    return messenger.sendTextMessage(senderPsid, formatThongTinSV(raw));
   }
 
   // AI Study Statistics
