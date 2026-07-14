@@ -1,6 +1,6 @@
 # school-bot (Messenger Chatbot)
 
-Cổng chatbot Messenger quản lý thông tin & tăng hiệu suất cho sinh viên UFL (sinhvien.ufl.udn.vn) sử dụng Express, SQLite, Playwright + Tor, và OpenCode Free AI API.
+Cổng chatbot Messenger quản lý thông tin & tăng hiệu suất cho sinh viên UFL (sinhvien.ufl.udn.vn) sử dụng Express, MongoDB, Playwright + Tor, và OpenCode Free AI API kèm cơ chế fallback (Gemini/OpenAI).
 
 ## Tính năng
 
@@ -69,7 +69,7 @@ npm run scrape:parallel
 
 ## Dữ liệu đầu ra
 
-Tất cả dữ liệu lưu trong file SQLite: `data/database.sqlite` (không sợ lộ file JSON tĩnh ra ngoài).
+Tất cả dữ liệu lưu trữ trực tiếp trong MongoDB thông qua các Mongoose Models.
 
 ## Cấu trúc project
 
@@ -85,12 +85,12 @@ school-bot/
 │   ├── botRouter.js     # Điều hướng tin nhắn & Prompt AI
 │   ├── changeDetector.js# Logic so sánh dữ liệu mới/cũ -> alerts
 │   ├── cron.js          # Scheduler chạy ngầm định kỳ
-│   ├── db.js            # SQLite database helper (node:sqlite native)
+│   ├── db.js            # MongoDB database helper (Mongoose)
 │   ├── crypto.js        # Mã hóa AES-256-GCM
 │   ├── pages.js         # Selector / Parser 8 trang UFL
 │   ├── tor.js           # Multi-instance Tor manager
-│   └── ai.js            # Kết nối OpenCode AI API
-└── data/                # Chứa SQLite database (auto-created)
+│   └── ai.js            # Kết nối OpenCode AI API & Fallback (Gemini/OpenAI)
+└── data/                # Chứa cơ sở dữ liệu MongoDB (nếu chạy local)
 ```
 
 ## Bảo mật
