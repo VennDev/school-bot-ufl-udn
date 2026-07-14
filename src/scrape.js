@@ -62,7 +62,14 @@ async function scrapeBatch(account, pages, torProxy) {
     const launchOpts = { headless: true };
     if (proxyServer) launchOpts.proxy = { server: proxyServer };
     
-    const browser = await chromium.launch(launchOpts);
+    let browser;
+    try {
+      browser = await chromium.launch(launchOpts);
+    } catch (e) {
+      console.error(`  [${account.username}] Failed to launch browser for ${label}:`, e.message);
+      throw e;
+    }
+    
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
     const page = await context.newPage();
     
@@ -77,6 +84,7 @@ async function scrapeBatch(account, pages, torProxy) {
       
       return { browser, page, label };
     } catch (e) {
+      console.error(`  [${account.username}] Error inside ${label}:`, e.message);
       await browser.close();
       throw e;
     }
