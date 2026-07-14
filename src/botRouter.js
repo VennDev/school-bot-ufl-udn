@@ -260,16 +260,20 @@ async function handleMessage(senderPsid, messageText) {
         const scraperPath = path.resolve(__dirname, "./scrape.js");
         const execCmd = `node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
-        exec(execCmd, (err, stdout, stderr) => {
-          if (stdout) console.log(`[async-sync] stdout:\n${stdout}`);
-          if (stderr) console.error(`[async-sync] stderr:\n${stderr}`);
+        const child = exec(execCmd, (err, stdout, stderr) => {
           if (err) {
             console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
-            messenger.sendTextMessage(senderPsid, "[X] Đồng bộ lần đầu thất bại. Vui lòng kiểm tra lại tài khoản mật khẩu bằng cách gõ /logout và đăng nhập lại.");
+            messenger.sendTextMessage(senderPsid, "[X] Đăng nhập thất bại ở cả kết nối Direct IP và Tor.");
           } else {
             console.log(`[async-sync] Scrape for ${username} succeeded.`);
             messenger.sendTextMessage(senderPsid, "[OK] Đồng bộ dữ liệu thành công! Bạn có thể sử dụng các lệnh: Lịch học, Lịch thi, Điểm số, Học phí, hoặc Tóm tắt tuần.");
           }
+        });
+        child.stdout.on("data", (data) => {
+          console.log(`[async-sync-process-stdout] ${data.trim()}`);
+        });
+        child.stderr.on("data", (data) => {
+          console.error(`[async-sync-process-stderr] ${data.trim()}`);
         });
         return;
       }
