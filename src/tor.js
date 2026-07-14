@@ -61,14 +61,25 @@ function startTorInstance(idx) {
   } catch {}
 
   console.log(`[tor-${idx}] Starting on SOCKS:${socks} CTRL:${ctrl}...`);
-  const proc = spawn("tor", [
-    "--SocksPort", String(socks),
-    "--ControlPort", String(ctrl),
-    "--DataDirectory", dataDir,
-    "--CookieAuthentication", "0",
-    "--RunAsDaemon", "1",
-  ], { stdio: "inherit", detached: true });
-  proc.unref();
+  let proc;
+  try {
+    proc = spawn("tor", [
+      "--SocksPort", String(socks),
+      "--ControlPort", String(ctrl),
+      "--DataDirectory", dataDir,
+      "--CookieAuthentication", "0",
+      "--RunAsDaemon", "1",
+    ], { stdio: "inherit", detached: true });
+    
+    proc.on("error", (err) => {
+      console.error(`[tor-${idx}] Failed to start Tor process: ${err.message}. Please install Tor using: sudo apt install -y tor`);
+    });
+    
+    proc.unref();
+  } catch (e) {
+    console.error(`[tor-${idx}] Spawn error:`, e.message);
+    return null;
+  }
 
   return new Promise((resolve) => {
     let tries = 0;
