@@ -17,23 +17,23 @@ function parseDate(str) {
   return new Date(y, m - 1, d);
 }
 
-function checkExamReminders() {
-  const botStatus = db.getSystemSetting("bot_status", "running");
+async function checkExamReminders() {
+  const botStatus = await db.getSystemSetting("bot_status", "running");
   if (botStatus === "stopped") return;
 
-  const users = db.getAllUsers();
+  const users = await db.getAllUsers();
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
   for (const u of users) {
     try {
-      const data = db.getScrapedData(u.fb_id);
+      const data = await db.getScrapedData(u.fb_id);
       if (!data || !data.lich_thi) continue;
 
       const lichThi = JSON.parse(data.lich_thi);
       if (!lichThi || lichThi.length < 2) continue;
 
-      const settings = db.getSettings(u.fb_id);
+      const settings = await db.getSettings(u.fb_id);
       if (!settings.notify_exam) continue;
 
       for (const exam of lichThi.slice(1)) {
@@ -58,15 +58,15 @@ function checkExamReminders() {
   }
 }
 
-function runScraper() {
-  const botStatus = db.getSystemSetting("bot_status", "running");
+async function runScraper() {
+  const botStatus = await db.getSystemSetting("bot_status", "running");
   if (botStatus === "stopped") {
     console.log("[cron] Scraper skipped: Bot is stopped.");
     return;
   }
   console.log(`[cron] Starting scheduled scrape: ${new Date().toISOString()}`);
   
-  const mode = db.getSystemSetting("scraper_mode", "parallel");
+  const mode = await db.getSystemSetting("scraper_mode", "parallel");
   const cmd = `node ${scraperPath} ${mode === "parallel" ? "--parallel" : ""}`;
 
   exec(cmd, (err, stdout, stderr) => {
@@ -78,14 +78,14 @@ function runScraper() {
   });
 }
 
-function startScheduler() {
-  const intervalHours = parseFloat(db.getSystemSetting("scraper_interval", "4"));
+async function startScheduler() {
+  const intervalHours = parseFloat(await db.getSystemSetting("scraper_interval", "4"));
   const intervalMs = intervalHours * 60 * 60 * 1000;
 
   console.log(`[cron] Scheduler started. Running every ${intervalHours} hours.`);
 
-  runScraper();
-  checkExamReminders();
+  await runScraper();
+  await checkExamReminders();
 
   if (schedulerInterval) clearInterval(schedulerInterval);
   schedulerInterval = setInterval(runScraper, intervalMs);

@@ -53,17 +53,17 @@ app.post("/api/admin/login", (req, res) => {
   }
 });
 
-app.post("/api/admin/toggle-bot", requireAdmin, (req, res) => {
-  const current = db.getSystemSetting("bot_status", "running");
+app.post("/api/admin/toggle-bot", requireAdmin, async (req, res) => {
+  const current = await db.getSystemSetting("bot_status", "running");
   const nextState = current === "running" ? "stopped" : "running";
-  db.saveSystemSetting("bot_status", nextState);
+  await db.saveSystemSetting("bot_status", nextState);
   res.json({ success: true, status: nextState });
 });
 
-app.get("/api/admin/stats", requireAdmin, (req, res) => {
-  const users = db.getAllUsers();
-  const detailedUsers = users.map((u) => {
-    const data = db.getScrapedData(u.fb_id) || {};
+app.get("/api/admin/stats", requireAdmin, async (req, res) => {
+  const users = await db.getAllUsers();
+  const detailedUsers = await Promise.all(users.map(async (u) => {
+    const data = await db.getScrapedData(u.fb_id) || {};
     // Check complete: check if all 8 keys in PAGES are parsed
     const completedCount = PAGES.filter((p) => {
       try {
@@ -83,15 +83,15 @@ app.get("/api/admin/stats", requireAdmin, (req, res) => {
       fb_id: u.fb_id,
       complete: completedCount === PAGES.length
     };
-  });
+  }));
 
   const completeCount = detailedUsers.filter((u) => u.complete).length;
   
-  const hasConfig = db.getSystemSetting("fb_page_token", "") && 
-                    db.getSystemSetting("fb_verify_token", "") && 
-                    db.getSystemSetting("fb_app_secret", "");
+  const hasConfig = (await db.getSystemSetting("fb_page_token", "")) && 
+                    (await db.getSystemSetting("fb_verify_token", "")) && 
+                    (await db.getSystemSetting("fb_app_secret", ""));
   
-  const botStatus = hasConfig ? db.getSystemSetting("bot_status", "running") : "unconfigured";
+  const botStatus = hasConfig ? await db.getSystemSetting("bot_status", "running") : "unconfigured";
 
   res.json({
     totalUsers: users.length,
@@ -171,52 +171,52 @@ app.get("/api/admin/data-export", requireAdmin, async (req, res) => {
   }
 });
 
-app.get("/api/admin/settings", requireAdmin, (req, res) => {
+app.get("/api/admin/settings", requireAdmin, async (req, res) => {
   res.json({
-    ai_provider: db.getSystemSetting("ai_provider", process.env.AI_PROVIDER || "opencode"),
-    opencode_api_key: db.getSystemSetting("opencode_api_key", process.env.OPENCODE_API_KEY || "public"),
-    opencode_model: db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "deepseek-v4-flash-free"),
-    scraper_interval: db.getSystemSetting("scraper_interval", "4"), // hours
-    scraper_mode: db.getSystemSetting("scraper_mode", "parallel"), // parallel / sequential
-    fb_page_token: db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || ""),
-    fb_verify_token: db.getSystemSetting("fb_verify_token", process.env.FB_VERIFY_TOKEN || ""),
-    fb_app_secret: db.getSystemSetting("fb_app_secret", process.env.FB_APP_SECRET || ""),
-    smtp_host: db.getSystemSetting("smtp_host", ""),
-    smtp_port: db.getSystemSetting("smtp_port", "587"),
-    smtp_user: db.getSystemSetting("smtp_user", ""),
-    smtp_pass: db.getSystemSetting("smtp_pass", ""),
-    smtp_from: db.getSystemSetting("smtp_from", "")
+    ai_provider: await db.getSystemSetting("ai_provider", process.env.AI_PROVIDER || "opencode"),
+    opencode_api_key: await db.getSystemSetting("opencode_api_key", process.env.OPENCODE_API_KEY || "public"),
+    opencode_model: await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "deepseek-v4-flash-free"),
+    scraper_interval: await db.getSystemSetting("scraper_interval", "4"), // hours
+    scraper_mode: await db.getSystemSetting("scraper_mode", "parallel"), // parallel / sequential
+    fb_page_token: await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || ""),
+    fb_verify_token: await db.getSystemSetting("fb_verify_token", process.env.FB_VERIFY_TOKEN || ""),
+    fb_app_secret: await db.getSystemSetting("fb_app_secret", process.env.FB_APP_SECRET || ""),
+    smtp_host: await db.getSystemSetting("smtp_host", ""),
+    smtp_port: await db.getSystemSetting("smtp_port", "587"),
+    smtp_user: await db.getSystemSetting("smtp_user", ""),
+    smtp_pass: await db.getSystemSetting("smtp_pass", ""),
+    smtp_from: await db.getSystemSetting("smtp_from", "")
   });
 });
 
-app.post("/api/admin/settings", requireAdmin, (req, res) => {
+app.post("/api/admin/settings", requireAdmin, async (req, res) => {
   const { ai_provider, opencode_api_key, opencode_model, scraper_interval, scraper_mode, fb_page_token, fb_verify_token, fb_app_secret, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from } = req.body;
   
-  if (ai_provider) db.saveSystemSetting("ai_provider", ai_provider);
-  if (opencode_api_key) db.saveSystemSetting("opencode_api_key", opencode_api_key);
-  if (opencode_model) db.saveSystemSetting("opencode_model", opencode_model);
-  if (scraper_interval) db.saveSystemSetting("scraper_interval", scraper_interval);
-  if (scraper_mode) db.saveSystemSetting("scraper_mode", scraper_mode);
-  if (fb_page_token) db.saveSystemSetting("fb_page_token", fb_page_token);
-  if (fb_verify_token) db.saveSystemSetting("fb_verify_token", fb_verify_token);
-  if (fb_app_secret) db.saveSystemSetting("fb_app_secret", fb_app_secret);
-  if (smtp_host !== undefined) db.saveSystemSetting("smtp_host", smtp_host);
-  if (smtp_port !== undefined) db.saveSystemSetting("smtp_port", smtp_port);
-  if (smtp_user !== undefined) db.saveSystemSetting("smtp_user", smtp_user);
-  if (smtp_pass !== undefined) db.saveSystemSetting("smtp_pass", smtp_pass);
-  if (smtp_from !== undefined) db.saveSystemSetting("smtp_from", smtp_from);
+  if (ai_provider) await db.saveSystemSetting("ai_provider", ai_provider);
+  if (opencode_api_key) await db.saveSystemSetting("opencode_api_key", opencode_api_key);
+  if (opencode_model) await db.saveSystemSetting("opencode_model", opencode_model);
+  if (scraper_interval) await db.saveSystemSetting("scraper_interval", scraper_interval);
+  if (scraper_mode) await db.saveSystemSetting("scraper_mode", scraper_mode);
+  if (fb_page_token) await db.saveSystemSetting("fb_page_token", fb_page_token);
+  if (fb_verify_token) await db.saveSystemSetting("fb_verify_token", fb_verify_token);
+  if (fb_app_secret) await db.saveSystemSetting("fb_app_secret", fb_app_secret);
+  if (smtp_host !== undefined) await db.saveSystemSetting("smtp_host", smtp_host);
+  if (smtp_port !== undefined) await db.saveSystemSetting("smtp_port", smtp_port);
+  if (smtp_user !== undefined) await db.saveSystemSetting("smtp_user", smtp_user);
+  if (smtp_pass !== undefined) await db.saveSystemSetting("smtp_pass", smtp_pass);
+  if (smtp_from !== undefined) await db.saveSystemSetting("smtp_from", smtp_from);
 
   res.json({ success: true, message: "Cấu hình hệ thống đã được lưu." });
 });
 
 // Messenger Webhook Validation
-app.get("/webhook", (req, res) => {
+app.get("/webhook", async (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode && token) {
-    const sysVerifyToken = db.getSystemSetting("fb_verify_token", process.env.FB_VERIFY_TOKEN || "");
+    const sysVerifyToken = await db.getSystemSetting("fb_verify_token", process.env.FB_VERIFY_TOKEN || "");
     if (mode === "subscribe" && token === sysVerifyToken) {
       console.log("WEBHOOK_VERIFIED");
       res.status(200).send(challenge);
@@ -227,11 +227,11 @@ app.get("/webhook", (req, res) => {
 });
 
 // Messenger Message Handlers
-app.post("/webhook", (req, res) => {
-  const hasConfig = db.getSystemSetting("fb_page_token", "") && 
-                    db.getSystemSetting("fb_verify_token", "") && 
-                    db.getSystemSetting("fb_app_secret", "");
-  const botStatus = hasConfig ? db.getSystemSetting("bot_status", "running") : "unconfigured";
+app.post("/webhook", async (req, res) => {
+  const hasConfig = (await db.getSystemSetting("fb_page_token", "")) && 
+                    (await db.getSystemSetting("fb_verify_token", "")) && 
+                    (await db.getSystemSetting("fb_app_secret", ""));
+  const botStatus = hasConfig ? await db.getSystemSetting("bot_status", "running") : "unconfigured";
 
   if (botStatus !== "running") {
     return res.status(200).send("BOT_NOT_RUNNING");

@@ -130,14 +130,14 @@ function formatTienDo(data) {
 }
 
 async function handleMessage(senderPsid, messageText) {
-  const user = db.getUser(senderPsid);
+  const user = await db.getUser(senderPsid);
   const text = messageText.trim();
   const lowerText = text.toLowerCase();
 
   // Handle Logout command
   if (lowerText === "/logout") {
     if (user) {
-      db.deleteUser(senderPsid);
+      await db.deleteUser(senderPsid);
       loginSessions.delete(senderPsid);
       return messenger.sendTextMessage(senderPsid, "Đã ngắt kết nối tài khoản sinh viên thành công.");
     }
@@ -146,7 +146,7 @@ async function handleMessage(senderPsid, messageText) {
 
   // Handle User Settings
   if (lowerText === "/settings" || lowerText === "cài đặt") {
-    const s = db.getSettings(senderPsid);
+    const s = await db.getSettings(senderPsid);
     const textStatus = `[*] CÀI ĐẶT THÔNG BÁO CỦA BẠN:\n
 - GPA: ${s.notify_gpa ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle gpa)
 - Lịch học: ${s.notify_schedule ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle lich)
@@ -167,7 +167,7 @@ async function handleMessage(senderPsid, messageText) {
   // Handle toggle interactions
   if (lowerText.startsWith("toggle ") || lowerText.startsWith("toggle_")) {
     const key = lowerText.replace("toggle ", "").replace("toggle_", "").trim();
-    const s = db.getSettings(senderPsid);
+    const s = await db.getSettings(senderPsid);
     
     if (key === "gpa") s.notify_gpa = s.notify_gpa ? 0 : 1;
     else if (key === "lich") s.notify_schedule = s.notify_schedule ? 0 : 1;
@@ -176,16 +176,16 @@ async function handleMessage(senderPsid, messageText) {
     else if (key === "thongbao") s.notify_announcement = s.notify_announcement ? 0 : 1;
     else return messenger.sendTextMessage(senderPsid, "Lệnh toggle không hợp lệ.");
 
-    db.saveSettings(senderPsid, s);
+    await db.saveSettings(senderPsid, s);
     return handleMessage(senderPsid, "/settings");
   }
 
   // Handle email save
   if (lowerText.startsWith("email ")) {
     const email = text.replace(/email /i, "").trim();
-    const s = db.getSettings(senderPsid);
+    const s = await db.getSettings(senderPsid);
     s.email = email;
-    db.saveSettings(senderPsid, s);
+    await db.saveSettings(senderPsid, s);
     return messenger.sendTextMessage(senderPsid, `Đã cập nhật email nhận thông báo: ${email}`);
   }
 
@@ -210,7 +210,7 @@ async function handleMessage(senderPsid, messageText) {
       const passwordEnc = crypto.encrypt(text);
       
       // Save user
-      db.saveUser(senderPsid, username, passwordEnc, "0");
+      await db.saveUser(senderPsid, username, passwordEnc, "0");
       loginSessions.delete(senderPsid);
 
       await messenger.sendTextMessage(senderPsid, "Đang kết nối & tiến hành đồng bộ dữ liệu lần đầu. Quá trình này có thể mất 1-2 phút qua Tor, vui lòng đợi...");
@@ -230,7 +230,7 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   // Quick keywords
-  const data = db.getScrapedData(senderPsid) || {};
+  const data = await db.getScrapedData(senderPsid) || {};
   
   if (text === "lịch thi") {
     const raw = data.lich_thi ? JSON.parse(data.lich_thi) : null;
