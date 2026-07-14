@@ -18,8 +18,8 @@ const MAX_PARALLEL = 3;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function loadResult(account) {
-  const row = db.getScrapedData(account.fb_id);
+async function loadResult(account) {
+  const row = await db.getScrapedData(account.fb_id);
   if (!row) return {};
   return {
     canhBao: row.canh_bao ? JSON.parse(row.canh_bao) : null,
@@ -34,9 +34,9 @@ function loadResult(account) {
 }
 
 async function saveResult(account, result) {
-  const oldData = loadResult(account);
+  const oldData = await loadResult(account);
   
-  db.saveScrapedData(account.fb_id, {
+  await db.saveScrapedData(account.fb_id, {
     canh_bao: result.canhBao,
     thong_tin_sv: result.thongTinSV,
     ket_qua_hoc_tap: result.ketQuaHocTap,
@@ -47,7 +47,7 @@ async function saveResult(account, result) {
     hoc_phi: result.hocPhi,
   });
 
-  const settings = db.getSettings(account.fb_id);
+  const settings = await db.getSettings(account.fb_id);
   await checkAndNotify(account.fb_id, oldData, result, settings);
 }
 
@@ -104,7 +104,7 @@ async function scrapeBatch(account, pages, torProxy) {
 }
 
 async function scrapeAccount(account, torIdx, useTor) {
-  let result = loadResult(account);
+  let result = await loadResult(account);
   let pending = PAGES.filter((p) => !result[p.key]);
 
   if (!pending.length) {
@@ -172,7 +172,7 @@ async function main() {
   const accountFilter = args.find((a) => a.startsWith("--account="));
   const filterUser = accountFilter ? accountFilter.split("=")[1] : null;
 
-  let rawAccounts = db.getAllUsers();
+  let rawAccounts = await db.getAllUsers();
   if (filterUser) {
     rawAccounts = rawAccounts.filter((a) => a.username === filterUser);
   }
@@ -239,7 +239,7 @@ async function main() {
   console.log("\n=== Summary ===");
   let allComplete = true;
   for (const account of accounts) {
-    const result = loadResult(account);
+    const result = await loadResult(account);
     const done = Object.keys(result).length;
     const status = done === PAGES.length ? "COMPLETE" : "INCOMPLETE";
     if (done < PAGES.length) allComplete = false;
