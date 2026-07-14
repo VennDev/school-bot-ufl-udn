@@ -259,38 +259,38 @@ app.post("/webhook", async (req, res) => {
 
   const body = req.body;
   if (body.object === "page") {
-    body.entry.forEach((entry) => {
+    for (const entry of body.entry) {
       const webhook_event = entry.messaging[0];
       const sender_psid = webhook_event.sender.id;
 
       if (webhook_event.message) {
-        handleMessage(sender_psid, webhook_event.message);
+        await handleMessage(sender_psid, webhook_event.message);
       } else if (webhook_event.postback) {
-        handlePostback(sender_psid, webhook_event.postback);
+        await handlePostback(sender_psid, webhook_event.postback);
       }
-    });
+    }
     res.status(200).send("EVENT_RECEIVED");
   } else {
     res.sendStatus(404);
   }
 });
 
-function handleMessage(sender_psid, received_message) {
+async function handleMessage(sender_psid, received_message) {
   if (received_message.quick_reply && received_message.quick_reply.payload) {
     const payload = received_message.quick_reply.payload;
-    if (payload === "TOGGLE_GPA") botRouter.handleMessage(sender_psid, "toggle gpa");
-    else if (payload === "TOGGLE_LICH") botRouter.handleMessage(sender_psid, "toggle lich");
-    else if (payload === "TOGGLE_THI") botRouter.handleMessage(sender_psid, "toggle thi");
-    else if (payload === "TOGGLE_HOCPHI") botRouter.handleMessage(sender_psid, "toggle hocphi");
-    else if (payload === "TOGGLE_THONGBAO") botRouter.handleMessage(sender_psid, "toggle thongbao");
+    if (payload === "TOGGLE_GPA") await botRouter.handleMessage(sender_psid, "toggle gpa");
+    else if (payload === "TOGGLE_LICH") await botRouter.handleMessage(sender_psid, "toggle lich");
+    else if (payload === "TOGGLE_THI") await botRouter.handleMessage(sender_psid, "toggle thi");
+    else if (payload === "TOGGLE_HOCPHI") await botRouter.handleMessage(sender_psid, "toggle hocphi");
+    else if (payload === "TOGGLE_THONGBAO") await botRouter.handleMessage(sender_psid, "toggle thongbao");
   } else if (received_message.text) {
-    botRouter.handleMessage(sender_psid, received_message.text);
+    await botRouter.handleMessage(sender_psid, received_message.text);
   }
 }
 
-function handlePostback(sender_psid, received_postback) {
+async function handlePostback(sender_psid, received_postback) {
   if (received_postback.payload === "GET_STARTED") {
-    botRouter.handleMessage(sender_psid, "hello");
+    await botRouter.handleMessage(sender_psid, "hello");
   }
 }
 
