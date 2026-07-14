@@ -276,6 +276,12 @@ app.post("/webhook", async (req, res) => {
 });
 
 async function handleMessage(sender_psid, received_message) {
+  // Ignore echo messages (sent by the bot/page itself)
+  if (received_message.is_echo) {
+    console.log("[server] Ignored echo message from page itself.");
+    return;
+  }
+
   if (received_message.quick_reply && received_message.quick_reply.payload) {
     const payload = received_message.quick_reply.payload;
     if (payload === "TOGGLE_GPA") await botRouter.handleMessage(sender_psid, "toggle gpa");
