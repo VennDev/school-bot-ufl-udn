@@ -229,7 +229,13 @@ async function handleMessage(senderPsid, messageText) {
     
     // If not in login session and doesn't trigger explicit /login, do not proceed with login state machine
     if (!session && lowerText !== "/login") {
-      return messenger.sendTextMessage(senderPsid, "Bạn chưa đăng nhập. Vui lòng gõ `/login` để bắt đầu kết nối tài khoản sinh viên.");
+      return messenger.sendButtons(senderPsid, "Xin chào! Mình có thể giúp gì cho bạn?\nĐể bắt đầu sử dụng, vui lòng đăng nhập tài khoản sinh viên UFL.", [
+        {
+          type: "postback",
+          title: "Đăng nhập ngay",
+          payload: "LOGIN_POSTBACK"
+        }
+      ]);
     }
     
     if (session) {
@@ -260,13 +266,12 @@ async function handleMessage(senderPsid, messageText) {
         const scraperPath = path.resolve(__dirname, "./scrape.js");
         const execCmd = `node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
-        const child = exec(execCmd, (err, stdout, stderr) => {
+        const child =         exec(execCmd, (err, stdout, stderr) => {
           if (err) {
             console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
             messenger.sendTextMessage(senderPsid, "[X] Đăng nhập thất bại ở cả kết nối Direct IP và Tor.");
           } else {
             console.log(`[async-sync] Scrape for ${username} succeeded.`);
-            messenger.sendTextMessage(senderPsid, "[OK] Đồng bộ dữ liệu thành công! Bạn có thể sử dụng các lệnh: Lịch học, Lịch thi, Điểm số, Học phí, hoặc Tóm tắt tuần.");
           }
         });
         child.stdout.on("data", (data) => {

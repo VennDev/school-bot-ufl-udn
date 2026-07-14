@@ -297,6 +297,8 @@ async function handleMessage(sender_psid, received_message) {
 async function handlePostback(sender_psid, received_postback) {
   if (received_postback.payload === "GET_STARTED") {
     await botRouter.handleMessage(sender_psid, "hello");
+  } else if (received_postback.payload === "LOGIN_POSTBACK") {
+    await botRouter.handleMessage(sender_psid, "/login");
   }
 }
 
