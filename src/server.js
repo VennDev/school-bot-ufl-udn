@@ -259,6 +259,9 @@ app.post("/webhook", async (req, res) => {
 
   const body = req.body;
   if (body.object === "page") {
+    // Send HTTP 200 immediately to Facebook to prevent event retries due to long processing times (like AI generation)
+    res.status(200).send("EVENT_RECEIVED");
+
     for (const entry of body.entry) {
       const webhook_event = entry.messaging[0];
       const sender_psid = webhook_event.sender.id;
@@ -269,7 +272,6 @@ app.post("/webhook", async (req, res) => {
         await handlePostback(sender_psid, webhook_event.postback);
       }
     }
-    res.status(200).send("EVENT_RECEIVED");
   } else {
     res.sendStatus(404);
   }
