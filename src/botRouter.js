@@ -218,39 +218,45 @@ async function handleMessage(senderPsid, messageText) {
   if (!user) {
     const session = loginSessions.get(senderPsid);
     
-    if (!session) {
-      loginSessions.set(senderPsid, { step: "AWAITING_USERNAME" });
-      return messenger.sendTextMessage(senderPsid, "Chào mừng bạn đến với UFL Productivity Hub! Để bắt đầu, vui lòng nhập Mã sinh viên của bạn:");
+    // If not in login session and doesn't trigger explicit /login, do not proceed with login state machine
+    if (!session && lowerText !== "/login") {
+      return messenger.sendTextMessage(senderPsid, "Bạn chưa đăng nhập. Vui lòng gõ `/login` để bắt đầu kết nối tài khoản sinh viên.");
     }
-
-    if (session.step === "AWAITING_USERNAME") {
-      session.username = text;
-      session.step = "AWAITING_PASSWORD";
-      loginSessions.set(senderPsid, session);
-      return messenger.sendTextMessage(senderPsid, "Nhận mã sinh viên thành công. Vui lòng nhập Mật khẩu cổng sinh viên của bạn (thông tin được mã hóa bảo mật):");
-    }
-
-    if (session.step === "AWAITING_PASSWORD") {
-      const username = session.username;
-      const passwordEnc = crypto.encrypt(text);
-      
-      // Save user
-      await db.saveUser(senderPsid, username, passwordEnc, "0");
-      loginSessions.delete(senderPsid);
-
-      await messenger.sendTextMessage(senderPsid, "Đang kết nối & tiến hành đồng bộ dữ liệu lần đầu. Quá trình này có thể mất 1-2 phút qua Tor, vui lòng đợi...");
-
-      // Trigger async scrape immediately for this user
-      const scraperPath = path.resolve(__dirname, "./scrape.js");
-      exec(`node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`, (err) => {
-        if (err) {
-          console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
-          messenger.sendTextMessage(senderPsid, "[X] Đồng bộ lần đầu thất bại. Vui lòng kiểm tra lại tài khoản mật khẩu bằng cách gõ /logout và đăng nhập lại.");
-        } else {
-          messenger.sendTextMessage(senderPsid, "[OK] Đồng bộ dữ liệu thành công! Bạn có thể sử dụng các lệnh: Lịch học, Lịch thi, Điểm số, Học phí, hoặc Tóm tắt tuần.");
+    
+    if (session) {
+      if (session.step === "AWAITING_USERNAME") {
+        // Validate student code format (simple digit check or basic length check to reject garbage strings)
+        if (!/^\d+$/.test(text)) {
+          return messenger.sendTextMessage(senderPsid, "Mã sinh viên không hợp lệ. Vui lòng nhập lại (chỉ gồm các chữ số):");
         }
-      });
-      return;
+        session.username = text;
+        session.step = "AWAITING_PASSWORD";
+        loginSessions.set(senderPsid, session);
+        return messenger.sendTextMessage(senderPsid, "Nhận mã sinh viên thành công. Vui lòng nhập Mật khẩu cổng sinh viên của bạn (thông tin được mã hóa bảo mật):");
+      }
+
+      if (session.step === "AWAITING_PASSWORD") {
+        const username = session.username;
+        const passwordEnc = crypto.encrypt(text);
+        
+        // Save user
+        await db.saveUser(senderPsid, username, passwordEnc, "0");
+        loginSessions.delete(senderPsid);
+
+        await messenger.sendTextMessage(senderPsid, "Đang kết nối & tiến hành đồng bộ dữ liệu lần đầu. Quá trình này có thể mất 1-2 phút qua Tor, vui lòng đợi...");
+
+        // Trigger async scrape immediately for this user
+        const scraperPath = path.resolve(__dirname, "./scrape.js");
+        exec(`node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`, (err) => {
+          if (err) {
+            console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
+            messenger.sendTextMessage(senderPsid, "[X] Đồng bộ lần đầu thất bại. Vui lòng kiểm tra lại tài khoản mật khẩu bằng cách gõ /logout và đăng nhập lại.");
+          } else {
+            messenger.sendTextMessage(senderPsid, "[OK] Đồng bộ dữ liệu thành công! Bạn có thể sử dụng các lệnh: Lịch học, Lịch thi, Điểm số, Học phí, hoặc Tóm tắt tuần.");
+          }
+        });
+        return;
+      }
     }
   }
 
