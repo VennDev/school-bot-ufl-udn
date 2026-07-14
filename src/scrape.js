@@ -11,8 +11,8 @@ const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { checkAndNotify } = require("./changeDetector");
 
-const BATCH_SIZE = 2;
-const DELAY = 5000;
+const BATCH_SIZE = 8; // Scrape all 8 pages in one login session to prevent duplicate logins
+const DELAY = 2000; // Reduce delay to speed up scraping
 const MAX_RETRIES = 20;
 const BACKOFF_BASE = 30000;
 const MAX_PARALLEL = 3;
