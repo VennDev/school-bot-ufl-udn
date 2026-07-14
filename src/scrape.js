@@ -8,6 +8,7 @@ const { BASE, PAGES } = require("./pages");
 const { socksUrl, rotateIP, startMultipleTor, stopAllTor } = require("./tor");
 const db = require("./db");
 const crypto = require("./crypto");
+const messenger = require("./messenger");
 const { checkAndNotify } = require("./changeDetector");
 
 const BATCH_SIZE = 2;
@@ -69,7 +70,8 @@ async function scrapeBatch(account, pages, torProxy) {
     await page.click('button[type="submit"]');
     await page.waitForURL("**/SinhVien**", { timeout: 30000 });
     console.log(`  [${account.username}] Login OK`);
-
+    await messenger.sendTextMessage(account.fb_id, "[✓] Đăng nhập Cổng sinh viên thành công! Đang tiến hành tải dữ liệu học tập...");
+ 
     for (const p of pages) {
       await sleep(DELAY);
       try {
@@ -77,6 +79,13 @@ async function scrapeBatch(account, pages, torProxy) {
         await page.waitForLoadState("networkidle").catch(() => {});
         scraped[p.key] = await page.evaluate(p.extract);
         console.log(`  [${account.username}] ${p.key}: OK`);
+        await messenger.sendTextMessage(account.fb_id, `[+] Tải thành công danh mục: ${p.key === "canhBao" ? "Cảnh báo học vụ" : 
+                         p.key === "thongTinSV" ? "Hồ sơ sinh viên" : 
+                         p.key === "ketQuaHocTap" ? "Điểm học tập" : 
+                         p.key === "diemRenLuyen" ? "Điểm rèn luyện" : 
+                         p.key === "lichThi" ? "Lịch thi" : 
+                         p.key === "hocBongKTKL" ? "Học bổng & Khen thưởng" : 
+                         p.key === "lichHoc" ? "Lịch học" : "Học phí"}`);
       } catch (e) {
         const msg = e.message || "";
         if (msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
@@ -91,13 +100,14 @@ async function scrapeBatch(account, pages, torProxy) {
     if (!blocked) {
       try { await page.goto(`${BASE}/DangNhap/Signout`, { timeout: 10000 }); } catch {}
     }
-  } catch (e) {
-    const msg = e.message || "";
-    if (msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
-      blocked = true;
+    } catch (e) {
+      const msg = e.message || "";
+      if (msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
+        blocked = true;
+      }
+      console.log(`  [${account.username}] Session error: ${msg.split("\n")[0]}`);
+      await messenger.sendTextMessage(account.fb_id, `[X] Lỗi kết nối cổng sinh viên: ${msg.split("\n")[0]}`);
     }
-    console.log(`  [${account.username}] Session error: ${msg.split("\n")[0]}`);
-  }
 
   await browser.close();
   return { scraped, blocked };
