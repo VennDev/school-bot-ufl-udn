@@ -449,10 +449,11 @@ Yêu cầu định dạng phản hồi bắt buộc:
 Dưới đây là thông tin học vụ của sinh viên (định dạng JSON):
 ${JSON.stringify(cleanData, null, 2)}
 
-Hãy trả lời câu hỏi của sinh viên ngắn gọn, chính xác bằng tiếng Việt. 
+Hãy trả lời câu hỏi của sinh viên chính xác bằng tiếng Việt.
 Yêu cầu định dạng phản hồi bắt buộc:
-- Viết ngắn gọn, trực diện, tối đa 3-4 câu hoặc dạng gạch đầu dòng ngắn. 
-- Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
+1. Trả lời chi tiết, rõ ràng và đầy đủ thông tin (như lịch học đầy đủ các ngày trong tuần nếu sinh viên yêu cầu).
+2. Trình bày bằng bullet points (gạch đầu dòng) mạch lạc, sạch đẹp.
+3. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);

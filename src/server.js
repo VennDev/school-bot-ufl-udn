@@ -23,6 +23,10 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const MOCK_TOKEN = crypto.encrypt("admin-session");
 
+// Cache to prevent duplicate messages (Facebook retry mitigation)
+const processedMessageIds = new Set();
+const clearCacheInterval = setInterval(() => processedMessageIds.clear(), 60000); // clear every 1 minute
+
 // Start cron job scheduler for scraping
 startScheduler();
 
@@ -259,17 +263,27 @@ app.post("/webhook", async (req, res) => {
 
   const body = req.body;
   if (body.object === "page") {
-    // Send HTTP 200 immediately to Facebook to prevent event retries due to long processing times (like AI generation)
+    // Send HTTP 200 immediately to Facebook and close HTTP session to prevent retry loops
     res.status(200).send("EVENT_RECEIVED");
 
     for (const entry of body.entry) {
       const webhook_event = entry.messaging[0];
       const sender_psid = webhook_event.sender.id;
+      const message_id = webhook_event.message ? webhook_event.message.mid : null;
 
+      if (message_id) {
+        if (processedMessageIds.has(message_id)) {
+          console.log(`[server] Ignored duplicated message ID (retry): ${message_id}`);
+          continue;
+        }
+        processedMessageIds.add(message_id);
+      }
+
+      // Fire and forget (asynchronously) without blocking the thread
       if (webhook_event.message) {
-        await handleMessage(sender_psid, webhook_event.message);
+        handleMessage(sender_psid, webhook_event.message).catch(console.error);
       } else if (webhook_event.postback) {
-        await handlePostback(sender_psid, webhook_event.postback);
+        handlePostback(sender_psid, webhook_event.postback).catch(console.error);
       }
     }
   } else {
