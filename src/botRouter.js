@@ -260,7 +260,9 @@ async function handleMessage(senderPsid, messageText) {
         const scraperPath = path.resolve(__dirname, "./scrape.js");
         const execCmd = `node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
-        exec(execCmd, (err) => {
+        exec(execCmd, (err, stdout, stderr) => {
+          if (stdout) console.log(`[async-sync] stdout:\n${stdout}`);
+          if (stderr) console.error(`[async-sync] stderr:\n${stderr}`);
           if (err) {
             console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
             messenger.sendTextMessage(senderPsid, "[X] Đồng bộ lần đầu thất bại. Vui lòng kiểm tra lại tài khoản mật khẩu bằng cách gõ /logout và đăng nhập lại.");
