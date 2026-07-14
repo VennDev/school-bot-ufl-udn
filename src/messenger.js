@@ -1,7 +1,7 @@
 const db = require("./db");
 
 async function callSendAPI(sender_psid, response) {
-  const pageToken = db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
   const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${pageToken}`;
   try {
     const res = await fetch(url, {
