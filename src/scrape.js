@@ -1,4 +1,7 @@
 const { chromium } = require("playwright");
+if (!global.crypto) {
+  global.crypto = require("crypto").webcrypto || require("crypto");
+}
 const fs = require("fs");
 const path = require("path");
 const { BASE, PAGES } = require("./pages");

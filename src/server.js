@@ -1,4 +1,7 @@
 require("dotenv").config();
+if (!global.crypto) {
+  global.crypto = require("crypto").webcrypto || require("crypto");
+}
 const express = require("express");
 const path = require("path");
 const { exec } = require("child_process");
