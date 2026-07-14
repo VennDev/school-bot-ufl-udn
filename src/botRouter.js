@@ -146,8 +146,12 @@ async function handleMessage(senderPsid, messageText) {
   const text = messageText.trim();
   const lowerText = text.toLowerCase();
 
+  console.log(`[botRouter] Received message from "${senderPsid}": "${text}"`);
+  console.log(`[botRouter] Database user check: ${user ? `Found user "${user.username}"` : "User not found"}`);
+
   // Handle Logout command
   if (lowerText === "/logout") {
+    console.log(`[botRouter] Processing /logout command for "${senderPsid}"`);
     if (user) {
       await db.deleteUser(senderPsid);
       loginSessions.delete(senderPsid);
@@ -158,6 +162,7 @@ async function handleMessage(senderPsid, messageText) {
 
   // Handle Login command
   if (lowerText === "/login") {
+    console.log(`[botRouter] Processing /login command for "${senderPsid}"`);
     if (user) {
       const dataExist = await db.getScrapedData(senderPsid);
       if (dataExist) {
@@ -171,6 +176,7 @@ async function handleMessage(senderPsid, messageText) {
 
   // Handle User Settings
   if (lowerText === "/settings" || lowerText === "cài đặt") {
+    console.log(`[botRouter] Processing settings view for "${senderPsid}"`);
     const s = await db.getSettings(senderPsid);
     const textStatus = `[*] CÀI ĐẶT THÔNG BÁO CỦA BẠN:\n
 - GPA: ${s.notify_gpa ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle gpa)
@@ -191,6 +197,7 @@ async function handleMessage(senderPsid, messageText) {
 
   // Handle toggle interactions
   if (lowerText.startsWith("toggle ") || lowerText.startsWith("toggle_")) {
+    console.log(`[botRouter] Processing toggle setting command for "${senderPsid}"`);
     const key = lowerText.replace("toggle ", "").replace("toggle_", "").trim();
     const s = await db.getSettings(senderPsid);
     
@@ -207,6 +214,7 @@ async function handleMessage(senderPsid, messageText) {
 
   // Handle email save
   if (lowerText.startsWith("email ")) {
+    console.log(`[botRouter] Processing email save for "${senderPsid}"`);
     const email = text.replace(/email /i, "").trim();
     const s = await db.getSettings(senderPsid);
     s.email = email;
@@ -217,6 +225,7 @@ async function handleMessage(senderPsid, messageText) {
   // Handle Login State Machine
   if (!user) {
     const session = loginSessions.get(senderPsid);
+    console.log(`[botRouter] Login State Machine. Current session for "${senderPsid}":`, session);
     
     // If not in login session and doesn't trigger explicit /login, do not proceed with login state machine
     if (!session && lowerText !== "/login") {
@@ -225,6 +234,7 @@ async function handleMessage(senderPsid, messageText) {
     
     if (session) {
       if (session.step === "AWAITING_USERNAME") {
+        console.log(`[botRouter] Login State Machine: AWAITING_USERNAME -> username "${text}" received.`);
         // Validate student code format (simple digit check or basic length check to reject garbage strings)
         if (!/^\d+$/.test(text)) {
           return messenger.sendTextMessage(senderPsid, "Mã sinh viên không hợp lệ. Vui lòng nhập lại (chỉ gồm các chữ số):");
@@ -236,6 +246,7 @@ async function handleMessage(senderPsid, messageText) {
       }
 
       if (session.step === "AWAITING_PASSWORD") {
+        console.log(`[botRouter] Login State Machine: AWAITING_PASSWORD -> password received, starting scrape process.`);
         const username = session.username;
         const passwordEnc = crypto.encrypt(text);
         
@@ -247,11 +258,14 @@ async function handleMessage(senderPsid, messageText) {
 
         // Trigger async scrape immediately for this user
         const scraperPath = path.resolve(__dirname, "./scrape.js");
-        exec(`node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`, (err) => {
+        const execCmd = `node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`;
+        console.log(`[botRouter] Executing scrape command: ${execCmd}`);
+        exec(execCmd, (err) => {
           if (err) {
             console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
             messenger.sendTextMessage(senderPsid, "[X] Đồng bộ lần đầu thất bại. Vui lòng kiểm tra lại tài khoản mật khẩu bằng cách gõ /logout và đăng nhập lại.");
           } else {
+            console.log(`[async-sync] Scrape for ${username} succeeded.`);
             messenger.sendTextMessage(senderPsid, "[OK] Đồng bộ dữ liệu thành công! Bạn có thể sử dụng các lệnh: Lịch học, Lịch thi, Điểm số, Học phí, hoặc Tóm tắt tuần.");
           }
         });
@@ -262,6 +276,7 @@ async function handleMessage(senderPsid, messageText) {
 
   // Quick keywords
   const data = await db.getScrapedData(senderPsid) || {};
+  console.log(`[botRouter] Querying data for keywords. Message: "${text}"`);
   
   if (text === "lịch thi") {
     const raw = data.lich_thi ? JSON.parse(data.lich_thi) : null;
