@@ -217,7 +217,7 @@ async function handleMessage(senderPsid, messageText) {
 
       // Trigger async scrape immediately for this user
       const scraperPath = path.resolve(__dirname, "./scrape.js");
-      exec(`node ${scraperPath} --account=${username}`, (err) => {
+      exec(`node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`, (err) => {
         if (err) {
           console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
           messenger.sendTextMessage(senderPsid, "[X] Đồng bộ lần đầu thất bại. Vui lòng kiểm tra lại tài khoản mật khẩu bằng cách gõ /logout và đăng nhập lại.");

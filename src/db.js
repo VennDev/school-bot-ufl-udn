@@ -101,7 +101,7 @@ module.exports = {
     await User.findOneAndUpdate(
       { fb_id: fbId },
       { username, password_enc: passwordEnc, role },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
     await Settings.findOneAndUpdate(
       { fb_id: fbId },
