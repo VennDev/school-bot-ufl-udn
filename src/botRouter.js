@@ -144,6 +144,19 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendTextMessage(senderPsid, "Bạn chưa kết nối tài khoản nào.");
   }
 
+  // Handle Login command
+  if (lowerText === "/login") {
+    if (user) {
+      const dataExist = await db.getScrapedData(senderPsid);
+      if (dataExist) {
+        return messenger.sendTextMessage(senderPsid, `Bạn hiện đã đăng nhập với tài khoản sinh viên *${user.username}* và dữ liệu đã được đồng bộ.`);
+      }
+      return messenger.sendTextMessage(senderPsid, `Bạn hiện đã đăng nhập với tài khoản *${user.username}*. Đang chờ đồng bộ dữ liệu hoặc bạn có thể gõ "cài đặt" để cấu hình.`);
+    }
+    loginSessions.set(senderPsid, { step: "AWAITING_USERNAME" });
+    return messenger.sendTextMessage(senderPsid, "Vui lòng nhập Mã sinh viên của bạn để kết nối UFL Productivity Hub:");
+  }
+
   // Handle User Settings
   if (lowerText === "/settings" || lowerText === "cài đặt") {
     const s = await db.getSettings(senderPsid);
