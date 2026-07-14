@@ -393,17 +393,17 @@ async function handleMessage(senderPsid, messageText) {
       canh_bao: data.canh_bao ? JSON.parse(data.canh_bao).slice(0, 3) : []
     };
 
-    const statsPrompt = `Bạn là trợ lý AI UFL. Nhiệm vụ của bạn là phân tích thống kê học tập cho sinh viên.
-Dữ liệu:
+    const statsPrompt = `Bạn là trợ lý AI UFL. Hãy phân tích tiến độ học tập của sinh viên dựa trên dữ liệu sau:
 ${JSON.stringify(cleanDataForStats, null, 2)}
 
-Hãy phân tích ngắn gọn:
-1. Số môn đã hoàn thành, TBCHP trung bình, xu hướng điểm.
-2. Các môn thi sắp tới và mức độ ưu tiên.
-3. Tình trạng học phí và cảnh báo nếu có.
-4. Nhận xét tổng quan và lời khuyên học tập.
-
-Viết bằng tiếng Việt, ngắn gọn, thân thiện, động viên.`;
+Yêu cầu định dạng phản hồi bắt buộc:
+1. Trả lời ngắn gọn, trực diện, không dài dòng.
+2. Sử dụng định dạng khung cố định sau:
+[+] Tóm tắt: (1-2 câu nhận xét chung)
+[+] Phân tích chi tiết:
+- Tiến độ học tập & GPA: (Mô tả ngắn)
+- Lịch thi & Học phí: (Mô tả ngắn)
+[+] Lời khuyên: (1 câu khuyên học tập)`;
 
     await messenger.sendTextMessage(senderPsid, "AI đang phân tích dữ liệu học tập của bạn...");
     const statsResult = await askAI(statsPrompt, "Hãy thống kê và phân tích tiến độ học tập của tôi.");
@@ -420,16 +420,15 @@ Viết bằng tiếng Việt, ngắn gọn, thân thiện, động viên.`;
       canh_bao: data.canh_bao ? JSON.parse(data.canh_bao).slice(0, 2) : []
     };
 
-    const summaryPrompt = `Bạn là trợ lý AI UFL. Nhiệm vụ của bạn là viết một bản tóm tắt tuần học tập cho sinh viên.
-Hãy dựa vào dữ liệu sau đây:
+    const summaryPrompt = `Bạn là trợ lý AI UFL. Hãy tóm tắt tuần học tập cho sinh viên dựa trên dữ liệu sau:
 ${JSON.stringify(cleanDataForSummary, null, 2)}
 
-Hãy tóm tắt ngắn gọn dưới dạng bullet points bao gồm:
-1. Lịch học chính cần chú ý tuần tới.
-2. Môn thi sắp tới (nếu có).
-3. Tình trạng học phí cần hoàn thành (đặc biệt lưu ý cảnh báo cấm thi nếu nợ).
-4. Các việc cần ưu tiên trong tuần.
-Hãy viết với phong cách động viên sinh viên học tập tốt, ngắn gọn, thân thiện bằng tiếng Việt.`;
+Yêu cầu định dạng phản hồi bắt buộc:
+[+] Tóm tắt tuần học: (Nhận xét tổng quan tuần tới ngắn trong 1 câu)
+[+] Lịch trình:
+- Lịch học chính: (Các môn cần học tuần tới)
+- Lịch thi & Học phí: (Các môn thi sắp tới, tình trạng học phí/nợ nếu có)
+[+] Nhiệm vụ ưu tiên: (Bullet point ngắn gọn các việc cần làm)`;
 
     await messenger.sendTextMessage(senderPsid, "AI đang tổng hợp và tóm tắt tuần của bạn...");
     const summaryResult = await askAI(summaryPrompt, "Hãy tóm tắt tuần học tập của tôi.");
@@ -450,7 +449,10 @@ Hãy viết với phong cách động viên sinh viên học tập tốt, ngắn
 Dưới đây là thông tin học vụ của sinh viên (định dạng JSON):
 ${JSON.stringify(cleanData, null, 2)}
 
-Hãy trả lời câu hỏi của sinh viên ngắn gọn, chính xác bằng tiếng Việt. Không tự bịa thông tin ngoài context được cung cấp. Nếu không biết hoặc không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
+Hãy trả lời câu hỏi của sinh viên ngắn gọn, chính xác bằng tiếng Việt. 
+Yêu cầu định dạng phản hồi bắt buộc:
+- Viết ngắn gọn, trực diện, tối đa 3-4 câu hoặc dạng gạch đầu dòng ngắn. 
+- Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);
