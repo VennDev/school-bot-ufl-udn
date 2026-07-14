@@ -436,10 +436,14 @@ Yêu cầu định dạng phản hồi bắt buộc:
   }
 
   // Ask AI (Free text)
+  const rawGrades = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : null;
+  const targetGradeTable = rawGrades ? rawGrades.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
+  const gradesRows = targetGradeTable ? (targetGradeTable.rows || []).slice(0, 10) : [];
+
   const cleanData = {
     user: { username: user.username },
     announcements: data.canh_bao ? JSON.parse(data.canh_bao).slice(0, 3) : [],
-    gpa_recent: data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap).slice(0, 2) : [],
+    gpa_recent: gradesRows,
     exams: data.lich_thi ? JSON.parse(data.lich_thi).slice(0, 3) : [],
     tuition: data.hoc_phi ? JSON.parse(data.hoc_phi) : [],
     schedule: data.lich_hoc ? JSON.parse(data.lich_hoc).slice(0, 4) : []
