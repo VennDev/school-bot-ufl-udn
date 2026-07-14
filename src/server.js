@@ -218,14 +218,20 @@ app.get("/webhook", async (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
+  console.log(`[webhook-verify] Received mode: ${mode}, token: ${token}`);
+
   if (mode && token) {
     const sysVerifyToken = await db.getSystemSetting("fb_verify_token", process.env.FB_VERIFY_TOKEN || "");
+    console.log(`[webhook-verify] Configured verify token: "${sysVerifyToken}"`);
     if (mode === "subscribe" && token === sysVerifyToken) {
       console.log("WEBHOOK_VERIFIED");
       res.status(200).send(challenge);
     } else {
+      console.warn("[webhook-verify] Token mismatch!");
       res.sendStatus(403);
     }
+  } else {
+    res.sendStatus(400);
   }
 });
 
