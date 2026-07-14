@@ -7,7 +7,7 @@ function detectGrades(oldData, newData) {
   const oldTable = oldData?.find((t) => t.headers?.includes("Tên học phần"));
   const newTable = newData.find((t) => t.headers?.includes("Tên học phần"));
   if (!newTable) return [];
-  if (!oldTable) return ["[=] Bạn đã được đồng bộ bảng điểm học tập."];
+  if (!oldTable) return []; // Ignore first sync notify to avoid spam
 
   const alerts = [];
   const oldRows = new Map(oldTable.rows.map((r) => [r[1], r])); // Ky hieu làm key
@@ -24,7 +24,7 @@ function detectGrades(oldData, newData) {
 
 function detectExams(oldData, newData) {
   if (!newData || newData.length < 2) return [];
-  if (!oldData || oldData.length < 2) return ["[~] Lịch thi của bạn đã được cập nhật."];
+  if (!oldData || oldData.length < 2) return []; // Ignore first sync notify to avoid spam
 
   const alerts = [];
   const oldExams = new Map(oldData.slice(1).map((r) => [r[1], r])); // Ma hoc phan
@@ -41,7 +41,7 @@ function detectExams(oldData, newData) {
 
 function detectAnnouncements(oldData, newData) {
   if (!newData || !newData.length) return [];
-  if (!oldData || !oldData.length) return ["[!] Bảng thông báo học vụ đã được cập nhật."];
+  if (!oldData || !oldData.length) return []; // Ignore first sync notify to avoid spam
 
   const alerts = [];
   const oldTexts = new Set(oldData.map((item) => item.content || JSON.stringify(item)));
@@ -59,7 +59,7 @@ function detectSchedule(oldData, newData) {
   const oldTable = oldData?.find((t) => t.headers?.includes("Tên học phần"));
   const newTable = newData.find((t) => t.headers?.includes("Tên học phần"));
   if (!newTable) return [];
-  if (!oldTable) return ["[~] Lịch học của bạn đã được cập nhật."];
+  if (!oldTable) return []; // Ignore first sync notify to avoid spam
 
   const alerts = [];
   const oldRows = new Map((oldTable.rows || []).map((r) => [r[2], r]));
