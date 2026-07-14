@@ -93,7 +93,7 @@ async function ensureInit() {
 module.exports = {
   async getUser(fbId) {
     await ensureInit();
-    return User.findOne({ fb_id }).lean();
+    return User.findOne({ fb_id: fbId }).lean();
   },
 
   async saveUser(fbId, username, passwordEnc, role = "0") {
@@ -124,7 +124,7 @@ module.exports = {
 
   async getSettings(fbId) {
     await ensureInit();
-    const s = await Settings.findOne({ fb_id }).lean();
+    const s = await Settings.findOne({ fb_id: fbId }).lean();
     return s || {
       fb_id: fbId,
       notify_gpa: 1,
@@ -147,7 +147,7 @@ module.exports = {
 
   async getScrapedData(fbId) {
     await ensureInit();
-    return ScrapedData.findOne({ fb_id }).lean();
+    return ScrapedData.findOne({ fb_id: fbId }).lean();
   },
 
   async saveScrapedData(fbId, data) {
