@@ -67,7 +67,7 @@ function startTorInstance(idx) {
     "--DataDirectory", dataDir,
     "--CookieAuthentication", "0",
     "--RunAsDaemon", "1",
-  ], { stdio: "ignore", detached: true });
+  ], { stdio: "inherit", detached: true });
   proc.unref();
 
   return new Promise((resolve) => {
