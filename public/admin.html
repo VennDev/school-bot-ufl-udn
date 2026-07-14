@@ -31,6 +31,7 @@
         <h1 class="text-lg font-bold">UFL Bot Admin Console</h1>
         <nav class="flex space-x-4">
           <button onclick="switchTab('users')" id="tab-users" class="px-3 py-1 rounded bg-blue-800 font-medium">Người dùng</button>
+          <button onclick="switchTab('data')" id="tab-data" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Dữ liệu MongoDB</button>
           <button onclick="switchTab('settings')" id="tab-settings" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Cài đặt hệ thống</button>
         </nav>
       </div>
@@ -89,6 +90,62 @@
               <!-- Dynamic rows -->
             </tbody>
           </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- MongoDB Data Tab Content -->
+    <main id="content-data" class="max-w-7xl w-full mx-auto p-4 md:p-6 hidden flex-1 flex flex-col space-y-6">
+      <div class="bg-white p-6 rounded-lg shadow-md flex flex-col flex-1">
+        <div class="flex justify-between items-center mb-6">
+          <div class="flex items-center space-x-4">
+            <h3 class="text-lg font-bold text-gray-800">[Database] Xem Dữ Liệu</h3>
+            <select id="data-model-select" onchange="changeDataModel()" class="border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="User">User (Tài khoản kết nối)</option>
+              <option value="Settings">Settings (Cấu hình thông báo)</option>
+              <option value="ScrapedData">ScrapedData (Dữ liệu UFL)</option>
+              <option value="ChangeLog">ChangeLog (Lịch sử thay đổi)</option>
+              <option value="StudyGoal">StudyGoal (Mục tiêu học tập)</option>
+              <option value="StudySession">StudySession (Phiên tự học)</option>
+              <option value="SystemSetting">SystemSetting (Cấu hình hệ thống)</option>
+            </select>
+          </div>
+          <button onclick="exportCSV()" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded transition shadow">
+            Xuất file CSV
+          </button>
+        </div>
+
+        <div class="overflow-x-auto flex-1 border rounded-lg">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead id="data-table-head" class="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <!-- Dynamic headers -->
+            </thead>
+            <tbody id="data-table-body" class="bg-white divide-y divide-gray-200 text-sm text-gray-900">
+              <!-- Dynamic rows -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 mt-4">
+          <div class="flex flex-1 justify-between sm:hidden">
+            <button onclick="prevDataPage()" class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Trước</button>
+            <button onclick="nextDataPage()" class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Sau</button>
+          </div>
+          <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm text-gray-700">
+                Hiển thị <span class="font-medium" id="data-from-idx">0</span> đến <span class="font-medium" id="data-to-idx">0</span> trong tổng số <span class="font-medium" id="data-total-count">0</span> bản ghi
+              </p>
+            </div>
+            <div>
+              <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                <button onclick="prevDataPage()" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Trước</button>
+                <span class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 focus:outline-offset-0" id="data-current-page">1</span>
+                <button onclick="nextDataPage()" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Sau</button>
+              </nav>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -192,18 +249,34 @@
 
   <script>
     let token = localStorage.getItem('admin_token') || '';
+    let currentDataPage = 1;
+    let totalDataCount = 0;
+    const itemsPerPage = 10;
 
     function switchTab(tab) {
       if (tab === 'users') {
         document.getElementById('tab-users').classList.add('bg-blue-800');
+        document.getElementById('tab-data').classList.remove('bg-blue-800');
         document.getElementById('tab-settings').classList.remove('bg-blue-800');
         document.getElementById('content-users').classList.remove('hidden');
+        document.getElementById('content-data').classList.add('hidden');
         document.getElementById('content-settings').classList.add('hidden');
         loadStats();
+      } else if (tab === 'data') {
+        document.getElementById('tab-users').classList.remove('bg-blue-800');
+        document.getElementById('tab-data').classList.add('bg-blue-800');
+        document.getElementById('tab-settings').classList.remove('bg-blue-800');
+        document.getElementById('content-users').classList.add('hidden');
+        document.getElementById('content-data').classList.remove('hidden');
+        document.getElementById('content-settings').classList.add('hidden');
+        currentDataPage = 1;
+        loadDataView();
       } else {
         document.getElementById('tab-users').classList.remove('bg-blue-800');
+        document.getElementById('tab-data').classList.remove('bg-blue-800');
         document.getElementById('tab-settings').classList.add('bg-blue-800');
         document.getElementById('content-users').classList.add('hidden');
+        document.getElementById('content-data').classList.add('hidden');
         document.getElementById('content-settings').classList.remove('hidden');
         loadSettings();
       }
@@ -237,6 +310,89 @@
         alert("Sai mật khẩu!");
       }
     });
+
+    async function loadDataView() {
+      const model = document.getElementById('data-model-select').value;
+      const res = await fetch(`/api/admin/data-view?model=${model}&page=${currentDataPage}&limit=${itemsPerPage}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401 || res.status === 403) {
+        logout();
+        return;
+      }
+      const result = await res.json();
+      totalDataCount = result.total;
+
+      const totalPages = Math.ceil(totalDataCount / itemsPerPage) || 1;
+      if (currentDataPage > totalPages) currentDataPage = totalPages;
+
+      document.getElementById('data-total-count').innerText = totalDataCount;
+      document.getElementById('data-from-idx').innerText = totalDataCount === 0 ? 0 : (currentDataPage - 1) * itemsPerPage + 1;
+      document.getElementById('data-to-idx').innerText = Math.min(currentDataPage * itemsPerPage, totalDataCount);
+      document.getElementById('data-current-page').innerText = currentDataPage;
+
+      const thead = document.getElementById('data-table-head');
+      const tbody = document.getElementById('data-table-body');
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      if (result.data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="100" class="px-6 py-4 text-center text-gray-500">Không có dữ liệu</td></tr>`;
+        return;
+      }
+
+      // Generate dynamic headers
+      const keys = Object.keys(result.data[0]).filter(k => k !== '__v');
+      const trHead = document.createElement('tr');
+      keys.forEach((k) => {
+        const th = document.createElement('th');
+        th.className = 'px-6 py-3 text-left';
+        th.innerText = k;
+        trHead.appendChild(th);
+      });
+      thead.appendChild(trHead);
+
+      // Generate dynamic rows
+      result.data.forEach((row) => {
+        const trRow = document.createElement('tr');
+        keys.forEach((key) => {
+          const td = document.createElement('td');
+          td.className = 'px-6 py-4 whitespace-nowrap overflow-hidden text-ellipsis max-w-xs';
+          let val = row[key];
+          if (val === null || val === undefined) val = '';
+          else if (typeof val === 'object') val = JSON.stringify(val);
+          td.innerText = val;
+          td.title = val; // tooltip for long values
+          trRow.appendChild(td);
+        });
+        tbody.appendChild(trRow);
+      });
+    }
+
+    function changeDataModel() {
+      currentDataPage = 1;
+      loadDataView();
+    }
+
+    function prevDataPage() {
+      if (currentDataPage > 1) {
+        currentDataPage--;
+        loadDataView();
+      }
+    }
+
+    function nextDataPage() {
+      const totalPages = Math.ceil(totalDataCount / itemsPerPage) || 1;
+      if (currentDataPage < totalPages) {
+        currentDataPage++;
+        loadDataView();
+      }
+    }
+
+    function exportCSV() {
+      const model = document.getElementById('data-model-select').value;
+      window.open(`/api/admin/data-export?model=${model}`, '_blank');
+    }
 
     async function loadStats() {
       const res = await fetch('/api/admin/stats', {

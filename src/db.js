@@ -195,4 +195,25 @@ module.exports = {
       { upsert: true }
     );
   },
+
+  async getModelsData(modelName, page = 1, limit = 10) {
+    await ensureInit();
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting };
+    const Model = models[modelName];
+    if (!Model) throw new Error("Model not found");
+
+    const skip = (page - 1) * limit;
+    const total = await Model.countDocuments();
+    const data = await Model.find().skip(skip).limit(limit).lean();
+
+    return { total, data, page, limit };
+  },
+
+  async getAllModelDataForExport(modelName) {
+    await ensureInit();
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting };
+    const Model = models[modelName];
+    if (!Model) throw new Error("Model not found");
+    return Model.find().lean();
+  }
 };

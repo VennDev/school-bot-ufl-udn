@@ -128,6 +128,49 @@ app.post("/api/admin/delete-user", requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+app.get("/api/admin/data-view", requireAdmin, async (req, res) => {
+  const { model, page, limit } = req.query;
+  if (!model) return res.status(400).json({ error: "Missing model name" });
+  try {
+    const result = await db.getModelsData(model, parseInt(page) || 1, parseInt(limit) || 10);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/data-export", requireAdmin, async (req, res) => {
+  const { model } = req.query;
+  if (!model) return res.status(400).json({ error: "Missing model name" });
+  try {
+    const rawData = await db.getAllModelDataForExport(model);
+    if (!rawData.length) {
+      return res.status(404).json({ error: "No data to export" });
+    }
+
+    // Convert rawData to CSV format
+    const keys = Object.keys(rawData[0]).filter(k => k !== "__v");
+    const csvRows = [keys.join(",")];
+
+    rawData.forEach((item) => {
+      const values = keys.map((key) => {
+        let val = item[key];
+        if (val === null || val === undefined) return "";
+        if (typeof val === "object") val = JSON.stringify(val);
+        const escaped = String(val).replace(/"/g, '""');
+        return `"${escaped}"`;
+      });
+      csvRows.push(values.join(","));
+    });
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename=${model}_export.csv`);
+    res.status(200).send("\uFEFF" + csvRows.join("\n")); // BOM for UTF-8
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/admin/settings", requireAdmin, (req, res) => {
   res.json({
     ai_provider: db.getSystemSetting("ai_provider", process.env.AI_PROVIDER || "opencode"),
