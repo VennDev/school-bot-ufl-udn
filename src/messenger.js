@@ -22,6 +22,31 @@ async function callSendAPI(sender_psid, response) {
 }
 
 async function sendTextMessage(sender_psid, text) {
+  if (!text) return;
+  // Facebook Messenger text limit is 2000 characters. Chunk the message if it exceeds.
+  if (text.length > 2000) {
+    const chunks = [];
+    let current = text;
+    while (current.length > 0) {
+      if (current.length <= 2000) {
+        chunks.push(current);
+        break;
+      }
+      // Cut at last newline or space if possible
+      let cutIdx = current.lastIndexOf("\n", 2000);
+      if (cutIdx <= 0) cutIdx = current.lastIndexOf(" ", 2000);
+      if (cutIdx <= 0) cutIdx = 2000;
+      
+      chunks.push(current.substring(0, cutIdx));
+      current = current.substring(cutIdx).trim();
+    }
+    
+    for (const chunk of chunks) {
+      await callSendAPI(sender_psid, { text: chunk });
+    }
+    return;
+  }
+  
   return callSendAPI(sender_psid, { text });
 }
 
