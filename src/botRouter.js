@@ -2,7 +2,7 @@ const db = require("./db");
 const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { askAI } = require("./ai");
-const { calculateGPA } = require("./gpaHelper");
+const { calculateGPA, extractGPA, getAcademicEvaluation } = require("./gpaHelper");
 const { exec } = require("child_process");
 const path = require("path");
 
@@ -27,27 +27,44 @@ function formatCanhBao(data) {
 
 function formatKetQuaHocTap(data) {
   if (!data || !data.length) return "Chưa có dữ liệu điểm học tập.";
+
+  // Extract GPA directly from tables scraped from website
+  let gpa = extractGPA(data);
+
+  // Fallback to manual calculation if not present on website summary
   const targetTable = data.find((t) => t.headers && t.headers.includes("Tên học phần"));
-  if (!targetTable) return "Chưa cập nhật bảng điểm chính.";
+  if (!gpa) {
+    if (!targetTable) return "Chưa cập nhật bảng điểm chính.";
+    const courses = targetTable.rows.map((r) => ({
+      name: r[2],
+      credits: r[3],
+      score10: r[6]
+    }));
+    gpa = calculateGPA(courses);
+  }
 
-  // Calculate dynamic GPA via UFLS rules
-  const courses = targetTable.rows.map((r) => ({
-    name: r[2],
-    credits: r[3],
-    score10: r[6]
-  }));
-  const gpa = calculateGPA(courses);
+  if (!gpa) return "Không thể đọc dữ liệu điểm học tập.";
 
-  let txt = `📊 KẾT QUẢ HỌC TẬP (Tính theo quy chế UFLS):\n`;
+  const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester);
+
+  let txt = `📊 KẾT QUẢ HỌC TẬP (Dữ liệu từ UFLS):\n`;
   txt += `- GPA Học kỳ: ${gpa.gpaSemester}/4.0\n`;
   txt += `- GPA Tích lũy: ${gpa.gpaAccumulated}/4.0\n`;
-  txt += `- Tín chỉ tích lũy: ${gpa.creditsAccumulated}\n\n`;
-  txt += `📝 Chi tiết điểm môn gần đây:`;
+  txt += `- Tín chỉ tích lũy: ${gpa.creditsAccumulated}\n`;
+  txt += `- Xếp loại học lực: ${evalResult.rank}\n\n`;
+  txt += `💬 Nhận xét: ${evalResult.comment}\n`;
 
-  const rows = targetTable.rows || [];
-  rows.slice(0, 5).forEach((r) => {
-    txt += `\n- ${r[2]}: ${r[6]} (${r[8]})`;
-  });
+  if (evalResult.warning) {
+    txt += `\n${evalResult.warning}\n`;
+  }
+
+  if (targetTable && targetTable.rows) {
+    txt += `\n📝 Chi tiết điểm môn gần đây:`;
+    targetTable.rows.slice(0, 5).forEach((r) => {
+      txt += `\n- ${r[2]}: ${r[6]} (${r[8]})`;
+    });
+  }
+
   return txt;
 }
 
@@ -122,33 +139,50 @@ function formatLichHoc(data, dayFilter) {
 
 function formatTienDo(data) {
   if (!data || !data.length) return "Chưa có dữ liệu điểm để tính tiến độ.";
-  const targetTable = data.find((t) => t.headers && t.headers.includes("Tên học phần"));
-  if (!targetTable) return "Chưa cập nhật bảng điểm.";
 
-  const rows = targetTable.rows || [];
+  // Extract GPA directly from website tables
+  let gpa = extractGPA(data);
+
+  const targetTable = data.find((t) => t.headers && t.headers.includes("Tên học phần"));
+  if (!gpa && targetTable) {
+    const courses = targetTable.rows.map((r) => ({
+      name: r[2],
+      credits: r[3],
+      score10: r[6]
+    }));
+    gpa = calculateGPA(courses);
+  }
+
+  if (!gpa) return "Không thể đọc thông tin tiến độ học tập.";
+
+  const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester);
+
+  const rows = targetTable ? targetTable.rows || [] : [];
   const earned = rows.filter((r) => {
     const grade = (r[8] || "").toLowerCase();
     return grade && !["f", "chưa đạt"].includes(grade) && r[6] !== "0";
   });
-  const totalCredits = earned.reduce((sum, r) => sum + (parseFloat(r[3]) || 0), 0);
   const remaining = rows.filter((r) => {
     const grade = (r[8] || "").toLowerCase();
     return !grade || grade === "f" || grade === "chưa đạt" || r[6] === "0";
   });
   const remainingCredits = remaining.reduce((sum, r) => sum + (parseFloat(r[3]) || 0), 0);
-  const gpaAvg = earned.length
-    ? (earned.reduce((sum, r) => sum + (parseFloat(r[6]) || 0), 0) / earned.length).toFixed(2)
-    : "N/A";
 
-  let txt = "[^] TIẾN ĐỘ HỌC TẬP:\n";
-  txt += `\n[=] GPA trung bình: ${gpaAvg}`;
-  txt += `\n[OK] Đã hoàn thành: ${earned.length} môn (${totalCredits} tín chỉ)`;
-  txt += `\n(~) Còn lại: ${remaining.length} môn (${remainingCredits} tín chỉ)`;
+  let txt = `📈 TIẾN ĐỘ HỌC TẬP (Quy chế UFLS):\n`;
+  txt += `- GPA Tích lũy: ${gpa.gpaAccumulated}/4.0 (${evalResult.rank})\n`;
+  txt += `- Tín chỉ đã tích lũy: ${gpa.creditsAccumulated} TC\n`;
+  txt += `- Số môn hoàn thành: ${earned.length} môn\n`;
+  txt += `- Số tín chỉ nợ/chưa hoàn thành: ${remainingCredits} TC\n\n`;
+  txt += `💬 Nhận xét: ${evalResult.comment}\n`;
+
+  if (evalResult.warning) {
+    txt += `\n${evalResult.warning}\n`;
+  }
 
   if (remaining.length > 0) {
-    txt += "\n\n[#] Môn chưa hoàn thành:\n";
+    txt += "\n📝 Các môn chưa hoàn thành gần đây:\n";
     remaining.slice(0, 5).forEach((r) => {
-      txt += `\n- ${r[2]} (${r[3]} tín chỉ): ${r[6] || "Chưa có điểm"}`;
+      txt += `- ${r[2]} (${r[3]} TC): ${r[6] || "Chưa học/Chưa có điểm"}\n`;
     });
   }
   return txt;

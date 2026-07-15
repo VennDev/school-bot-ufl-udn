@@ -55,4 +55,124 @@ function calculateGPA(courses) {
   };
 }
 
-module.exports = { calculateGPA, getGradePoints };
+function extractGPA(tables) {
+  if (!tables || !tables.length) return null;
+
+  let gpaSemester = null;
+  let gpaAccumulated = null;
+  let creditsAccumulated = 0;
+
+  for (const table of tables) {
+    const headers = table.headers || [];
+    const rows = table.rows || [];
+
+    // 1. Kiểm tra bảng tổng hợp học kỳ (dạng bảng tóm tắt học kỳ)
+    const idxGpaSem4 = headers.findIndex(h => {
+      const l = h.toLowerCase();
+      return (l.includes("đtbchk") || l.includes("học kỳ")) && (l.includes("he 4") || l.includes("hệ 4") || l.includes("4.0"));
+    });
+    const idxGpaAcc4 = headers.findIndex(h => {
+      const l = h.toLowerCase();
+      return (l.includes("đtbctl") || l.includes("tích lũy")) && (l.includes("he 4") || l.includes("hệ 4") || l.includes("4.0"));
+    });
+    const idxCreditsAcc = headers.findIndex(h => {
+      const l = h.toLowerCase();
+      return l.includes("tín chỉ tích lũy") || l.includes("tc tích lũy") || l.includes("tctl");
+    });
+
+    if (idxGpaAcc4 !== -1 && rows.length > 0) {
+      const lastRow = rows[rows.length - 1];
+      gpaSemester = parseFloat(lastRow[idxGpaSem4]) || null;
+      gpaAccumulated = parseFloat(lastRow[idxGpaAcc4]) || null;
+      creditsAccumulated = parseInt(lastRow[idxCreditsAcc]) || 0;
+      if (gpaAccumulated !== null && !isNaN(gpaAccumulated)) {
+        return { gpaSemester, gpaAccumulated, creditsAccumulated };
+      }
+    }
+
+    // 2. Tìm kiếm trong các ô dạng text
+    for (const row of rows) {
+      for (let i = 0; i < row.length; i++) {
+        const cell = String(row[i]).toLowerCase();
+        
+        if ((cell.includes("tích lũy") || cell.includes("đtbctl")) && (cell.includes("hệ 4") || cell.includes("he 4") || cell.includes("4.0"))) {
+          const match = cell.match(/(\d+[\.,]\d+)/);
+          if (match) {
+            gpaAccumulated = parseFloat(match[1].replace(",", "."));
+          } else if (row[i + 1]) {
+            const nextMatch = String(row[i + 1]).match(/(\d+[\.,]\d+)/);
+            if (nextMatch) gpaAccumulated = parseFloat(nextMatch[1].replace(",", "."));
+          }
+        }
+        
+        if ((cell.includes("học kỳ") || cell.includes("đtbchk")) && (cell.includes("hệ 4") || cell.includes("he 4") || cell.includes("4.0"))) {
+          const match = cell.match(/(\d+[\.,]\d+)/);
+          if (match) {
+            gpaSemester = parseFloat(match[1].replace(",", "."));
+          } else if (row[i + 1]) {
+            const nextMatch = String(row[i + 1]).match(/(\d+[\.,]\d+)/);
+            if (nextMatch) gpaSemester = parseFloat(nextMatch[1].replace(",", "."));
+          }
+        }
+
+        if (cell.includes("tín chỉ tích lũy") || cell.includes("tổng số tín chỉ tích lũy") || cell.includes("sct tích lũy") || cell.includes("tc tích lũy")) {
+          const match = cell.match(/(\d+)/);
+          if (match) {
+            creditsAccumulated = parseInt(match[1]);
+          } else if (row[i + 1]) {
+            const nextMatch = String(row[i + 1]).match(/(\d+)/);
+            if (nextMatch) creditsAccumulated = parseInt(nextMatch[1]);
+          }
+        }
+      }
+    }
+  }
+
+  if (gpaAccumulated !== null && !isNaN(gpaAccumulated)) {
+    return {
+      gpaSemester: gpaSemester || 0,
+      gpaAccumulated,
+      creditsAccumulated
+    };
+  }
+
+  return null;
+}
+
+function getAcademicEvaluation(gpaAccumulated, gpaSemester) {
+  let rank = "Chưa xếp loại";
+  let comment = "";
+  let warning = "";
+
+  if (gpaAccumulated >= 3.6) {
+    rank = "Xuất sắc";
+    comment = "Thành tích học tập vô cùng ấn tượng! Hãy tiếp tục duy trì phong độ đỉnh cao này nhé.";
+  } else if (gpaAccumulated >= 3.2) {
+    rank = "Giỏi";
+    comment = "Kết quả xuất sắc! Bạn đang có lộ trình học tập rất tốt, phát huy tiếp nhé.";
+  } else if (gpaAccumulated >= 2.5) {
+    rank = "Khá";
+    comment = "Học lực Khá vững vàng. Cố gắng thêm chút nữa để đạt mục tiêu Giỏi/Xuất sắc.";
+  } else if (gpaAccumulated >= 2.0) {
+    rank = "Trung bình";
+    comment = "Học lực ở mức an toàn nhưng cần nỗ lực nhiều hơn để cải thiện GPA.";
+  } else if (gpaAccumulated >= 1.0) {
+    rank = "Yếu";
+    comment = "Kết quả học tập đang dưới mức trung bình. Hãy tập trung cải thiện điểm số để tránh các rủi ro học vụ.";
+    warning = "⚠️ Cảnh báo: Học lực xếp hạng Yếu theo Điều 21.2 quy chế đào tạo.";
+  } else {
+    rank = "Kém";
+    comment = "Cần nghiêm túc xem xét lại phương pháp học tập ngay lập tức.";
+    warning = "🚨 Cảnh báo nghiêm trọng: GPA < 1.0. Nguy cơ cao bị cảnh báo học tập hoặc buộc thôi học.";
+  }
+
+  // Cảnh báo dựa trên GPA học kỳ (Điều 22.1.b)
+  if (gpaSemester !== null && gpaSemester < 1.0) {
+    warning += warning ? "\n" : "";
+    warning += `⚠️ Cảnh báo học vụ: GPA học kỳ (${gpaSemester}) dưới 1.0 có nguy cơ bị cảnh báo học tập (Điều 22.1.b).`;
+  }
+
+  return { rank, comment, warning };
+}
+
+module.exports = { calculateGPA, extractGPA, getGradePoints, getAcademicEvaluation };
