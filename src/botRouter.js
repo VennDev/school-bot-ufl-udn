@@ -556,11 +556,11 @@ ${regContextText}
 
 Hãy trả lời câu hỏi của sinh viên chính xác bằng tiếng Việt.
 Yêu cầu định dạng phản hồi bắt buộc:
-1. Trả lời chi tiết, rõ ràng và đầy đủ thông tin.
+1. Trả lời cực kỳ ngắn gọn, súc tích, đi thẳng vào trọng tâm (dưới 100 từ). Chỉ trả lời chi tiết và đầy đủ bảng điểm khi người dùng yêu cầu cụ thể (ví dụ: "cho tôi xem chi tiết", "hãy giải thích rõ").
 2. Trình bày bằng bullet points (gạch đầu dòng) mạch lạc, sạch đẹp.
 3. KHÔNG sử dụng định dạng bảng Markdown (|---|). Nếu cần hiển thị danh sách hay bảng biểu, hãy dùng các gạch đầu dòng lồng nhau.
-4. Khi sinh viên hỏi về điểm số hoặc GPA, hãy cung cấp thông tin tổng thể. Đồng thời, chủ động hỏi lại sinh viên xem họ muốn tính GPA/chi tiết điểm cho học kỳ cụ thể nào (hãy liệt kê các học kỳ hiện có trong dữ liệu gpa_data để sinh viên chọn) hay muốn xem toàn bộ quá trình học tập.
-5. BẮT BUỘC đưa ra nhận xét, đánh giá về kết quả học tập (xếp loại học lực Khá, Giỏi, Xuất sắc...), cảnh báo học tập hoặc tư vấn khả năng đạt học bổng/thi đua của sinh viên dựa trên quy chế đào tạo UFLS ở trên nếu câu hỏi của sinh viên liên quan đến điểm số, GPA hoặc rèn luyện.
+4. Khi sinh viên hỏi về điểm số hoặc GPA nói chung, hãy tóm tắt GPA tích lũy. Đồng thời, chủ động hỏi sinh viên xem họ muốn xem chi tiết học kỳ cụ thể nào (liệt kê danh sách các học kỳ có trong gpa_data) hay muốn xem toàn bộ quá trình học tập.
+5. BẮT BUỘC đưa ra nhận xét học lực (Khá/Giỏi...) và tư vấn học bổng/cảnh báo học vụ siêu ngắn gọn nếu câu hỏi liên quan đến điểm số, GPA hoặc rèn luyện.
 6. Nếu bạn sử dụng thông tin từ quy chế đào tạo trên để trả lời, BẮT BUỘC phải ghi chú rõ ở cuối câu trả lời về số dòng tham chiếu (Ví dụ: "Tham chiếu quy chế UFLS dòng X - Y"). Điều này rất quan trọng để người dùng kiểm chứng.
 7. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
 
