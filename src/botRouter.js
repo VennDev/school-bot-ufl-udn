@@ -2,6 +2,7 @@ const db = require("./db");
 const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { askAI } = require("./ai");
+const { calculateGPA } = require("./gpaHelper");
 const { exec } = require("child_process");
 const path = require("path");
 
@@ -26,14 +27,25 @@ function formatCanhBao(data) {
 
 function formatKetQuaHocTap(data) {
   if (!data || !data.length) return "Chưa có dữ liệu điểm học tập.";
-  // Search for the table containing STT, Ten hoc phan, TBCHP, Diem chu
   const targetTable = data.find((t) => t.headers && t.headers.includes("Tên học phần"));
   if (!targetTable) return "Chưa cập nhật bảng điểm chính.";
 
-  let txt = "[=] ĐIỂM SỐ GẦN ĐÂY:\n";
+  // Calculate dynamic GPA via UFLS rules
+  const courses = targetTable.rows.map((r) => ({
+    name: r[2],
+    credits: r[3],
+    score10: r[6]
+  }));
+  const gpa = calculateGPA(courses);
+
+  let txt = `📊 KẾT QUẢ HỌC TẬP (Tính theo quy chế UFLS):\n`;
+  txt += `- GPA Học kỳ: ${gpa.gpaSemester}/4.0\n`;
+  txt += `- GPA Tích lũy: ${gpa.gpaAccumulated}/4.0\n`;
+  txt += `- Tín chỉ tích lũy: ${gpa.creditsAccumulated}\n\n`;
+  txt += `📝 Chi tiết điểm môn gần đây:`;
+
   const rows = targetTable.rows || [];
   rows.slice(0, 5).forEach((r) => {
-    // headers: STT, Ky hieu, Ten hoc phan, So tin chi, Diem thanh phan, Diem thi, TBCHP, Diem so, Diem chu
     txt += `\n- ${r[2]}: ${r[6]} (${r[8]})`;
   });
   return txt;
