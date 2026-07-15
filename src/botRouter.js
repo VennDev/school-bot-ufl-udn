@@ -528,12 +528,12 @@ Yêu cầu định dạng phản hồi bắt buộc:
   // Ask AI (Free text)
   const rawGrades = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : null;
   const targetGradeTable = rawGrades ? rawGrades.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
-  const gradesRows = targetGradeTable ? (targetGradeTable.rows || []).slice(0, 10) : [];
+  const gradesRows = targetGradeTable ? (targetGradeTable.rows || []) : [];
 
   const cleanData = {
     user: { username: user.username },
     announcements: data.canh_bao ? JSON.parse(data.canh_bao).slice(0, 3) : [],
-    gpa_recent: gradesRows,
+    gpa_data: gradesRows, // Send full grades data so AI can calculate/analyze any semester or whole course
     exams: data.lich_thi ? JSON.parse(data.lich_thi).slice(0, 3) : [],
     tuition: data.hoc_phi ? JSON.parse(data.hoc_phi) : [],
     schedule: data.lich_hoc ? JSON.parse(data.lich_hoc).slice(0, 4) : []
@@ -559,9 +559,10 @@ Yêu cầu định dạng phản hồi bắt buộc:
 1. Trả lời chi tiết, rõ ràng và đầy đủ thông tin.
 2. Trình bày bằng bullet points (gạch đầu dòng) mạch lạc, sạch đẹp.
 3. KHÔNG sử dụng định dạng bảng Markdown (|---|). Nếu cần hiển thị danh sách hay bảng biểu, hãy dùng các gạch đầu dòng lồng nhau.
-4. BẮT BUỘC đưa ra nhận xét, đánh giá về kết quả học tập (xếp loại học lực Khá, Giỏi, Xuất sắc...), cảnh báo học tập hoặc tư vấn khả năng đạt học bổng/thi đua của sinh viên dựa trên quy chế đào tạo UFLS ở trên nếu câu hỏi của sinh viên liên quan đến điểm số, GPA hoặc rèn luyện.
-5. Nếu bạn sử dụng thông tin từ quy chế đào tạo trên để trả lời, BẮT BUỘC phải ghi chú rõ ở cuối câu trả lời về số dòng tham chiếu (Ví dụ: "Tham chiếu quy chế UFLS dòng X - Y"). Điều này rất quan trọng để người dùng kiểm chứng.
-6. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
+4. Khi sinh viên hỏi về điểm số hoặc GPA, hãy cung cấp thông tin tổng thể. Đồng thời, chủ động hỏi lại sinh viên xem họ muốn tính GPA/chi tiết điểm cho học kỳ cụ thể nào (hãy liệt kê các học kỳ hiện có trong dữ liệu gpa_data để sinh viên chọn) hay muốn xem toàn bộ quá trình học tập.
+5. BẮT BUỘC đưa ra nhận xét, đánh giá về kết quả học tập (xếp loại học lực Khá, Giỏi, Xuất sắc...), cảnh báo học tập hoặc tư vấn khả năng đạt học bổng/thi đua của sinh viên dựa trên quy chế đào tạo UFLS ở trên nếu câu hỏi của sinh viên liên quan đến điểm số, GPA hoặc rèn luyện.
+6. Nếu bạn sử dụng thông tin từ quy chế đào tạo trên để trả lời, BẮT BUỘC phải ghi chú rõ ở cuối câu trả lời về số dòng tham chiếu (Ví dụ: "Tham chiếu quy chế UFLS dòng X - Y"). Điều này rất quan trọng để người dùng kiểm chứng.
+7. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);
