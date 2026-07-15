@@ -1,5 +1,8 @@
 const fs = require("fs");
 const path = require("path");
+if (!global.crypto) {
+  global.crypto = require("crypto").webcrypto || require("crypto");
+}
 const db = require("./db");
 
 const FILE_PATH = path.resolve(__dirname, "../docs/UFLS.txt");

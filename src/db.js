@@ -1,4 +1,7 @@
 const mongoose = require("mongoose");
+if (!global.crypto) {
+  global.crypto = require("crypto").webcrypto || require("crypto");
+}
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/school-bot";
 
