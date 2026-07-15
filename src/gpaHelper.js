@@ -60,6 +60,8 @@ function extractGPA(tables) {
 
   let gpaSemester = null;
   let gpaAccumulated = null;
+  let gpaSemester10 = null;
+  let gpaAccumulated10 = null;
   let creditsAccumulated = 0;
 
   for (const table of tables) {
@@ -75,6 +77,14 @@ function extractGPA(tables) {
       const l = h.toLowerCase();
       return (l.includes("đtbctl") || l.includes("tích lũy")) && (l.includes("he 4") || l.includes("hệ 4") || l.includes("4.0"));
     });
+    const idxGpaSem10 = headers.findIndex(h => {
+      const l = h.toLowerCase();
+      return (l.includes("đtbchk") || l.includes("học kỳ")) && (l.includes("he 10") || l.includes("hệ 10") || l.includes("10"));
+    });
+    const idxGpaAcc10 = headers.findIndex(h => {
+      const l = h.toLowerCase();
+      return (l.includes("đtbctl") || l.includes("tích lũy")) && (l.includes("he 10") || l.includes("hệ 10") || l.includes("10"));
+    });
     const idxCreditsAcc = headers.findIndex(h => {
       const l = h.toLowerCase();
       return l.includes("tín chỉ tích lũy") || l.includes("tc tích lũy") || l.includes("tctl");
@@ -84,9 +94,11 @@ function extractGPA(tables) {
       const lastRow = rows[rows.length - 1];
       gpaSemester = parseFloat(lastRow[idxGpaSem4]) || null;
       gpaAccumulated = parseFloat(lastRow[idxGpaAcc4]) || null;
+      gpaSemester10 = parseFloat(lastRow[idxGpaSem10]) || null;
+      gpaAccumulated10 = parseFloat(lastRow[idxGpaAcc10]) || null;
       creditsAccumulated = parseInt(lastRow[idxCreditsAcc]) || 0;
       if (gpaAccumulated !== null && !isNaN(gpaAccumulated)) {
-        return { gpaSemester, gpaAccumulated, creditsAccumulated };
+        return { gpaSemester, gpaAccumulated, gpaSemester10, gpaAccumulated10, creditsAccumulated };
       }
     }
 
@@ -132,10 +144,27 @@ function extractGPA(tables) {
     return {
       gpaSemester: gpaSemester || 0,
       gpaAccumulated,
+      gpaSemester10: gpaSemester10 || (gpaSemester ? parseFloat((gpaSemester * 2.5).toFixed(2)) : 0),
+      gpaAccumulated10: gpaAccumulated10 || parseFloat((gpaAccumulated * 2.5).toFixed(2)),
       creditsAccumulated
     };
   }
 
+  return null;
+}
+
+function extractDRL(drlData) {
+  if (!drlData || !drlData.length) return null;
+  const rows = drlData.filter(r => r.length >= 2 && !r[0].toLowerCase().includes("học kỳ") && !r[0].toLowerCase().includes("stt"));
+  if (!rows.length) return null;
+  // Lấy dòng cuối cùng (kỳ gần nhất)
+  const lastRow = rows[rows.length - 1];
+  for (const cell of lastRow) {
+    const val = parseInt(cell);
+    if (!isNaN(val) && val >= 0 && val <= 100) {
+      return { score: val, rank: lastRow[lastRow.indexOf(cell) + 1] || "Chưa xếp loại" };
+    }
+  }
   return null;
 }
 
@@ -175,4 +204,59 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester) {
   return { rank, comment, warning };
 }
 
-module.exports = { calculateGPA, extractGPA, getGradePoints, getAcademicEvaluation };
+function getScholarshipAndActivityAdvice(gpaSemester10, gpaAccumulated, drlScore, credits) {
+  let advice = "";
+  
+  // 1. Phân tích học bổng học kỳ (Điều 20.9 & Điều 7770)
+  if (gpaSemester10 !== null && drlScore !== null) {
+    if (gpaSemester10 >= 9.0 && drlScore >= 90) {
+      advice += `🌟 Đề xuất Học bổng: Đạt điều kiện xét Học bổng khuyến khích loại XUẤT SẮC (ĐTBHK: ${gpaSemester10}/10.0, ĐRL: ${drlScore}/100 - Xuất sắc).\n`;
+    } else if (gpaSemester10 >= 8.0 && drlScore >= 80) {
+      advice += `✨ Đề xuất Học bổng: Đạt điều kiện xét Học bổng khuyến khích loại GIỎI (ĐTBHK: ${gpaSemester10}/10.0, ĐRL: ${drlScore}/100 - Tốt).\n`;
+    } else if (gpaSemester10 >= 7.0 && drlScore >= 70) {
+      advice += `👍 Đề xuất Học bổng: Đạt điều kiện xét Học bổng khuyến khích loại KHÁ (ĐTBHK: ${gpaSemester10}/10.0, ĐRL: ${drlScore}/100 - Khá).\n`;
+    } else {
+      advice += `💡 Đề xuất Học bổng: Chưa đủ điều kiện xét Học bổng khuyến khích học kỳ này (Yêu cầu tối thiểu ĐTBHK >= 7.0 và ĐRL >= 70).\n`;
+    }
+  }
+
+  // 2. Tư vấn danh hiệu thi đua cả năm (Khen thưởng) (dòng 5727)
+  if (gpaAccumulated !== null && drlScore !== null) {
+    advice += `🏆 Danh hiệu thi đua dự kiến:\n`;
+    if (gpaAccumulated >= 3.6 && drlScore >= 90) {
+      advice += `- Đạt tiêu chuẩn danh hiệu "Sinh viên Xuất sắc" (GPA >= 3.6 & ĐRL >= 90).\n`;
+    } else if (gpaAccumulated >= 3.2 && drlScore >= 80) {
+      advice += `- Đạt tiêu chuẩn danh hiệu "Sinh viên Giỏi" (GPA >= 3.2 & ĐRL >= 80).\n`;
+    } else if (gpaAccumulated >= 2.5 && drlScore >= 70) {
+      advice += `- Đạt tiêu chuẩn danh hiệu "Sinh viên Khá" (GPA >= 2.5 & ĐRL >= 70).\n`;
+    } else {
+      advice += `- Chưa đạt danh hiệu thi đua (Yêu cầu tối thiểu tích lũy GPA >= 2.5 và ĐRL >= 70).\n`;
+    }
+  }
+
+  // 3. Tư vấn xếp hạng năm đào tạo theo tiến độ tích lũy (Điều 21.1)
+  if (credits !== null && credits > 0) {
+    let year = 1;
+    if (credits >= 90) year = 4;
+    else if (credits >= 60) year = 3;
+    else if (credits >= 30) year = 2;
+    
+    advice += `📅 Xếp hạng năm đào tạo: Trình độ năm thứ ${year} (Đã tích lũy ${credits} tín chỉ).\n`;
+  }
+
+  // 4. Cảnh báo đặc biệt về rèn luyện (Điều 14.5)
+  if (drlScore !== null && drlScore < 50) {
+    advice += `⚠️ Cảnh báo Rèn luyện: Điểm rèn luyện của bạn đang ở mức Yếu/Kém (${drlScore} điểm). Theo Điều 14.5 quy chế đánh giá rèn luyện UFLS, sinh viên xếp loại yếu, kém trong 2 học kỳ liên tiếp sẽ bị tạm ngừng học ít nhất 1 học kỳ. Hãy cải thiện tích cực trong học kỳ tới!`;
+  }
+
+  return advice;
+}
+
+module.exports = { 
+  calculateGPA, 
+  extractGPA, 
+  extractDRL, 
+  getGradePoints, 
+  getAcademicEvaluation, 
+  getScholarshipAndActivityAdvice 
+};

@@ -2,7 +2,7 @@ const db = require("./db");
 const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { askAI } = require("./ai");
-const { calculateGPA, extractGPA, getAcademicEvaluation } = require("./gpaHelper");
+const { calculateGPA, extractGPA, extractDRL, getAcademicEvaluation, getScholarshipAndActivityAdvice } = require("./gpaHelper");
 const { exec } = require("child_process");
 const path = require("path");
 
@@ -25,14 +25,15 @@ function formatCanhBao(data) {
   return txt;
 }
 
-function formatKetQuaHocTap(data) {
-  if (!data || !data.length) return "Chưa có dữ liệu điểm học tập.";
+function formatKetQuaHocTap(scrapedData) {
+  const rawKq = scrapedData.ket_qua_hoc_tap ? JSON.parse(scrapedData.ket_qua_hoc_tap) : null;
+  const rawDrl = scrapedData.diem_ren_luyen ? JSON.parse(scrapedData.diem_ren_luyen) : null;
 
-  // Extract GPA directly from tables scraped from website
-  let gpa = extractGPA(data);
+  if (!rawKq || !rawKq.length) return "Chưa có dữ liệu điểm học tập.";
 
-  // Fallback to manual calculation if not present on website summary
-  const targetTable = data.find((t) => t.headers && t.headers.includes("Tên học phần"));
+  let gpa = extractGPA(rawKq);
+  const targetTable = rawKq.find((t) => t.headers && t.headers.includes("Tên học phần"));
+
   if (!gpa) {
     if (!targetTable) return "Chưa cập nhật bảng điểm chính.";
     const courses = targetTable.rows.map((r) => ({
@@ -45,17 +46,26 @@ function formatKetQuaHocTap(data) {
 
   if (!gpa) return "Không thể đọc dữ liệu điểm học tập.";
 
+  const drl = extractDRL(rawDrl);
   const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester);
+  const advice = getScholarshipAndActivityAdvice(gpa.gpaSemester10 || null, gpa.gpaAccumulated, drl ? drl.score : null, gpa.creditsAccumulated);
 
   let txt = `📊 KẾT QUẢ HỌC TẬP (Dữ liệu từ UFLS):\n`;
   txt += `- GPA Học kỳ: ${gpa.gpaSemester}/4.0\n`;
   txt += `- GPA Tích lũy: ${gpa.gpaAccumulated}/4.0\n`;
-  txt += `- Tín chỉ tích lũy: ${gpa.creditsAccumulated}\n`;
-  txt += `- Xếp loại học lực: ${evalResult.rank}\n\n`;
-  txt += `💬 Nhận xét: ${evalResult.comment}\n`;
+  txt += `- Tín chỉ tích lũy: ${gpa.creditsAccumulated} TC\n`;
+  txt += `- Xếp loại học lực: ${evalResult.rank}\n`;
+  if (drl) {
+    txt += `- Điểm rèn luyện: ${drl.score}/100 (${drl.rank})\n`;
+  }
+  txt += `\n💬 Nhận xét: ${evalResult.comment}\n`;
 
   if (evalResult.warning) {
     txt += `\n${evalResult.warning}\n`;
+  }
+
+  if (advice) {
+    txt += `\n💡 TƯ VẤN & KHUYẾN NGHỊ (Quy chế UFLS):\n${advice}`;
   }
 
   if (targetTable && targetTable.rows) {
@@ -137,13 +147,15 @@ function formatLichHoc(data, dayFilter) {
   return txt;
 }
 
-function formatTienDo(data) {
-  if (!data || !data.length) return "Chưa có dữ liệu điểm để tính tiến độ.";
+function formatTienDo(scrapedData) {
+  const rawKq = scrapedData.ket_qua_hoc_tap ? JSON.parse(scrapedData.ket_qua_hoc_tap) : null;
+  const rawDrl = scrapedData.diem_ren_luyen ? JSON.parse(scrapedData.diem_ren_luyen) : null;
 
-  // Extract GPA directly from website tables
-  let gpa = extractGPA(data);
+  if (!rawKq || !rawKq.length) return "Chưa có dữ liệu điểm để tính tiến độ.";
 
-  const targetTable = data.find((t) => t.headers && t.headers.includes("Tên học phần"));
+  let gpa = extractGPA(rawKq);
+  const targetTable = rawKq.find((t) => t.headers && t.headers.includes("Tên học phần"));
+
   if (!gpa && targetTable) {
     const courses = targetTable.rows.map((r) => ({
       name: r[2],
@@ -155,7 +167,9 @@ function formatTienDo(data) {
 
   if (!gpa) return "Không thể đọc thông tin tiến độ học tập.";
 
+  const drl = extractDRL(rawDrl);
   const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester);
+  const advice = getScholarshipAndActivityAdvice(gpa.gpaSemester10 || null, gpa.gpaAccumulated, drl ? drl.score : null, gpa.creditsAccumulated);
 
   const rows = targetTable ? targetTable.rows || [] : [];
   const earned = rows.filter((r) => {
@@ -172,11 +186,18 @@ function formatTienDo(data) {
   txt += `- GPA Tích lũy: ${gpa.gpaAccumulated}/4.0 (${evalResult.rank})\n`;
   txt += `- Tín chỉ đã tích lũy: ${gpa.creditsAccumulated} TC\n`;
   txt += `- Số môn hoàn thành: ${earned.length} môn\n`;
-  txt += `- Số tín chỉ nợ/chưa hoàn thành: ${remainingCredits} TC\n\n`;
-  txt += `💬 Nhận xét: ${evalResult.comment}\n`;
+  txt += `- Số tín chỉ nợ/chưa hoàn thành: ${remainingCredits} TC\n`;
+  if (drl) {
+    txt += `- Điểm rèn luyện: ${drl.score}/100 (${drl.rank})\n`;
+  }
+  txt += `\n💬 Nhận xét: ${evalResult.comment}\n`;
 
   if (evalResult.warning) {
     txt += `\n${evalResult.warning}\n`;
+  }
+
+  if (advice) {
+    txt += `\n💡 TƯ VẤN & KHUYẾN NGHỊ (Quy chế UFLS):\n${advice}`;
   }
 
   if (remaining.length > 0) {
@@ -430,22 +451,11 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   if (lowerText === "điểm số" || lowerText === "gpa" || lowerText === "diem so" || lowerText === "diem") {
-    const raw = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : null;
-    const targetTable = raw ? raw.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
-    const rows = targetTable ? targetTable.rows || [] : [];
-    if (!rows.length) {
-      return messenger.sendTextMessage(senderPsid, "Chưa có dữ liệu điểm học tập.");
-    }
-    const elements = rows.slice(0, 5).map((r) => ({
-      title: `${r[2] || "Môn học"}`,
-      subtitle: `Điểm: ${r[6]} (${r[8]}) | Tín chỉ: ${r[3]}`,
-    }));
-    return messenger.sendGenericTemplate(senderPsid, elements);
+    return messenger.sendTextMessage(senderPsid, formatKetQuaHocTap(data));
   }
 
   if (lowerText === "tiến độ" || lowerText === "tín chỉ" || lowerText === "tien do" || lowerText === "tin chi") {
-    const raw = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : null;
-    return messenger.sendTextMessage(senderPsid, formatTienDo(raw));
+    return messenger.sendTextMessage(senderPsid, formatTienDo(data));
   }
 
   if (lowerText === "học vụ" || lowerText === "thông báo" || lowerText === "hoc vu" || lowerText === "thong bao") {
