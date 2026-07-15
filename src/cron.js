@@ -78,17 +78,31 @@ async function runScraper() {
   });
 }
 
-async function startScheduler() {
-  const intervalHours = parseFloat(await db.getSystemSetting("scraper_interval", "4"));
-  const intervalMs = intervalHours * 60 * 60 * 1000;
+let schedulerTimeout = null;
 
-  console.log(`[cron] Scheduler started. Running every ${intervalHours} hours.`);
+function scheduleNextRun() {
+  // Random delay between 10 and 30 minutes
+  const minMins = 10;
+  const maxMins = 30;
+  const randomMins = Math.floor(Math.random() * (maxMins - minMins + 1)) + minMins;
+  const delayMs = randomMins * 60 * 1000;
+
+  console.log(`[cron] Next schedule sync in ${randomMins} minutes.`);
+
+  if (schedulerTimeout) clearTimeout(schedulerTimeout);
+  schedulerTimeout = setTimeout(async () => {
+    await runScraper();
+    scheduleNextRun();
+  }, delayMs);
+}
+
+async function startScheduler() {
+  console.log(`[cron] Scheduler started with random interval (10 - 30 mins).`);
 
   await runScraper();
   await checkExamReminders();
 
-  if (schedulerInterval) clearInterval(schedulerInterval);
-  schedulerInterval = setInterval(runScraper, intervalMs);
+  scheduleNextRun();
 
   if (reminderInterval) clearInterval(reminderInterval);
   reminderInterval = setInterval(checkExamReminders, 60 * 60 * 1000);

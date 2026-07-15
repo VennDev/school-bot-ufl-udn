@@ -67,9 +67,15 @@ const systemSettingSchema = new mongoose.Schema({
   value: String,
 });
 
+const interactionSchema = new mongoose.Schema({
+  fb_id: String,
+  action: String,
+  payload: String,
+}, { timestamps: true });
+
 // ---------- Models ----------
 
-let User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting;
+let User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction;
 
 function initModels() {
   User = mongoose.model("User", userSchema);
@@ -79,6 +85,7 @@ function initModels() {
   StudyGoal = mongoose.model("StudyGoal", studyGoalSchema);
   StudySession = mongoose.model("StudySession", studySessionSchema);
   SystemSetting = mongoose.model("SystemSetting", systemSettingSchema);
+  Interaction = mongoose.model("Interaction", interactionSchema);
 }
 
 // ---------- Lazy init ----------
@@ -198,9 +205,14 @@ module.exports = {
     );
   },
 
+  async logInteraction(fbId, action, payload) {
+    await ensureInit();
+    await Interaction.create({ fb_id: fbId, action, payload });
+  },
+
   async getModelsData(modelName, page = 1, limit = 10) {
     await ensureInit();
-    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting };
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction };
     const Model = models[modelName];
     if (!Model) throw new Error("Model not found");
 
@@ -213,7 +225,7 @@ module.exports = {
 
   async getAllModelDataForExport(modelName) {
     await ensureInit();
-    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting };
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction };
     const Model = models[modelName];
     if (!Model) throw new Error("Model not found");
     return Model.find().lean();
@@ -221,7 +233,7 @@ module.exports = {
 
   async deleteRecord(modelName, id) {
     await ensureInit();
-    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting };
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction };
     const Model = models[modelName];
     if (!Model) throw new Error("Model not found");
     await Model.findByIdAndDelete(id);

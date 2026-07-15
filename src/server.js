@@ -305,16 +305,32 @@ async function handleMessage(sender_psid, received_message) {
     else if (payload === "TOGGLE_THI") await botRouter.handleMessage(sender_psid, "toggle thi");
     else if (payload === "TOGGLE_HOCPHI") await botRouter.handleMessage(sender_psid, "toggle hocphi");
     else if (payload === "TOGGLE_THONGBAO") await botRouter.handleMessage(sender_psid, "toggle thongbao");
+    else if (payload === "SYNC_POSTBACK") await botRouter.handleMessage(sender_psid, "/sync");
+    else if (payload === "MENU_POSTBACK") await botRouter.handleMessage(sender_psid, "/menu");
+    else if (payload === "LICH_HOC") await botRouter.handleMessage(sender_psid, "lịch học");
+    else if (payload === "LICH_THI") await botRouter.handleMessage(sender_psid, "lịch thi");
+    else if (payload === "DIEM_SO") await botRouter.handleMessage(sender_psid, "điểm số");
   } else if (received_message.text) {
     await botRouter.handleMessage(sender_psid, received_message.text);
   }
 }
 
 async function handlePostback(sender_psid, received_postback) {
-  if (received_postback.payload === "GET_STARTED") {
+  const payload = received_postback.payload;
+  if (payload === "GET_STARTED") {
     await botRouter.handleMessage(sender_psid, "hello");
-  } else if (received_postback.payload === "LOGIN_POSTBACK") {
+  } else if (payload === "LOGIN_POSTBACK") {
     await botRouter.handleMessage(sender_psid, "/login");
+  } else if (payload === "SYNC_POSTBACK") {
+    await botRouter.handleMessage(sender_psid, "/sync");
+  } else if (payload === "MENU_POSTBACK") {
+    await botRouter.handleMessage(sender_psid, "/menu");
+  } else if (payload === "LICH_HOC") {
+    await botRouter.handleMessage(sender_psid, "lịch học");
+  } else if (payload === "LICH_THI") {
+    await botRouter.handleMessage(sender_psid, "lịch thi");
+  } else if (payload === "DIEM_SO") {
+    await botRouter.handleMessage(sender_psid, "điểm số");
   }
 }
 

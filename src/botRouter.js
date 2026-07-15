@@ -154,12 +154,45 @@ function formatTienDo(data) {
 }
 
 async function handleMessage(senderPsid, messageText) {
-  const user = await db.getUser(senderPsid);
   const text = messageText.trim();
   const lowerText = text.toLowerCase();
 
+  await db.logInteraction(senderPsid, "message", text);
+  const user = await db.getUser(senderPsid);
+
   console.log(`[botRouter] Received message from "${senderPsid}": "${text}"`);
   console.log(`[botRouter] Database user check: ${user ? `Found user "${user.username}"` : "User not found"}`);
+
+  // Handle Sync command
+  if (lowerText === "/sync" || lowerText === "đồng bộ" || lowerText === "sync") {
+    if (!user) {
+      return messenger.sendTextMessage(senderPsid, "Bạn chưa kết nối tài khoản. Vui lòng gõ /login để đăng nhập.");
+    }
+    await messenger.sendTextMessage(senderPsid, "Đang khởi động đồng bộ dữ liệu tức thời từ cổng sinh viên. Quá trình có thể mất 1-2 phút...");
+    const scraperPath = path.resolve(__dirname, "./scrape.js");
+    const execCmd = `node "${scraperPath}" --account="${user.username.replace(/"/g, '\\"')}"`;
+    exec(execCmd, (err) => {
+      if (err) {
+        messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ dữ liệu tức thời thất bại hoặc bị nghẽn mạng.");
+      }
+    });
+    return;
+  }
+
+  // Handle Menu command
+  if (lowerText === "/menu" || lowerText === "menu") {
+    const s = await db.getSettings(senderPsid);
+    const menuText = "📚 MENU CHỨC NĂNG UFL BOT\nChọn phím tắt bên dưới để tra cứu nhanh thông tin học vụ của bạn:";
+    return messenger.sendQuickReplies(senderPsid, menuText, [
+      { title: "Lịch học", payload: "LICH_HOC" },
+      { title: "Lịch thi", payload: "LICH_THI" },
+      { title: "Điểm số", payload: "DIEM_SO" },
+      { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
+      { title: "Tiến độ", payload: "TIEN_DO" },
+      { title: "Học phí", payload: "HOC_PHI" },
+      { title: "Cài đặt", payload: "MENU_POSTBACK" }
+    ]);
+  }
 
   // Handle Logout command
   if (lowerText === "/logout") {
@@ -301,7 +334,7 @@ async function handleMessage(senderPsid, messageText) {
   const data = await db.getScrapedData(senderPsid) || {};
   console.log(`[botRouter] Querying data for keywords. Message: "${text}"`);
   
-  if (text === "lịch thi") {
+  if (lowerText === "lịch thi" || lowerText === "lich thi") {
     const raw = data.lich_thi ? JSON.parse(data.lich_thi) : null;
     if (!raw || !raw.length || raw.length < 2) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch thi sắp tới.");
@@ -313,14 +346,14 @@ async function handleMessage(senderPsid, messageText) {
         {
           type: "postback",
           title: "Xem Điểm",
-          payload: "XEM_DIEM"
+          payload: "DIEM_SO"
         }
       ]
     }));
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
-  if (text === "lịch học") {
+  if (lowerText === "lịch học" || lowerText === "lich hoc") {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const targetTable = raw ? raw.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
     const rows = targetTable ? targetTable.rows || [] : [];
@@ -334,8 +367,8 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
-  if (lowerText.startsWith("lịch học thứ") || lowerText.startsWith("lịch học t") || lowerText.startsWith("lịch học cn") || lowerText.startsWith("lịch học chủ nhật")) {
-    const dayPart = text.replace(/lịch học /i, "").trim();
+  if (lowerText.startsWith("lịch học thứ") || lowerText.startsWith("lịch học t") || lowerText.startsWith("lịch học cn") || lowerText.startsWith("lịch học chủ nhật") || lowerText.startsWith("lich hoc thu") || lowerText.startsWith("lich hoc t") || lowerText.startsWith("lich hoc cn") || lowerText.startsWith("lich hoc chu nhat")) {
+    const dayPart = text.replace(/lịch học /i, "").replace(/lich hoc /i, "").trim();
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const targetTable = raw ? raw.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
     const rows = targetTable ? targetTable.rows || [] : [];
@@ -361,7 +394,7 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
-  if (text === "điểm số" || text === "gpa") {
+  if (lowerText === "điểm số" || lowerText === "gpa" || lowerText === "diem so" || lowerText === "diem") {
     const raw = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : null;
     const targetTable = raw ? raw.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
     const rows = targetTable ? targetTable.rows || [] : [];
@@ -375,22 +408,22 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
-  if (text === "tiến độ" || text === "tín chỉ" || text === "tien do") {
+  if (lowerText === "tiến độ" || lowerText === "tín chỉ" || lowerText === "tien do" || lowerText === "tin chi") {
     const raw = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : null;
     return messenger.sendTextMessage(senderPsid, formatTienDo(raw));
   }
 
-  if (text === "học vụ" || text === "thông báo") {
+  if (lowerText === "học vụ" || lowerText === "thông báo" || lowerText === "hoc vu" || lowerText === "thong bao") {
     const raw = data.canh_bao ? JSON.parse(data.canh_bao) : null;
     return messenger.sendTextMessage(senderPsid, formatCanhBao(raw));
   }
 
-  if (text === "học phí" || text === "tiền") {
+  if (lowerText === "học phí" || lowerText === "tiền" || lowerText === "hoc phi" || lowerText === "tien") {
     const raw = data.hoc_phi ? JSON.parse(data.hoc_phi) : null;
     return messenger.sendTextMessage(senderPsid, formatHocPhi(raw));
   }
 
-  if (text === "hồ sơ" || text === "hồ sơ sinh viên" || text === "ho so" || text === "lý lịch" || text === "ly lich") {
+  if (lowerText === "hồ sơ" || lowerText === "hồ sơ sinh viên" || lowerText === "ho so" || lowerText === "lý lịch" || lowerText === "ly lich") {
     const raw = data.thong_tin_sv ? JSON.parse(data.thong_tin_sv) : null;
     return messenger.sendTextMessage(senderPsid, formatThongTinSV(raw));
   }
