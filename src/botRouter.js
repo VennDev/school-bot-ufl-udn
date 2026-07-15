@@ -67,8 +67,9 @@ function formatHocPhi(data) {
   data.forEach((t) => {
     if (t.rows) {
       t.rows.forEach((r) => {
-        if (r.some(cell => cell.includes("Học phí") || cell.includes("Số tiền") || cell.includes("Nợ"))) {
-          txt += `\n- ${r.join(" | ")}`;
+        const cleaned = r.map(cell => cell.trim().replace(/\s+/g, " ")).filter(Boolean);
+        if (cleaned.some(cell => cell.includes("Học phí") || cell.includes("Số tiền") || cell.includes("Nợ"))) {
+          txt += `\n- ${cleaned.join(" | ")}`;
         }
       });
     }
@@ -500,9 +501,10 @@ ${JSON.stringify(cleanData, null, 2)}
 
 Hãy trả lời câu hỏi của sinh viên chính xác bằng tiếng Việt.
 Yêu cầu định dạng phản hồi bắt buộc:
-1. Trả lời chi tiết, rõ ràng và đầy đủ thông tin (như lịch học đầy đủ các ngày trong tuần nếu sinh viên yêu cầu).
+1. Trả lời chi tiết, rõ ràng và đầy đủ thông tin.
 2. Trình bày bằng bullet points (gạch đầu dòng) mạch lạc, sạch đẹp.
-3. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
+3. KHÔNG sử dụng định dạng bảng Markdown (|---|). Nếu cần hiển thị danh sách hay bảng biểu, hãy dùng các gạch đầu dòng lồng nhau.
+4. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);
