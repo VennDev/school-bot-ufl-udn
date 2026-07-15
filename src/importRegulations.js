@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const db = require("./db");
 
-const FILE_PATH = "/tmp/opencode/ufls_text.txt";
+const FILE_PATH = path.resolve(__dirname, "../docs/UFLS.txt");
 
 async function importRegs() {
   if (!fs.existsSync(FILE_PATH)) {
