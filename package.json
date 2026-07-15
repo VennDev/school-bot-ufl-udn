@@ -11,6 +11,7 @@
     "scrape": "node src/scrape.js",
     "scrape:no-tor": "node src/scrape.js --no-tor",
     "scrape:parallel": "node src/scrape.js --parallel",
+    "import-regs": "node src/importRegulations.js",
     "test": "node tests/login.js"
   },
   "keywords": [],

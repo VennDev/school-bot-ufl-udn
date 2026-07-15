@@ -539,16 +539,28 @@ Yêu cầu định dạng phản hồi bắt buộc:
     schedule: data.lich_hoc ? JSON.parse(data.lich_hoc).slice(0, 4) : []
   };
 
+  // RAG: Query matching regulation nodes from DB
+  const regs = await db.searchRegNodes(messageText, 4);
+  let regContextText = "";
+  if (regs && regs.length > 0) {
+    regContextText = "\n[!] QUY CHẾ ĐÀO TẠO THAM KHẢO (Được trích xuất từ tài liệu UFLS):\n";
+    regs.forEach((r, idx) => {
+      regContextText += `\nĐoạn ${idx + 1} (Dòng ${r.start_line} - ${r.end_line} trong tài liệu quy chế gốc):\n${r.content}\n`;
+    });
+  }
+
   const systemPrompt = `Bạn là trợ lý AI hữu ích hỗ trợ sinh viên trường Đại học Ngoại ngữ - Đại học Đà Nẵng (UFL).
 Dưới đây là thông tin học vụ của sinh viên (định dạng JSON):
 ${JSON.stringify(cleanData, null, 2)}
+${regContextText}
 
 Hãy trả lời câu hỏi của sinh viên chính xác bằng tiếng Việt.
 Yêu cầu định dạng phản hồi bắt buộc:
 1. Trả lời chi tiết, rõ ràng và đầy đủ thông tin.
 2. Trình bày bằng bullet points (gạch đầu dòng) mạch lạc, sạch đẹp.
 3. KHÔNG sử dụng định dạng bảng Markdown (|---|). Nếu cần hiển thị danh sách hay bảng biểu, hãy dùng các gạch đầu dòng lồng nhau.
-4. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
+4. Nếu bạn sử dụng thông tin từ quy chế đào tạo trên để trả lời, BẮT BUỘC phải ghi chú rõ ở cuối câu trả lời về số dòng tham chiếu (Ví dụ: "Tham chiếu quy chế UFLS dòng X - Y"). Điều này rất quan trọng để người dùng kiểm chứng.
+5. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);

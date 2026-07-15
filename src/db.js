@@ -73,9 +73,16 @@ const interactionSchema = new mongoose.Schema({
   payload: String,
 }, { timestamps: true });
 
+const regNodeSchema = new mongoose.Schema({
+  content: { type: String, required: true },
+  start_line: Number,
+  end_line: Number,
+});
+regNodeSchema.index({ content: "text" });
+
 // ---------- Models ----------
 
-let User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction;
+let User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode;
 
 function initModels() {
   User = mongoose.model("User", userSchema);
@@ -86,6 +93,7 @@ function initModels() {
   StudySession = mongoose.model("StudySession", studySessionSchema);
   SystemSetting = mongoose.model("SystemSetting", systemSettingSchema);
   Interaction = mongoose.model("Interaction", interactionSchema);
+  RegNode = mongoose.model("RegNode", regNodeSchema);
 }
 
 // ---------- Lazy init ----------
@@ -210,9 +218,39 @@ module.exports = {
     await Interaction.create({ fb_id: fbId, action, payload });
   },
 
+  async saveRegNodes(nodes) {
+    await ensureInit();
+    await RegNode.deleteMany({});
+    const ops = nodes.map(n => ({
+      insertOne: { document: n }
+    }));
+    await RegNode.bulkWrite(ops);
+  },
+
+  async searchRegNodes(queryText, limit = 4) {
+    await ensureInit();
+    // 1. Try text index search first
+    let results = await RegNode.find(
+      { $text: { $search: queryText } },
+      { score: { $meta: "textScore" } }
+    ).sort({ score: { $meta: "textScore" } }).limit(limit).lean();
+
+    // 2. Fallback to simple keyword search if no results found
+    if (!results.length) {
+      const keywords = queryText.split(" ").filter(w => w.length > 2);
+      if (keywords.length) {
+        const regexes = keywords.map(w => new RegExp(w, "i"));
+        results = await RegNode.find({
+          $or: regexes.map(r => ({ content: r }))
+        }).limit(limit).lean();
+      }
+    }
+    return results;
+  },
+
   async getModelsData(modelName, page = 1, limit = 10) {
     await ensureInit();
-    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction };
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode };
     const Model = models[modelName];
     if (!Model) throw new Error("Model not found");
 
@@ -225,7 +263,7 @@ module.exports = {
 
   async getAllModelDataForExport(modelName) {
     await ensureInit();
-    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction };
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode };
     const Model = models[modelName];
     if (!Model) throw new Error("Model not found");
     return Model.find().lean();
@@ -233,7 +271,7 @@ module.exports = {
 
   async deleteRecord(modelName, id) {
     await ensureInit();
-    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction };
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode };
     const Model = models[modelName];
     if (!Model) throw new Error("Model not found");
     await Model.findByIdAndDelete(id);
