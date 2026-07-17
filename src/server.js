@@ -267,23 +267,25 @@ app.post("/webhook", async (req, res) => {
     res.status(200).send("EVENT_RECEIVED");
 
     for (const entry of body.entry) {
-      const webhook_event = entry.messaging[0];
-      const sender_psid = webhook_event.sender.id;
-      const message_id = webhook_event.message ? webhook_event.message.mid : null;
+      if (!entry.messaging) continue;
+      for (const webhook_event of entry.messaging) {
+        const sender_psid = webhook_event.sender.id;
+        const message_id = webhook_event.message ? webhook_event.message.mid : null;
 
-      if (message_id) {
-        if (processedMessageIds.has(message_id)) {
-          console.log(`[server] Ignored duplicated message ID (retry): ${message_id}`);
-          continue;
+        if (message_id) {
+          if (processedMessageIds.has(message_id)) {
+            console.log(`[server] Ignored duplicated message ID (retry): ${message_id}`);
+            continue;
+          }
+          processedMessageIds.add(message_id);
         }
-        processedMessageIds.add(message_id);
-      }
 
-      // Fire and forget (asynchronously) without blocking the thread
-      if (webhook_event.message) {
-        handleMessage(sender_psid, webhook_event.message).catch(console.error);
-      } else if (webhook_event.postback) {
-        handlePostback(sender_psid, webhook_event.postback).catch(console.error);
+        // Fire and forget (asynchronously) without blocking the thread
+        if (webhook_event.message) {
+          handleMessage(sender_psid, webhook_event.message).catch(console.error);
+        } else if (webhook_event.postback) {
+          handlePostback(sender_psid, webhook_event.postback).catch(console.error);
+        }
       }
     }
   } else {
