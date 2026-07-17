@@ -47,13 +47,10 @@ async function sendWebhookMessage(senderId, text, mid) {
 }
 
 async function runTest() {
-  console.log("Sending first message from user_pc (logged-in user)...");
+  console.log("Sending message from user_pc (logged-in user)...");
   // Assuming 411230510 is in DB and has fb_id 36924306787215396
   const res1 = await sendWebhookMessage("36924306787215396", "gpa", "mid.pc_" + Date.now());
   console.log(`User PC Response Status: ${res1.status}, Body: ${res1.body}`);
-
-  // Wait 2 seconds
-  await new Promise(r => setTimeout(r, 2000));
 
   console.log("Sending message from user_mobile (not logged-in user)...");
   const res2 = await sendWebhookMessage("user_mobile_random_" + Date.now(), "hello", "mid.mobile_" + Date.now());
