@@ -644,15 +644,27 @@ Yêu cầu định dạng phản hồi bắt buộc:
   const gradesRows = targetGradeTable ? (targetGradeTable.rows || []) : [];
 
   // Filter cleanData sent to AI based on current year to prevent AI from seeing old schedule/exams/announcements by default
-  const currentYear = new Date().getFullYear().toString();
+  const today = new Date();
+  const currentYear = today.getFullYear().toString();
   const isRequestingAll = lowerText.includes("tất cả") || lowerText.includes("tat ca") || lowerText.includes("toàn bộ") || lowerText.includes("toan bo");
 
   const filteredAnnouncements = data.canh_bao ? JSON.parse(data.canh_bao) : [];
   const filteredExams = data.lich_thi ? JSON.parse(data.lich_thi) : [];
   const filteredSchedule = data.lich_hoc ? JSON.parse(data.lich_hoc) : [];
 
+  // Parse exam date to check if it's in the future
+  const parseExamDate = (dateStr) => {
+    if (!dateStr) return null;
+    const parts = dateStr.split("/");
+    if (parts.length === 3) {
+      return new Date(parts[2], parts[1] - 1, parts[0]);
+    }
+    return null;
+  };
+
   const cleanData = {
     user: { username: user.username },
+    current_time: today.toISOString().split("T")[0] + " (Today is " + today.toLocaleDateString("vi-VN") + ")",
     announcements: isRequestingAll 
       ? filteredAnnouncements.slice(0, 5) 
       : filteredAnnouncements.filter(item => {
@@ -663,6 +675,12 @@ Yêu cầu định dạng phản hồi bắt buộc:
     exams: isRequestingAll 
       ? filteredExams.slice(0, 5)
       : filteredExams.slice(1).filter(r => {
+          const examDate = parseExamDate(r[3]);
+          // Only show upcoming exams (examDate >= today or date string analysis fallback)
+          if (examDate) {
+            const todayReset = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            return examDate >= todayReset;
+          }
           const dateStr = r[3] || "";
           return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
         }).slice(0, 3),
