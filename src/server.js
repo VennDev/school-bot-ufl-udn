@@ -311,6 +311,7 @@ async function handleMessage(sender_psid, received_message) {
     else if (payload === "MENU_POSTBACK") await botRouter.handleMessage(sender_psid, "xem menu hoc vu");
     else if (payload === "LICH_HOC") await botRouter.handleMessage(sender_psid, "lịch học");
     else if (payload === "LICH_THI") await botRouter.handleMessage(sender_psid, "lịch thi");
+    else if (payload === "ALL_LICH_THI") await botRouter.handleMessage(sender_psid, "tất cả lịch thi");
     else if (payload === "DIEM_SO") await botRouter.handleMessage(sender_psid, "điểm số");
     else if (payload === "TIEN_DO") await botRouter.handleMessage(sender_psid, "tiến độ");
     else if (payload === "HOC_PHI") await botRouter.handleMessage(sender_psid, "học phí");
@@ -339,6 +340,8 @@ async function handlePostback(sender_psid, received_postback) {
     await botRouter.handleMessage(sender_psid, "lịch học");
   } else if (payload === "LICH_THI") {
     await botRouter.handleMessage(sender_psid, "lịch thi");
+  } else if (payload === "ALL_LICH_THI") {
+    await botRouter.handleMessage(sender_psid, "tất cả lịch thi");
   } else if (payload === "DIEM_SO") {
     await botRouter.handleMessage(sender_psid, "điểm số");
   } else if (payload === "TIEN_DO") {

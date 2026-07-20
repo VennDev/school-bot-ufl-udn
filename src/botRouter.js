@@ -25,10 +25,25 @@ function setBaseUrl(url) {
   appBaseUrl = url;
 }
 
-function formatCanhBao(data) {
+function formatCanhBao(data, showAll = false) {
   if (!data || !data.length) return "Không có cảnh báo học vụ mới nào.";
   let txt = "[!] THÔNG BÁO HỌC VỤ MỚI NHẤT:\n";
-  data.slice(0, 3).forEach((item, idx) => {
+  const currentYear = new Date().getFullYear().toString();
+  
+  let filtered = data;
+  if (!showAll) {
+    // Only keep items matching current year (e.g. content contains "/2026" or "2026")
+    filtered = data.filter(item => {
+      const content = item.content || JSON.stringify(item);
+      return content.includes(currentYear) || content.includes("/" + currentYear.slice(2));
+    });
+  }
+  
+  if (!filtered.length) {
+    return showAll ? "Không có cảnh báo học vụ nào." : "Không có cảnh báo học vụ mới của năm nay.";
+  }
+
+  filtered.slice(0, 3).forEach((item, idx) => {
     txt += `\n${idx + 1}. ${item.content || JSON.stringify(item)}`;
   });
   return txt;
@@ -87,11 +102,22 @@ function formatKetQuaHocTap(scrapedData) {
   return txt;
 }
 
-function formatLichThi(data) {
+function formatLichThi(data, showAll = false) {
   if (!data || !data.length || data.length < 2) return "Không có lịch thi sắp tới.";
-  let txt = "[~] LỊCH THI SẮP TỚI:\n";
-  data.slice(1, 5).forEach((r) => {
-    // STT, Ma hoc phan, Ten hoc phan, Ngay thi, Ca thi, Gio thi, Lan thi, Dot thi, SBD, Phong thi, Hinh thuc
+  let txt = "[~] LỊCH THI:\n";
+  const currentYear = new Date().getFullYear().toString();
+  
+  let rows = data.slice(1);
+  if (!showAll) {
+    rows = rows.filter(r => {
+      const dateStr = r[3] || "";
+      return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
+    });
+  }
+
+  if (!rows.length) return showAll ? "Không có lịch thi." : "Không có lịch thi trong năm nay.";
+
+  rows.slice(0, 5).forEach((r) => {
     txt += `\n- Môn: ${r[2]}\n  Ngày: ${r[3]} (${r[5]})\n  Phòng: ${r[9]} - HT: ${r[10]}\n`;
   });
   return txt;
@@ -266,7 +292,8 @@ async function handleMessage(senderPsid, messageText) {
     const menuText = "📚 MENU TRA CỨU HỌC VỤ\nChọn thông tin bạn muốn kiểm tra:";
     return messenger.sendQuickReplies(senderPsid, menuText, [
       { title: "Lịch học", payload: "LICH_HOC" },
-      { title: "Lịch thi", payload: "LICH_THI" },
+      { title: "Lịch thi (năm nay)", payload: "LICH_THI" },
+      { title: "Tất cả Lịch thi", payload: "ALL_LICH_THI" },
       { title: "Điểm số", payload: "DIEM_SO" },
       { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
       { title: "Tiến độ", payload: "TIEN_DO" },
@@ -447,7 +474,36 @@ async function handleMessage(senderPsid, messageText) {
     if (!raw || !raw.length || raw.length < 2) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch thi sắp tới.");
     }
-    const elements = raw.slice(1, 5).map((r) => ({
+    const currentYear = new Date().getFullYear().toString();
+    const filtered = raw.slice(1).filter(r => {
+      const dateStr = r[3] || "";
+      return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
+    });
+
+    if (!filtered.length) {
+      return messenger.sendTextMessage(senderPsid, "Không có lịch thi trong năm nay. Gõ 'tất cả lịch thi' để xem toàn bộ.");
+    }
+
+    const elements = filtered.slice(0, 5).map((r) => ({
+      title: `Thi: ${r[2] || "Môn học"}`,
+      subtitle: `Ngày: ${r[3]} (${r[5]})\nPhòng: ${r[9]} | SBD: ${r[8]} | HT: ${r[10]}`,
+      buttons: [
+        {
+          type: "postback",
+          title: "Xem Điểm",
+          payload: "DIEM_SO"
+        }
+      ]
+    }));
+    return messenger.sendGenericTemplate(senderPsid, elements);
+  }
+
+  if (lowerText === "tất cả lịch thi" || lowerText === "tat ca lich thi") {
+    const raw = data.lich_thi ? JSON.parse(data.lich_thi) : null;
+    if (!raw || !raw.length || raw.length < 2) {
+      return messenger.sendTextMessage(senderPsid, "Không có lịch thi sắp tới.");
+    }
+    const elements = raw.slice(1, 6).map((r) => ({
       title: `Thi: ${r[2] || "Môn học"}`,
       subtitle: `Ngày: ${r[3]} (${r[5]})\nPhòng: ${r[9]} | SBD: ${r[8]} | HT: ${r[10]}`,
       buttons: [
@@ -512,7 +568,12 @@ async function handleMessage(senderPsid, messageText) {
 
   if (lowerText === "học vụ" || lowerText === "thông báo" || lowerText === "hoc vu" || lowerText === "thong bao") {
     const raw = data.canh_bao ? JSON.parse(data.canh_bao) : null;
-    return messenger.sendTextMessage(senderPsid, formatCanhBao(raw));
+    return messenger.sendTextMessage(senderPsid, formatCanhBao(raw, false));
+  }
+
+  if (lowerText === "tất cả thông báo" || lowerText === "tat ca thong bao" || lowerText === "tất cả học vụ" || lowerText === "tat ca hoc vu") {
+    const raw = data.canh_bao ? JSON.parse(data.canh_bao) : null;
+    return messenger.sendTextMessage(senderPsid, formatCanhBao(raw, true));
   }
 
   if (lowerText === "học phí" || lowerText === "tiền" || lowerText === "hoc phi" || lowerText === "tien") {
