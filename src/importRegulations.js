@@ -14,35 +14,42 @@ async function importRegs() {
   }
 
   console.log(`[import] Reading regulations from: ${FILE_PATH}`);
-  const content = fs.readFileSync(FILE_PATH, "utf-8");
-  const lines = content.split("\n");
-  console.log(`[import] Total lines: ${lines.length}`);
+  const rawContent = fs.readFileSync(FILE_PATH, "utf-8");
+  const pages = rawContent.split(/\f+/);
+  console.log(`[import] Total pages (detected via form-feed): ${pages.length}`);
 
   const nodes = [];
-  const chunkSize = 40;
-  const overlap = 5;
 
-  for (let i = 0; i < lines.length; i += (chunkSize - overlap)) {
-    const chunkLines = lines.slice(i, i + chunkSize);
-    if (!chunkLines.length) break;
+  pages.forEach((pageContent, pageIdx) => {
+    const pageNum = pageIdx + 1;
+    const lines = pageContent.split("\n");
+    const chunkSize = 35;
+    const overlap = 5;
 
-    const cleanContent = chunkLines
-      .map(line => line.trim())
-      .filter(Boolean)
-      .join("\n");
+    for (let i = 0; i < lines.length; i += (chunkSize - overlap)) {
+      const chunkLines = lines.slice(i, i + chunkSize);
+      if (!chunkLines.length) break;
 
-    if (cleanContent.length > 50) {
-      nodes.push({
-        content: cleanContent,
-        start_line: i + 1,
-        end_line: i + chunkLines.length,
-      });
+      const cleanContent = chunkLines
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join("\n");
+
+      if (cleanContent.length > 50) {
+        nodes.push({
+          content: cleanContent,
+          start_page: pageNum,
+          end_page: pageNum,
+          start_line: i + 1,
+          end_line: i + chunkLines.length,
+        });
+      }
+
+      if (i + chunkSize >= lines.length) break;
     }
+  });
 
-    if (i + chunkSize >= lines.length) break;
-  }
-
-  console.log(`[import] Created ${nodes.length} nodes. Saving to database...`);
+  console.log(`[import] Created ${nodes.length} nodes across ${pages.length} pages. Saving to database...`);
   await db.saveRegNodes(nodes);
   console.log("[import] Regulations imported successfully!");
   process.exit(0);

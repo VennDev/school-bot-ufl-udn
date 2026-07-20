@@ -78,6 +78,8 @@ const interactionSchema = new mongoose.Schema({
 
 const regNodeSchema = new mongoose.Schema({
   content: { type: String, required: true },
+  start_page: Number,
+  end_page: Number,
   start_line: Number,
   end_line: Number,
 });

@@ -597,7 +597,7 @@ Yêu cầu định dạng phản hồi bắt buộc:
   if (regs && regs.length > 0) {
     regContextText = "\n[!] QUY CHẾ ĐÀO TẠO THAM KHẢO (Được trích xuất từ tài liệu UFLS):\n";
     regs.forEach((r, idx) => {
-      regContextText += `\nĐoạn ${idx + 1} (Dòng ${r.start_line} - ${r.end_line} trong tài liệu quy chế gốc):\n${r.content}\n`;
+      regContextText += `\nĐoạn ${idx + 1} (Trang số ${r.start_page} trong tài liệu sổ tay gốc):\n${r.content}\n`;
     });
   }
 
