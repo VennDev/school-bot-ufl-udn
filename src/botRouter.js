@@ -5,6 +5,15 @@ const { askAI } = require("./ai");
 const { calculateGPA, extractGPA, extractDRL, getAcademicEvaluation, getScholarshipAndActivityAdvice } = require("./gpaHelper");
 const { exec } = require("child_process");
 const path = require("path");
+const fs = require("fs");
+
+// Load static response nodes
+let staticNodes = [];
+try {
+  staticNodes = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../static_nodes.json"), "utf8"));
+} catch (e) {
+  console.error("Failed to load static_nodes.json:", e.message);
+}
 
 // Memory map for login sessions
 const loginSessions = new Map();
@@ -236,9 +245,25 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   // Handle Menu command
-  if (lowerText === "/menu" || lowerText === "menu") {
+  if (lowerText === "/menu" || lowerText === "menu" || lowerText === "xem menu" || lowerText === "cho xem menu") {
     const s = await db.getSettings(senderPsid);
-    const menuText = "📚 MENU CHỨC NĂNG UFL BOT\nChọn phím tắt bên dưới để tra cứu nhanh thông tin học vụ của bạn:";
+    const menuText = "📚 MENU CHỨC NĂNG UFL BOT\nChọn phím tắt bên dưới để tra cứu nhanh thông tin học vụ của bạn hoặc hỏi các câu hỏi mẫu:";
+    return messenger.sendButtons(senderPsid, menuText, [
+      {
+        type: "postback",
+        title: "Tra cứu học vụ",
+        payload: "MENU_POSTBACK"
+      },
+      {
+        type: "postback",
+        title: "Câu hỏi thường gặp",
+        payload: "FAQ_POSTBACK"
+      }
+    ]);
+  }
+
+  if (lowerText === "xem menu hoc vu") {
+    const menuText = "📚 MENU TRA CỨU HỌC VỤ\nChọn thông tin bạn muốn kiểm tra:";
     return messenger.sendQuickReplies(senderPsid, menuText, [
       { title: "Lịch học", payload: "LICH_HOC" },
       { title: "Lịch thi", payload: "LICH_THI" },
@@ -248,6 +273,33 @@ async function handleMessage(senderPsid, messageText) {
       { title: "Học phí", payload: "HOC_PHI" },
       { title: "Cài đặt", payload: "MENU_POSTBACK" }
     ]);
+  }
+
+  if (lowerText === "xem menu cau hoi" || lowerText === "câu hỏi thường gặp") {
+    const menuText = "💡 CÂU HỎI THƯỜNG GẶP\nChọn câu hỏi mẫu bên dưới để xem trả lời nhanh từ quy chế:";
+    return messenger.sendQuickReplies(senderPsid, menuText, [
+      { title: "Quy chế học bổng", payload: "QC_HOCBONG" },
+      { title: "Cảnh báo học vụ", payload: "QC_CANHBAO" },
+      { title: "Xếp loại học lực", payload: "QC_XEPLOAI" },
+      { title: "Học & Thi cải thiện", payload: "QC_CAITHIEN" }
+    ]);
+  }
+
+  if (lowerText === "qc_hocbong" || lowerText === "quy chế học bổng") {
+    const node = staticNodes.find(n => n.keywords.includes("quy chế học bổng"));
+    return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
+  }
+  if (lowerText === "qc_canhbao" || lowerText === "cảnh báo học vụ") {
+    const node = staticNodes.find(n => n.keywords.includes("cảnh báo học vụ"));
+    return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
+  }
+  if (lowerText === "qc_xeploai" || lowerText === "xếp loại học lực") {
+    const node = staticNodes.find(n => n.keywords.includes("xếp loại học lực"));
+    return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
+  }
+  if (lowerText === "qc_caithien" || lowerText === "thi cải thiện") {
+    const node = staticNodes.find(n => n.keywords.includes("thi cải thiện"));
+    return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
   }
 
   // Handle Logout command
@@ -549,20 +601,19 @@ Yêu cầu định dạng phản hồi bắt buộc:
     });
   }
 
-  const systemPrompt = `Bạn là trợ lý AI hữu ích hỗ trợ sinh viên trường Đại học Ngoại ngữ - Đại học Đà Nẵng (UFL).
-Dưới đây là thông tin học vụ của sinh viên (định dạng JSON):
-${JSON.stringify(cleanData, null, 2)}
-${regContextText}
+  // Load custom system rules
+  let systemPrompt = "";
+  try {
+    systemPrompt = fs.readFileSync(path.resolve(__dirname, "../rules.txt"), "utf8");
+  } catch (e) {
+    console.error("Failed to load rules.txt:", e.message);
+  }
 
-Hãy trả lời câu hỏi của sinh viên chính xác bằng tiếng Việt.
-Yêu cầu định dạng phản hồi bắt buộc:
-1. Trả lời cực kỳ ngắn gọn, súc tích, đi thẳng vào trọng tâm (dưới 100 từ). Chỉ trả lời chi tiết và đầy đủ bảng điểm khi người dùng yêu cầu cụ thể (ví dụ: "cho tôi xem chi tiết", "hãy giải thích rõ").
-2. Trình bày bằng bullet points (gạch đầu dòng) mạch lạc, sạch đẹp.
-3. KHÔNG sử dụng định dạng bảng Markdown (|---|). Nếu cần hiển thị danh sách hay bảng biểu, hãy dùng các gạch đầu dòng lồng nhau.
-4. Khi sinh viên hỏi về điểm số hoặc GPA nói chung, hãy tóm tắt GPA tích lũy. Đồng thời, chủ động hỏi sinh viên xem họ muốn xem chi tiết học kỳ cụ thể nào (liệt kê danh sách các học kỳ có trong gpa_data) hay muốn xem toàn bộ quá trình học tập.
-5. BẮT BUỘC đưa ra nhận xét học lực (Khá/Giỏi...) và tư vấn học bổng/cảnh báo học vụ siêu ngắn gọn nếu câu hỏi liên quan đến điểm số, GPA hoặc rèn luyện.
-6. Nếu bạn sử dụng thông tin từ quy chế đào tạo trên để trả lời, BẮT BUỘC phải ghi chú rõ ở cuối câu trả lời về số dòng tham chiếu (Ví dụ: "Tham chiếu quy chế UFLS dòng X - Y"). Điều này rất quan trọng để người dùng kiểm chứng.
-7. Không tự bịa thông tin ngoài context. Nếu không có dữ liệu, hãy bảo sinh viên truy cập cài đặt để đồng bộ lại.`;
+  if (!systemPrompt) {
+    systemPrompt = `Bạn là trợ lý AI hữu ích hỗ trợ sinh viên trường Đại học Ngoại ngữ - Đại học Đà Nẵng (UFL).`;
+  }
+
+  systemPrompt += `\nDưới đây là thông tin học vụ của sinh viên (định dạng JSON):\n${JSON.stringify(cleanData, null, 2)}\n${regContextText}`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);

@@ -1,0 +1,18 @@
+[
+  {
+    "keywords": ["quy chế học bổng", "điều kiện học bổng", "học bổng khuyến khích"],
+    "response": "💡 ĐIỀU KIỆN XÉT HỌC BỔNG KHUYẾN KHÍCH HỌC TẬP (UFLS):\n- Đạt điểm GPA học kỳ từ 2.50 trở lên (thang 4) hoặc từ 7.0 trở lên (thang 10).\n- Đạt điểm Rèn luyện học kỳ từ 70 trở lên.\n- Tích lũy tối thiểu 14 tín chỉ trong học kỳ (không tính GDQP-AN, GDTC).\n- Không bị kỷ luật từ mức khiển trách trở lên trong học kỳ xét học bổng.\n- Tham chiếu quy chế UFLS dòng 40 - 55."
+  },
+  {
+    "keywords": ["cảnh báo học vụ", "bị thôi học", "buộc thôi học"],
+    "response": "⚠️ QUY ĐỊNH CẢNH BÁO HỌC VỤ & BUỘC THÔI HỌC (UFLS):\n- Cảnh báo học vụ khi: GPA học kỳ < 0.8 (học kỳ đầu) hoặc < 1.0 (các học kỳ tiếp theo); GPA tích lũy < 1.2 (năm 1), < 1.4 (năm 2), < 1.6 (năm 3), < 1.8 (năm cuối).\n- Tổng số lần cảnh báo vượt quá 2 lần liên tiếp sẽ bị buộc thôi học.\n- Thời gian học tối đa: 8 năm đối với khóa 4 năm.\n- Tham chiếu quy chế UFLS dòng 120 - 145."
+  },
+  {
+    "keywords": ["xếp loại học lực", "xếp loại gpa"],
+    "response": "📊 PHÂN LOẠI HỌC LỰC THEO GPA TÍCH LŨY (UFLS):\n- Xuất sắc: 3.60 - 4.00\n- Giỏi: 3.20 - 3.59\n- Khá: 2.50 - 3.19\n- Trung bình: 2.00 - 2.49\n- Yếu: < 2.00\n- Tham chiếu quy chế UFLS dòng 210 - 225."
+  },
+  {
+    "keywords": ["thi cải thiện", "học cải thiện", "thi lại"],
+    "response": "🔄 QUY ĐỊNH HỌC VÀ THI CẢI THIỆN (UFLS):\n- Sinh viên được quyền đăng ký học cải thiện đối với các môn học đạt điểm D, D+, C hoặc C+.\n- Điểm học cải thiện sẽ thay thế điểm cũ trong việc tính GPA tích lũy (không giữ điểm cao nhất mà lấy điểm mới nhất).\n- Không cho phép thi lại tự do; phải đăng ký học lại/học cải thiện vào kỳ có mở lớp.\n- Tham chiếu quy chế UFLS dòng 280 - 295."
+  }
+]

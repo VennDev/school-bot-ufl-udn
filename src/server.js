@@ -308,10 +308,16 @@ async function handleMessage(sender_psid, received_message) {
     else if (payload === "TOGGLE_HOCPHI") await botRouter.handleMessage(sender_psid, "toggle hocphi");
     else if (payload === "TOGGLE_THONGBAO") await botRouter.handleMessage(sender_psid, "toggle thongbao");
     else if (payload === "SYNC_POSTBACK") await botRouter.handleMessage(sender_psid, "/sync");
-    else if (payload === "MENU_POSTBACK") await botRouter.handleMessage(sender_psid, "/menu");
+    else if (payload === "MENU_POSTBACK") await botRouter.handleMessage(sender_psid, "xem menu hoc vu");
     else if (payload === "LICH_HOC") await botRouter.handleMessage(sender_psid, "lịch học");
     else if (payload === "LICH_THI") await botRouter.handleMessage(sender_psid, "lịch thi");
     else if (payload === "DIEM_SO") await botRouter.handleMessage(sender_psid, "điểm số");
+    else if (payload === "TIEN_DO") await botRouter.handleMessage(sender_psid, "tiến độ");
+    else if (payload === "HOC_PHI") await botRouter.handleMessage(sender_psid, "học phí");
+    else if (payload === "QC_HOCBONG") await botRouter.handleMessage(sender_psid, "qc_hocbong");
+    else if (payload === "QC_CANHBAO") await botRouter.handleMessage(sender_psid, "qc_canhbao");
+    else if (payload === "QC_XEPLOAI") await botRouter.handleMessage(sender_psid, "qc_xeploai");
+    else if (payload === "QC_CAITHIEN") await botRouter.handleMessage(sender_psid, "qc_caithien");
   } else if (received_message.text) {
     await botRouter.handleMessage(sender_psid, received_message.text);
   }
@@ -326,13 +332,27 @@ async function handlePostback(sender_psid, received_postback) {
   } else if (payload === "SYNC_POSTBACK") {
     await botRouter.handleMessage(sender_psid, "/sync");
   } else if (payload === "MENU_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "/menu");
+    await botRouter.handleMessage(sender_psid, "xem menu hoc vu");
+  } else if (payload === "FAQ_POSTBACK") {
+    await botRouter.handleMessage(sender_psid, "xem menu cau hoi");
   } else if (payload === "LICH_HOC") {
     await botRouter.handleMessage(sender_psid, "lịch học");
   } else if (payload === "LICH_THI") {
     await botRouter.handleMessage(sender_psid, "lịch thi");
   } else if (payload === "DIEM_SO") {
     await botRouter.handleMessage(sender_psid, "điểm số");
+  } else if (payload === "TIEN_DO") {
+    await botRouter.handleMessage(sender_psid, "tiến độ");
+  } else if (payload === "HOC_PHI") {
+    await botRouter.handleMessage(sender_psid, "học phí");
+  } else if (payload === "QC_HOCBONG") {
+    await botRouter.handleMessage(sender_psid, "qc_hocbong");
+  } else if (payload === "QC_CANHBAO") {
+    await botRouter.handleMessage(sender_psid, "qc_canhbao");
+  } else if (payload === "QC_XEPLOAI") {
+    await botRouter.handleMessage(sender_psid, "qc_xeploai");
+  } else if (payload === "QC_CAITHIEN") {
+    await botRouter.handleMessage(sender_psid, "qc_caithien");
   }
 }
 
