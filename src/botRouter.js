@@ -643,13 +643,31 @@ Yêu cầu định dạng phản hồi bắt buộc:
   const targetGradeTable = rawGrades ? rawGrades.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
   const gradesRows = targetGradeTable ? (targetGradeTable.rows || []) : [];
 
+  // Filter cleanData sent to AI based on current year to prevent AI from seeing old schedule/exams/announcements by default
+  const currentYear = new Date().getFullYear().toString();
+  const isRequestingAll = lowerText.includes("tất cả") || lowerText.includes("tat ca") || lowerText.includes("toàn bộ") || lowerText.includes("toan bo");
+
+  const filteredAnnouncements = data.canh_bao ? JSON.parse(data.canh_bao) : [];
+  const filteredExams = data.lich_thi ? JSON.parse(data.lich_thi) : [];
+  const filteredSchedule = data.lich_hoc ? JSON.parse(data.lich_hoc) : [];
+
   const cleanData = {
     user: { username: user.username },
-    announcements: data.canh_bao ? JSON.parse(data.canh_bao).slice(0, 3) : [],
+    announcements: isRequestingAll 
+      ? filteredAnnouncements.slice(0, 5) 
+      : filteredAnnouncements.filter(item => {
+          const content = item.content || JSON.stringify(item);
+          return content.includes(currentYear) || content.includes("/" + currentYear.slice(2));
+        }).slice(0, 3),
     gpa_data: gradesRows, // Send full grades data so AI can calculate/analyze any semester or whole course
-    exams: data.lich_thi ? JSON.parse(data.lich_thi).slice(0, 3) : [],
+    exams: isRequestingAll 
+      ? filteredExams.slice(0, 5)
+      : filteredExams.slice(1).filter(r => {
+          const dateStr = r[3] || "";
+          return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
+        }).slice(0, 3),
     tuition: data.hoc_phi ? JSON.parse(data.hoc_phi) : [],
-    schedule: data.lich_hoc ? JSON.parse(data.lich_hoc).slice(0, 4) : []
+    schedule: filteredSchedule.slice(0, 4) // schedule usually represents current semester, but we pass it as is
   };
 
   // RAG: Query matching regulation nodes from DB
