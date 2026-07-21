@@ -24,6 +24,7 @@
     "mongoose": "^9.7.4",
     "nodemailer": "^9.0.3",
     "playwright": "^1.61.1",
-    "proxy-chain": "^3.0.0"
+    "proxy-chain": "^3.0.0",
+    "ssh2": "^1.17.0"
   }
 }

@@ -351,7 +351,15 @@ async function handleMessage(senderPsid, messageText) {
     if (user) {
       const dataExist = await db.getScrapedData(senderPsid);
       if (dataExist) {
-        return messenger.sendTextMessage(senderPsid, `Bạn hiện đã đăng nhập với tài khoản sinh viên *${user.username}* và dữ liệu đã được đồng bộ.`);
+        // Return standard menu options including logout button if already logged in
+        return messenger.sendQuickReplies(senderPsid, `Bạn hiện đã đăng nhập với tài khoản sinh viên *${user.username}* và dữ liệu đã được đồng bộ.`, [
+          { title: "Lịch học", payload: "LICH_HOC" },
+          { title: "Lịch thi", payload: "LICH_THI" },
+          { title: "Điểm số", payload: "DIEM_SO" },
+          { title: "Học phí", payload: "HOC_PHI" },
+          { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
+          { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
+        ]);
       }
       return messenger.sendTextMessage(senderPsid, `Bạn hiện đã đăng nhập với tài khoản *${user.username}*. Đang chờ đồng bộ dữ liệu hoặc bạn có thể gõ "cài đặt" để cấu hình.`);
     }
@@ -451,11 +459,21 @@ async function handleMessage(senderPsid, messageText) {
         const scraperPath = path.resolve(__dirname, "./scrape.js");
         const execCmd = `node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
-        const child = exec(execCmd, (err, stdout, stderr) => {
+        const child = exec(execCmd, async (err, stdout, stderr) => {
           if (err) {
             console.error(`[async-sync] Scrape process exited with error for ${username}:`, err.message);
           } else {
             console.log(`[async-sync] Scrape for ${username} succeeded.`);
+            // After successful login and sync, show welcome text and main options (as requested in prompt)
+            const welcomeText = `Chúc mừng ${username} đã kết nối tài khoản sinh viên thành công! Tôi có thể giúp gì cho bạn?`;
+            await messenger.sendQuickReplies(senderPsid, welcomeText, [
+              { title: "Lịch học", payload: "LICH_HOC" },
+              { title: "Lịch thi", payload: "LICH_THI" },
+              { title: "Điểm số", payload: "DIEM_SO" },
+              { title: "Học phí", payload: "HOC_PHI" },
+              { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
+              { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
+            ]);
           }
         });
         child.stdout.on("data", (data) => {

@@ -233,7 +233,16 @@ async function scrapeAccount(account, torIdx, useTor) {
     console.log(`  Missing: ${pending.map((p) => p.key).join(", ")}`);
     await messenger.sendTextMessage(account.fb_id, "[!] Quá trình đồng bộ dữ liệu chưa hoàn tất. Một số mục có thể đã thất bại do lỗi kết nối mạng. Bạn có thể gõ /login để thử đồng bộ lại phần còn thiếu.");
   } else {
-    await messenger.sendTextMessage(account.fb_id, "[OK] Đồng bộ dữ liệu thành công! Bạn có thể sử dụng các lệnh: Lịch học, Lịch thi, Điểm số, Học phí, hoặc Tóm tắt tuần.");
+    // When successfully synced, show a welcome message with a chat list (Quick Replies) as in the image, containing a logout option.
+    const successMsg = `Chúc mừng ${account.username} đã kết nối tài khoản sinh viên thành công! Tôi có thể giúp gì cho bạn?`;
+    await messenger.sendQuickReplies(account.fb_id, successMsg, [
+      { title: "Lịch học", payload: "LICH_HOC" },
+      { title: "Lịch thi", payload: "LICH_THI" },
+      { title: "Điểm số", payload: "DIEM_SO" },
+      { title: "Học phí", payload: "HOC_PHI" },
+      { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
+      { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
+    ]);
   }
 
   return result;
