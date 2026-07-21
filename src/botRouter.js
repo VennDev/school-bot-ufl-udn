@@ -451,13 +451,9 @@ async function handleMessage(senderPsid, messageText) {
         const scraperPath = path.resolve(__dirname, "./scrape.js");
         const execCmd = `node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
-        const child = exec(execCmd, async (err, stdout, stderr) => {
+        const child = exec(execCmd, (err, stdout, stderr) => {
           if (err) {
-            console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
-            // If scrape failed (wrong credentials or net block), delete user session from DB to allow retry
-            await db.deleteUser(senderPsid);
-            loginSessions.set(senderPsid, { step: "AWAITING_USERNAME" });
-            messenger.sendTextMessage(senderPsid, "[X] Đăng nhập thất bại. Mã sinh viên hoặc mật khẩu không chính xác. Vui lòng nhập lại Mã sinh viên:");
+            console.error(`[async-sync] Scrape process exited with error for ${username}:`, err.message);
           } else {
             console.log(`[async-sync] Scrape for ${username} succeeded.`);
           }

@@ -329,6 +329,7 @@ async function handlePostback(sender_psid, received_postback) {
   if (payload === "GET_STARTED") {
     await botRouter.handleMessage(sender_psid, "hello");
   } else if (payload === "LOGIN_POSTBACK") {
+    await botRouter.handleMessage(sender_psid, "/logout");
     await botRouter.handleMessage(sender_psid, "/login");
   } else if (payload === "LOGOUT_POSTBACK") {
     await botRouter.handleMessage(sender_psid, "/logout");
