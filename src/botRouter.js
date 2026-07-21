@@ -451,10 +451,12 @@ async function handleMessage(senderPsid, messageText) {
         const scraperPath = path.resolve(__dirname, "./scrape.js");
         const execCmd = `node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
-        const child =         exec(execCmd, (err, stdout, stderr) => {
+        const child = exec(execCmd, async (err, stdout, stderr) => {
           if (err) {
             console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
-            messenger.sendTextMessage(senderPsid, "[X] Đăng nhập thất bại ở cả kết nối Direct IP và Tor.");
+            // If scrape failed (wrong credentials or net block), delete user session from DB to allow retry
+            await db.deleteUser(senderPsid);
+            messenger.sendTextMessage(senderPsid, "[X] Đăng nhập thất bại ở cả kết nối Direct IP và Tor. Vui lòng kiểm tra lại Mã sinh viên và Mật khẩu chính xác, sau đó nhấn nút 'Đăng nhập ngay' trên Menu để thử lại.");
           } else {
             console.log(`[async-sync] Scrape for ${username} succeeded.`);
           }

@@ -107,7 +107,8 @@ async function scrapeBatch(account, pages, torProxy) {
     console.log(`  [${account.username}] Winner connection: ${fastProxyUsed}`);
   } catch (e) {
     console.error(`  [${account.username}] Both connections failed to login:`, e.message);
-    await messenger.sendTextMessage(account.fb_id, "[X] Đăng nhập thất bại ở cả kết nối Direct IP và Tor.");
+    await db.deleteUser(account.fb_id);
+    await messenger.sendTextMessage(account.fb_id, "[X] Đăng nhập thất bại. Tài khoản hoặc mật khẩu cổng sinh viên không chính xác. Bạn có thể nhấn 'Đăng nhập ngay' trên Menu để nhập lại.");
     return { scraped: {}, blocked: true };
   }
 
