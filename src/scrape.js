@@ -186,6 +186,14 @@ async function scrapeAccount(account, torIdx, useTor) {
     console.log(`\n  [${account.username}] Attempt ${attempt}/${MAX_RETRIES}: ${batch.map((p) => p.key).join(", ")}`);
 
     const { scraped, blocked } = await scrapeBatch(account, batch, proxy);
+    
+    // Check if user still exists in database. If not (e.g. login failed and user was deleted), exit retry loop immediately.
+    const userExists = await db.getUser(account.fb_id);
+    if (!userExists) {
+      console.log(`  [${account.username}] User deleted due to invalid credentials. Aborting scrape loop.`);
+      return result;
+    }
+
     const gotNew = Object.keys(scraped).length > 0;
     Object.assign(result, scraped);
     await saveResult(account, result);
