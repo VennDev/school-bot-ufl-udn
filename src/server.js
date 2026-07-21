@@ -330,6 +330,8 @@ async function handlePostback(sender_psid, received_postback) {
     await botRouter.handleMessage(sender_psid, "hello");
   } else if (payload === "LOGIN_POSTBACK") {
     await botRouter.handleMessage(sender_psid, "/login");
+  } else if (payload === "LOGOUT_POSTBACK") {
+    await botRouter.handleMessage(sender_psid, "/logout");
   } else if (payload === "SYNC_POSTBACK") {
     await botRouter.handleMessage(sender_psid, "/sync");
   } else if (payload === "MENU_POSTBACK") {

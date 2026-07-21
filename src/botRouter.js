@@ -284,6 +284,11 @@ async function handleMessage(senderPsid, messageText) {
         type: "postback",
         title: "Câu hỏi thường gặp",
         payload: "FAQ_POSTBACK"
+      },
+      {
+        type: "postback",
+        title: "Hủy đăng nhập",
+        payload: "LOGOUT_POSTBACK"
       }
     ]);
   }
