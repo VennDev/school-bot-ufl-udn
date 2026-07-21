@@ -108,7 +108,7 @@ async function scrapeBatch(account, pages, torProxy) {
   } catch (e) {
     console.error(`  [${account.username}] Both connections failed to login:`, e.message);
     await db.deleteUser(account.fb_id);
-    await messenger.sendTextMessage(account.fb_id, "[X] Đăng nhập thất bại. Tài khoản hoặc mật khẩu cổng sinh viên không chính xác. Bạn có thể nhấn 'Đăng nhập ngay' trên Menu để nhập lại.");
+    await messenger.sendTextMessage(account.fb_id, "[X] Đăng nhập thất bại. Tài khoản hoặc mật khẩu cổng sinh viên không chính xác. Vui lòng nhập lại Mã sinh viên:");
     return { scraped: {}, blocked: true };
   }
 

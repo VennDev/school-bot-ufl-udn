@@ -456,7 +456,8 @@ async function handleMessage(senderPsid, messageText) {
             console.error(`[async-sync] Scrape for ${username} failed:`, err.message);
             // If scrape failed (wrong credentials or net block), delete user session from DB to allow retry
             await db.deleteUser(senderPsid);
-            messenger.sendTextMessage(senderPsid, "[X] Đăng nhập thất bại ở cả kết nối Direct IP và Tor. Vui lòng kiểm tra lại Mã sinh viên và Mật khẩu chính xác, sau đó nhấn nút 'Đăng nhập ngay' trên Menu để thử lại.");
+            loginSessions.set(senderPsid, { step: "AWAITING_USERNAME" });
+            messenger.sendTextMessage(senderPsid, "[X] Đăng nhập thất bại. Mã sinh viên hoặc mật khẩu không chính xác. Vui lòng nhập lại Mã sinh viên:");
           } else {
             console.log(`[async-sync] Scrape for ${username} succeeded.`);
           }
