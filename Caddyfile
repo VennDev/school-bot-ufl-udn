@@ -1,0 +1,12 @@
+# Reverse proxy HTTPS → Express HTTP nội bộ
+# Sửa DOMAIN bên dưới thành domain thật của bạn
+# Caddy tự động lấy và gia hạn chứng chỉ Let's Encrypt
+
+{$DOMAIN:localhost} {
+    reverse_proxy localhost:3000
+
+    # Giới hạn request size (Meta webhook payload)
+    request_body {
+        max_size 10MB
+    }
+}
