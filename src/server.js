@@ -19,7 +19,8 @@ app.get("/", (req, res) => {
   res.redirect("/admin.html");
 });
 
-const PORT = process.env.PORT || 3000;
+const pIndex = process.argv.indexOf('-p');
+const PORT = process.env.PORT || (pIndex !== -1 ? process.argv[pIndex + 1] : null) || process.argv[2] || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const MOCK_TOKEN = crypto.encrypt("admin-session");
 
