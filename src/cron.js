@@ -28,33 +28,89 @@ async function checkExamReminders() {
   for (const u of users) {
     try {
       const data = await db.getScrapedData(u.fb_id);
-      if (!data || !data.lich_thi) continue;
-
-      const lichThi = JSON.parse(data.lich_thi);
-      if (!lichThi || lichThi.length < 2) continue;
+      if (!data) continue;
 
       const settings = await db.getSettings(u.fb_id);
-      if (!settings.notify_exam) continue;
 
-      for (const exam of lichThi.slice(1)) {
-        const examDate = parseDate(exam[3]);
-        if (!examDate) continue;
+      // Check exam reminders if enabled
+      if (settings.notify_exam && data.lich_thi) {
+        const lichThi = JSON.parse(data.lich_thi);
+        if (lichThi && lichThi.length >= 2) {
+          for (const exam of lichThi.slice(1)) {
+            const examDate = parseDate(exam[3]);
+            if (!examDate) continue;
 
-        const daysUntil = Math.ceil((examDate - now) / (1000 * 60 * 60 * 24));
+            const daysUntil = Math.ceil((examDate - now) / (1000 * 60 * 60 * 24));
 
-        if (daysUntil === 0) {
-          const msg = `(!) HÔM NAY THI môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
-          messenger.sendTextMessage(u.fb_id, msg);
-          db.logChange(u.fb_id, "exam_reminder", msg);
-          if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Nhắc nhở thi hôm nay", msg);
-        } else if (daysUntil === 1) {
-          const msg = `[@] NGÀY MAI THI môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
-          messenger.sendTextMessage(u.fb_id, msg);
-          db.logChange(u.fb_id, "exam_reminder", msg);
-          if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Nhắc nhở thi ngày mai", msg);
+            if (daysUntil === 0) {
+              const msg = `(!) HÔM NAY THI môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
+              messenger.sendTextMessage(u.fb_id, msg);
+              db.logChange(u.fb_id, "exam_reminder", msg);
+              if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Nhắc nhở thi hôm nay", msg);
+            } else if (daysUntil === 1) {
+              const msg = `[@] NGÀY MAI THI môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
+              messenger.sendTextMessage(u.fb_id, msg);
+              db.logChange(u.fb_id, "exam_reminder", msg);
+              if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Nhắc nhở thi ngày mai", msg);
+            }
+          }
         }
       }
-    } catch {}
+
+      // Tuition alert: check if there is an exam in the next 7 days and any unpaid tuition exists
+      if (settings.notify_tuition && data.lich_thi && data.hoc_phi) {
+        const lichThi = JSON.parse(data.lich_thi);
+        const hocPhi = JSON.parse(data.hoc_phi);
+
+        if (lichThi && lichThi.length >= 2 && hocPhi && hocPhi.length > 0) {
+          // Check if any tuition is still unpaid/has debt
+          let hasTuitionDebt = false;
+          let debtDetails = [];
+          
+          hocPhi.forEach((t, idx) => {
+            if (t.rows) {
+              t.rows.forEach((r) => {
+                const cleaned = r.map(cell => cell.trim().replace(/\s+/g, " ")).filter(Boolean);
+                // Check for debt rows
+                const isDebtRow = cleaned.some(cell => cell.toLowerCase().includes("còn nợ") || cell.toLowerCase().includes("nợ"));
+                if (isDebtRow) {
+                  const valStr = cleaned.join(" | ");
+                  // Exclude debt rows that clearly specify 0 debt
+                  const zeroDebt = cleaned.some(cell => cell.includes(": 0") || cell.match(/:\s*0\b/));
+                  if (!zeroDebt) {
+                    hasTuitionDebt = true;
+                    debtDetails.push(`Đợt ${idx + 1}: ${valStr}`);
+                  }
+                }
+              });
+            }
+          });
+
+          if (hasTuitionDebt) {
+            // Find exams within 7 days
+            const upcomingExams = [];
+            for (const exam of lichThi.slice(1)) {
+              const examDate = parseDate(exam[3]);
+              if (!examDate) continue;
+
+              const daysUntil = (examDate - now) / (1000 * 60 * 60 * 24);
+              if (daysUntil >= 0 && daysUntil <= 7) {
+                upcomingExams.push(`${exam[2]} (Thi ngày ${exam[3]})`);
+              }
+            }
+
+            if (upcomingExams.length > 0) {
+              const alertMsg = `⚠️ CẢNH BÁO HỌC PHÍ TRƯỚC KÌ THI!\n\nBạn có lịch thi sắp tới trong vòng 7 ngày:\n- ${upcomingExams.join("\n- ")}\n\nTuy nhiên, hệ thống ghi nhận bạn vẫn chưa hoàn thành học phí:\n- ${debtDetails.slice(0, 3).join("\n- ")}\n\nVui lòng hoàn thành học phí sớm để tránh bị cấm thi hoặc ảnh hưởng kết quả thi.`;
+              messenger.sendTextMessage(u.fb_id, alertMsg);
+              db.logChange(u.fb_id, "tuition_exam_warning", alertMsg);
+              if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Cảnh báo học phí trước kì thi", alertMsg);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`[cron] Error processing user ${u.fb_id} in checkExamReminders:`, e.message);
+    }
   }
 }
 

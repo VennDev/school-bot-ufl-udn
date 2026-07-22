@@ -125,17 +125,37 @@ function formatLichThi(data, showAll = false) {
 
 function formatHocPhi(data) {
   if (!data || !data.length) return "Chưa có dữ liệu học phí.";
-  let txt = "[$] TÀI CHÍNH & HỌC PHÍ:\n";
-  data.forEach((t) => {
+  let txt = "[$] TÀI CHÍNH & HỌC PHÍ THEO KÌ:\n";
+  let hasDebt = false;
+  
+  data.forEach((t, idx) => {
+    let termTitle = `Học kỳ / Đợt ${idx + 1}`;
+    if (t.headers) {
+      // Try to detect headers or look for text in headers
+    }
+    
+    let tableTxt = "";
     if (t.rows) {
       t.rows.forEach((r) => {
         const cleaned = r.map(cell => cell.trim().replace(/\s+/g, " ")).filter(Boolean);
-        if (cleaned.some(cell => cell.includes("Học phí") || cell.includes("Số tiền") || cell.includes("Nợ"))) {
-          txt += `\n- ${cleaned.join(" | ")}`;
+        // Display rows related to course fees or summary status
+        if (cleaned.some(cell => cell.includes("Học phí") || cell.includes("Số tiền") || cell.includes("Nợ") || cell.includes("Tổng") || cell.includes("Còn nợ"))) {
+          tableTxt += `  + ${cleaned.join(" | ")}\n`;
+        }
+        if (cleaned.some(cell => cell.toLowerCase().includes("còn nợ") || cell.toLowerCase().includes("nợ"))) {
+          // Check if there is actual remaining debt > 0
+          const debtCell = cleaned.find(cell => cell.toLowerCase().includes("còn nợ") || cell.toLowerCase().includes("nợ"));
+          if (debtCell && !debtCell.includes(": 0") && !debtCell.match(/:\s*0\b/)) {
+            hasDebt = true;
+          }
         }
       });
     }
+    if (tableTxt) {
+      txt += `\n* ${termTitle}:\n${tableTxt}`;
+    }
   });
+
   return txt.length > 30 ? txt : "Không có công nợ học phí.";
 }
 
@@ -246,16 +266,36 @@ function formatTienDo(scrapedData) {
 
 async function handleMessage(senderPsid, messageText) {
   const text = messageText.trim();
-  const lowerText = text.toLowerCase();
+
+  // Normalize payloads from FB buttons/quick replies to avoid string match failures
+  let actionText = text.toLowerCase().trim();
+  if (actionText === "lich_hoc") actionText = "lịch học";
+  else if (actionText === "lich_thi") actionText = "lịch thi";
+  else if (actionText === "all_lich_thi") actionText = "tất cả lịch thi";
+  else if (actionText === "diem_so") actionText = "điểm số";
+  else if (actionText === "tien_do") actionText = "tiến độ";
+  else if (actionText === "hoc_phi") actionText = "học phí";
+  else if (actionText === "sync_postback") actionText = "/sync";
+  else if (actionText === "logout_postback") actionText = "/logout";
+  else if (actionText === "login_postback") actionText = "/login";
+  else if (actionText === "menu_postback") actionText = "/settings"; // map Cài đặt to /settings view
+  else if (actionText === "faq_postback") actionText = "xem menu cau hoi";
+  else if (actionText === "qc_hocbong") actionText = "qc_hocbong";
+  else if (actionText === "qc_canhbao") actionText = "qc_canhbao";
+  else if (actionText === "qc_xeploai") actionText = "qc_xeploai";
+  else if (actionText === "qc_caithien") actionText = "qc_caithien";
+
+  // Use the mapped text for logic
+  const normalizedLowerText = actionText;
 
   await db.logInteraction(senderPsid, "message", text);
   const user = await db.getUser(senderPsid);
 
-  console.log(`[botRouter] Received message from "${senderPsid}": "${text}"`);
+  console.log(`[botRouter] Received message from "${senderPsid}": "${text}" (Normalized: "${normalizedLowerText}")`);
   console.log(`[botRouter] Database user check: ${user ? `Found user "${user.username}"` : "User not found"}`);
 
   // Handle Sync command
-  if (lowerText === "/sync" || lowerText === "đồng bộ" || lowerText === "sync") {
+  if (normalizedLowerText === "/sync" || normalizedLowerText === "đồng bộ" || normalizedLowerText === "sync") {
     if (!user) {
       return messenger.sendTextMessage(senderPsid, "Bạn chưa kết nối tài khoản. Vui lòng gõ /login để đăng nhập.");
     }
@@ -271,7 +311,7 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   // Handle Menu command
-  if (lowerText === "/menu" || lowerText === "menu" || lowerText === "xem menu" || lowerText === "cho xem menu") {
+  if (normalizedLowerText === "/menu" || normalizedLowerText === "menu" || normalizedLowerText === "xem menu" || normalizedLowerText === "cho xem menu") {
     const s = await db.getSettings(senderPsid);
     const menuText = "📚 MENU CHỨC NĂNG UFL BOT\nChọn phím tắt bên dưới để tra cứu nhanh thông tin học vụ của bạn hoặc hỏi các câu hỏi mẫu:";
     return messenger.sendButtons(senderPsid, menuText, [
@@ -293,7 +333,7 @@ async function handleMessage(senderPsid, messageText) {
     ]);
   }
 
-  if (lowerText === "xem menu hoc vu") {
+  if (normalizedLowerText === "xem menu hoc vu") {
     const menuText = "📚 MENU TRA CỨU HỌC VỤ\nChọn thông tin bạn muốn kiểm tra:";
     return messenger.sendQuickReplies(senderPsid, menuText, [
       { title: "Lịch học", payload: "LICH_HOC" },
@@ -307,7 +347,7 @@ async function handleMessage(senderPsid, messageText) {
     ]);
   }
 
-  if (lowerText === "xem menu cau hoi" || lowerText === "câu hỏi thường gặp") {
+  if (normalizedLowerText === "xem menu cau hoi" || normalizedLowerText === "câu hỏi thường gặp") {
     const menuText = "💡 CÂU HỎI THƯỜNG GẶP\nChọn câu hỏi mẫu bên dưới để xem trả lời nhanh từ quy chế:";
     return messenger.sendQuickReplies(senderPsid, menuText, [
       { title: "Quy chế học bổng", payload: "QC_HOCBONG" },
@@ -317,25 +357,25 @@ async function handleMessage(senderPsid, messageText) {
     ]);
   }
 
-  if (lowerText === "qc_hocbong" || lowerText === "quy chế học bổng") {
+  if (normalizedLowerText === "qc_hocbong" || normalizedLowerText === "quy chế học bổng") {
     const node = staticNodes.find(n => n.keywords.includes("quy chế học bổng"));
     return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
   }
-  if (lowerText === "qc_canhbao" || lowerText === "cảnh báo học vụ") {
+  if (normalizedLowerText === "qc_canhbao" || normalizedLowerText === "cảnh báo học vụ") {
     const node = staticNodes.find(n => n.keywords.includes("cảnh báo học vụ"));
     return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
   }
-  if (lowerText === "qc_xeploai" || lowerText === "xếp loại học lực") {
+  if (normalizedLowerText === "qc_xeploai" || normalizedLowerText === "xếp loại học lực") {
     const node = staticNodes.find(n => n.keywords.includes("xếp loại học lực"));
     return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
   }
-  if (lowerText === "qc_caithien" || lowerText === "thi cải thiện") {
+  if (normalizedLowerText === "qc_caithien" || normalizedLowerText === "thi cải thiện") {
     const node = staticNodes.find(n => n.keywords.includes("thi cải thiện"));
     return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
   }
 
   // Handle Logout command
-  if (lowerText === "/logout") {
+  if (normalizedLowerText === "/logout") {
     console.log(`[botRouter] Processing /logout command for "${senderPsid}"`);
     if (user) {
       await db.deleteUser(senderPsid);
@@ -346,7 +386,7 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   // Handle Login command
-  if (lowerText === "/login") {
+  if (normalizedLowerText === "/login") {
     console.log(`[botRouter] Processing /login command for "${senderPsid}"`);
     if (user) {
       const dataExist = await db.getScrapedData(senderPsid);
@@ -368,7 +408,7 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   // Handle User Settings
-  if (lowerText === "/settings" || lowerText === "cài đặt") {
+  if (normalizedLowerText === "/settings" || normalizedLowerText === "cài đặt") {
     console.log(`[botRouter] Processing settings view for "${senderPsid}"`);
     const s = await db.getSettings(senderPsid);
     const textStatus = `[*] CÀI ĐẶT THÔNG BÁO CỦA BẠN:\n
@@ -389,9 +429,9 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   // Handle toggle interactions
-  if (lowerText.startsWith("toggle ") || lowerText.startsWith("toggle_")) {
+  if (normalizedLowerText.startsWith("toggle ") || normalizedLowerText.startsWith("toggle_")) {
     console.log(`[botRouter] Processing toggle setting command for "${senderPsid}"`);
-    const key = lowerText.replace("toggle ", "").replace("toggle_", "").trim();
+    const key = normalizedLowerText.replace("toggle ", "").replace("toggle_", "").trim();
     const s = await db.getSettings(senderPsid);
     
     if (key === "gpa") s.notify_gpa = s.notify_gpa ? 0 : 1;
@@ -491,7 +531,7 @@ async function handleMessage(senderPsid, messageText) {
   const data = await db.getScrapedData(senderPsid) || {};
   console.log(`[botRouter] Querying data for keywords. Message: "${text}"`);
   
-  if (lowerText === "lịch thi" || lowerText === "lich thi") {
+  if (normalizedLowerText === "lịch thi" || normalizedLowerText === "lich thi") {
     const raw = data.lich_thi ? JSON.parse(data.lich_thi) : null;
     if (!raw || !raw.length || raw.length < 2) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch thi sắp tới.");
@@ -520,7 +560,7 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
-  if (lowerText === "tất cả lịch thi" || lowerText === "tat ca lich thi") {
+  if (normalizedLowerText === "tất cả lịch thi" || normalizedLowerText === "tat ca lich thi") {
     const raw = data.lich_thi ? JSON.parse(data.lich_thi) : null;
     if (!raw || !raw.length || raw.length < 2) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch thi sắp tới.");
@@ -539,7 +579,7 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
-  if (lowerText === "lịch học" || lowerText === "lich hoc") {
+  if (normalizedLowerText === "lịch học" || normalizedLowerText === "lich hoc") {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const targetTable = raw ? raw.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
     const rows = targetTable ? targetTable.rows || [] : [];
@@ -553,7 +593,7 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
-  if (lowerText.startsWith("lịch học thứ") || lowerText.startsWith("lịch học t") || lowerText.startsWith("lịch học cn") || lowerText.startsWith("lịch học chủ nhật") || lowerText.startsWith("lich hoc thu") || lowerText.startsWith("lich hoc t") || lowerText.startsWith("lich hoc cn") || lowerText.startsWith("lich hoc chu nhat")) {
+  if (normalizedLowerText.startsWith("lịch học thứ") || normalizedLowerText.startsWith("lịch học t") || normalizedLowerText.startsWith("lịch học cn") || normalizedLowerText.startsWith("lịch học chủ nhật") || normalizedLowerText.startsWith("lich hoc thu") || normalizedLowerText.startsWith("lich hoc t") || normalizedLowerText.startsWith("lich hoc cn") || normalizedLowerText.startsWith("lich hoc chu nhat")) {
     const dayPart = text.replace(/lịch học /i, "").replace(/lich hoc /i, "").trim();
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const targetTable = raw ? raw.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
@@ -580,36 +620,35 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
-  if (lowerText === "điểm số" || lowerText === "gpa" || lowerText === "diem so" || lowerText === "diem") {
+  if (normalizedLowerText === "điểm số" || normalizedLowerText === "gpa" || normalizedLowerText === "diem so" || normalizedLowerText === "diem") {
     return messenger.sendTextMessage(senderPsid, formatKetQuaHocTap(data));
   }
 
-  if (lowerText === "tiến độ" || lowerText === "tín chỉ" || lowerText === "tien do" || lowerText === "tin chi") {
+  if (normalizedLowerText === "tiến độ" || normalizedLowerText === "tín chỉ" || normalizedLowerText === "tien do" || normalizedLowerText === "tin chi") {
     return messenger.sendTextMessage(senderPsid, formatTienDo(data));
   }
 
-  if (lowerText === "học vụ" || lowerText === "thông báo" || lowerText === "hoc vu" || lowerText === "thong bao") {
+  if (normalizedLowerText === "học vụ" || normalizedLowerText === "thông báo" || normalizedLowerText === "hoc vu" || normalizedLowerText === "thong bao") {
     const raw = data.canh_bao ? JSON.parse(data.canh_bao) : null;
     return messenger.sendTextMessage(senderPsid, formatCanhBao(raw, false));
   }
 
-  if (lowerText === "tất cả thông báo" || lowerText === "tat ca thong bao" || lowerText === "tất cả học vụ" || lowerText === "tat ca hoc vu") {
+  if (normalizedLowerText === "tất cả thông báo" || normalizedLowerText === "tat ca thong bao" || normalizedLowerText === "tất cả học vụ" || normalizedLowerText === "tat ca hoc vu") {
     const raw = data.canh_bao ? JSON.parse(data.canh_bao) : null;
     return messenger.sendTextMessage(senderPsid, formatCanhBao(raw, true));
   }
 
-  if (lowerText === "học phí" || lowerText === "tiền" || lowerText === "hoc phi" || lowerText === "tien") {
+  if (normalizedLowerText === "học phí" || normalizedLowerText === "tiền" || normalizedLowerText === "hoc phi" || normalizedLowerText === "tien") {
     const raw = data.hoc_phi ? JSON.parse(data.hoc_phi) : null;
     return messenger.sendTextMessage(senderPsid, formatHocPhi(raw));
   }
 
-  if (lowerText === "hồ sơ" || lowerText === "hồ sơ sinh viên" || lowerText === "ho so" || lowerText === "lý lịch" || lowerText === "ly lich") {
+  if (normalizedLowerText === "hồ sơ" || normalizedLowerText === "hồ sơ sinh viên" || normalizedLowerText === "ho so" || normalizedLowerText === "lý lịch" || normalizedLowerText === "ly lich") {
     const raw = data.thong_tin_sv ? JSON.parse(data.thong_tin_sv) : null;
     return messenger.sendTextMessage(senderPsid, formatThongTinSV(raw));
   }
 
-  // AI Study Statistics
-  if (text === "thống kê" || text === "thong ke" || text === "phân tích" || text === "phan tich") {
+  if (normalizedLowerText === "thống kê" || normalizedLowerText === "thong ke" || normalizedLowerText === "phân tích" || normalizedLowerText === "phan tich") {
     const cleanDataForStats = {
       user: { username: user.username },
       diem: data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap).slice(0, 10) : [],
@@ -636,7 +675,7 @@ Yêu cầu định dạng phản hồi bắt buộc:
   }
 
   // AI Weekly Summary
-  if (text === "tóm tắt tuần" || text === "tóm tắt" || text === "tom tat") {
+  if (normalizedLowerText === "tóm tắt tuần" || normalizedLowerText === "tóm tắt" || normalizedLowerText === "tom tat") {
     const cleanDataForSummary = {
       user: { username: user.username },
       lich_hoc: data.lich_hoc ? JSON.parse(data.lich_hoc).slice(0, 5) : [],

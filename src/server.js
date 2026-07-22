@@ -308,18 +308,20 @@ async function handleMessage(sender_psid, received_message) {
     else if (payload === "TOGGLE_THI") await botRouter.handleMessage(sender_psid, "toggle thi");
     else if (payload === "TOGGLE_HOCPHI") await botRouter.handleMessage(sender_psid, "toggle hocphi");
     else if (payload === "TOGGLE_THONGBAO") await botRouter.handleMessage(sender_psid, "toggle thongbao");
-    else if (payload === "SYNC_POSTBACK") await botRouter.handleMessage(sender_psid, "/sync");
-    else if (payload === "MENU_POSTBACK") await botRouter.handleMessage(sender_psid, "xem menu hoc vu");
-    else if (payload === "LICH_HOC") await botRouter.handleMessage(sender_psid, "lịch học");
-    else if (payload === "LICH_THI") await botRouter.handleMessage(sender_psid, "lịch thi");
-    else if (payload === "ALL_LICH_THI") await botRouter.handleMessage(sender_psid, "tất cả lịch thi");
-    else if (payload === "DIEM_SO") await botRouter.handleMessage(sender_psid, "điểm số");
-    else if (payload === "TIEN_DO") await botRouter.handleMessage(sender_psid, "tiến độ");
-    else if (payload === "HOC_PHI") await botRouter.handleMessage(sender_psid, "học phí");
-    else if (payload === "QC_HOCBONG") await botRouter.handleMessage(sender_psid, "qc_hocbong");
-    else if (payload === "QC_CANHBAO") await botRouter.handleMessage(sender_psid, "qc_canhbao");
-    else if (payload === "QC_XEPLOAI") await botRouter.handleMessage(sender_psid, "qc_xeploai");
-    else if (payload === "QC_CAITHIEN") await botRouter.handleMessage(sender_psid, "qc_caithien");
+    else if (payload === "SYNC_POSTBACK") await botRouter.handleMessage(sender_psid, "SYNC_POSTBACK");
+    else if (payload === "MENU_POSTBACK") await botRouter.handleMessage(sender_psid, "MENU_POSTBACK");
+    else if (payload === "FAQ_POSTBACK") await botRouter.handleMessage(sender_psid, "FAQ_POSTBACK");
+    else if (payload === "LOGOUT_POSTBACK") await botRouter.handleMessage(sender_psid, "LOGOUT_POSTBACK");
+    else if (payload === "LICH_HOC") await botRouter.handleMessage(sender_psid, "LICH_HOC");
+    else if (payload === "LICH_THI") await botRouter.handleMessage(sender_psid, "LICH_THI");
+    else if (payload === "ALL_LICH_THI") await botRouter.handleMessage(sender_psid, "ALL_LICH_THI");
+    else if (payload === "DIEM_SO") await botRouter.handleMessage(sender_psid, "DIEM_SO");
+    else if (payload === "TIEN_DO") await botRouter.handleMessage(sender_psid, "TIEN_DO");
+    else if (payload === "HOC_PHI") await botRouter.handleMessage(sender_psid, "HOC_PHI");
+    else if (payload === "QC_HOCBONG") await botRouter.handleMessage(sender_psid, "QC_HOCBONG");
+    else if (payload === "QC_CANHBAO") await botRouter.handleMessage(sender_psid, "QC_CANHBAO");
+    else if (payload === "QC_XEPLOAI") await botRouter.handleMessage(sender_psid, "QC_XEPLOAI");
+    else if (payload === "QC_CAITHIEN") await botRouter.handleMessage(sender_psid, "QC_CAITHIEN");
   } else if (received_message.text) {
     await botRouter.handleMessage(sender_psid, received_message.text);
   }
@@ -333,33 +335,33 @@ async function handlePostback(sender_psid, received_postback) {
     await botRouter.handleMessage(sender_psid, "/logout");
     await botRouter.handleMessage(sender_psid, "/login");
   } else if (payload === "LOGOUT_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "/logout");
+    await botRouter.handleMessage(sender_psid, "LOGOUT_POSTBACK");
   } else if (payload === "SYNC_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "/sync");
+    await botRouter.handleMessage(sender_psid, "SYNC_POSTBACK");
   } else if (payload === "MENU_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "xem menu hoc vu");
+    await botRouter.handleMessage(sender_psid, "MENU_POSTBACK");
   } else if (payload === "FAQ_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "xem menu cau hoi");
+    await botRouter.handleMessage(sender_psid, "FAQ_POSTBACK");
   } else if (payload === "LICH_HOC") {
-    await botRouter.handleMessage(sender_psid, "lịch học");
+    await botRouter.handleMessage(sender_psid, "LICH_HOC");
   } else if (payload === "LICH_THI") {
-    await botRouter.handleMessage(sender_psid, "lịch thi");
+    await botRouter.handleMessage(sender_psid, "LICH_THI");
   } else if (payload === "ALL_LICH_THI") {
-    await botRouter.handleMessage(sender_psid, "tất cả lịch thi");
+    await botRouter.handleMessage(sender_psid, "ALL_LICH_THI");
   } else if (payload === "DIEM_SO") {
-    await botRouter.handleMessage(sender_psid, "điểm số");
+    await botRouter.handleMessage(sender_psid, "DIEM_SO");
   } else if (payload === "TIEN_DO") {
-    await botRouter.handleMessage(sender_psid, "tiến độ");
+    await botRouter.handleMessage(sender_psid, "TIEN_DO");
   } else if (payload === "HOC_PHI") {
-    await botRouter.handleMessage(sender_psid, "học phí");
+    await botRouter.handleMessage(sender_psid, "HOC_PHI");
   } else if (payload === "QC_HOCBONG") {
-    await botRouter.handleMessage(sender_psid, "qc_hocbong");
+    await botRouter.handleMessage(sender_psid, "QC_HOCBONG");
   } else if (payload === "QC_CANHBAO") {
-    await botRouter.handleMessage(sender_psid, "qc_canhbao");
+    await botRouter.handleMessage(sender_psid, "QC_CANHBAO");
   } else if (payload === "QC_XEPLOAI") {
-    await botRouter.handleMessage(sender_psid, "qc_xeploai");
+    await botRouter.handleMessage(sender_psid, "QC_XEPLOAI");
   } else if (payload === "QC_CAITHIEN") {
-    await botRouter.handleMessage(sender_psid, "qc_caithien");
+    await botRouter.handleMessage(sender_psid, "QC_CAITHIEN");
   }
 }
 
