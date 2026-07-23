@@ -446,7 +446,7 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   // Handle email save
-  if (lowerText.startsWith("email ")) {
+  if (normalizedLowerText.startsWith("email ")) {
     console.log(`[botRouter] Processing email save for "${senderPsid}"`);
     const email = text.replace(/email /i, "").trim();
     const s = await db.getSettings(senderPsid);
@@ -461,7 +461,7 @@ async function handleMessage(senderPsid, messageText) {
     console.log(`[botRouter] Login State Machine. Current session for "${senderPsid}":`, session);
     
     // If not in login session and doesn't trigger explicit /login, do not proceed with login state machine
-    if (!session && lowerText !== "/login") {
+    if (!session && normalizedLowerText !== "/login") {
       return messenger.sendButtons(senderPsid, "Xin chào! Mình có thể giúp gì cho bạn?\nĐể bắt đầu sử dụng, vui lòng đăng nhập tài khoản sinh viên UFL.", [
         {
           type: "postback",
@@ -707,7 +707,7 @@ Yêu cầu định dạng phản hồi bắt buộc:
   // Filter cleanData sent to AI based on current year to prevent AI from seeing old schedule/exams/announcements by default
   const today = new Date();
   const currentYear = today.getFullYear().toString();
-  const isRequestingAll = lowerText.includes("tất cả") || lowerText.includes("tat ca") || lowerText.includes("toàn bộ") || lowerText.includes("toan bo");
+  const isRequestingAll = normalizedLowerText.includes("tất cả") || normalizedLowerText.includes("tat ca") || normalizedLowerText.includes("toàn bộ") || normalizedLowerText.includes("toan bo");
 
   const filteredAnnouncements = data.canh_bao ? JSON.parse(data.canh_bao) : [];
   const filteredExams = data.lich_thi ? JSON.parse(data.lich_thi) : [];
