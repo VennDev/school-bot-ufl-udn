@@ -88,23 +88,37 @@ async function callGemini(systemPrompt, userPrompt) {
   throw new Error("Invalid Gemini response");
 }
 
+function stripMarkdown(text) {
+  if (!text) return "";
+  return text
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$2")
+    .replace(/`{1,3}(.*?)(`{1,3}|$)/g, "$1")
+    .replace(/^>\s+/gm, "")
+    .trim();
+}
+
 async function askAI(systemPrompt, userPrompt) {
+  let reply = "";
   try {
-    return await callOpenCode(systemPrompt, userPrompt);
+    reply = await callOpenCode(systemPrompt, userPrompt);
   } catch (e) {
     console.error("[ai] OpenCode error, falling back to OpenAI/Gemini...", e.message);
     try {
-      return await callGemini(systemPrompt, userPrompt);
+      reply = await callGemini(systemPrompt, userPrompt);
     } catch (e2) {
       console.error("[ai] Gemini fallback error, trying OpenAI...", e2.message);
       try {
-        return await callOpenAI(systemPrompt, userPrompt);
+        reply = await callOpenAI(systemPrompt, userPrompt);
       } catch (e3) {
         console.error("[ai] OpenAI fallback error...", e3.message);
         return "Trợ lý AI đang bận, vui lòng thử lại sau.";
       }
     }
   }
+  return stripMarkdown(reply);
 }
 
 module.exports = { askAI };
