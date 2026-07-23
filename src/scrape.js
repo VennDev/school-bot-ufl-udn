@@ -58,6 +58,7 @@ async function scrapeBatch(account, pages, torProxy) {
   let fastPage = null;
   let fastProxyUsed = null;
 
+  const activeBrowsers = [];
   const tryLogin = async (proxyServer, label) => {
     const launchOpts = { headless: true };
     if (proxyServer) launchOpts.proxy = { server: proxyServer };
@@ -65,6 +66,7 @@ async function scrapeBatch(account, pages, torProxy) {
     let browser;
     try {
       browser = await chromium.launch(launchOpts);
+      activeBrowsers.push(browser);
     } catch (e) {
       console.error(`  [${account.username}] Failed to launch browser for ${label}:`, e.message);
       throw e;
@@ -86,6 +88,8 @@ async function scrapeBatch(account, pages, torProxy) {
     } catch (e) {
       console.error(`  [${account.username}] Error inside ${label}:`, e.message);
       await browser.close();
+      const idx = activeBrowsers.indexOf(browser);
+      if (idx !== -1) activeBrowsers.splice(idx, 1);
       throw e;
     }
   };
@@ -105,8 +109,19 @@ async function scrapeBatch(account, pages, torProxy) {
     fastPage = winner.page;
     fastProxyUsed = winner.label;
     console.log(`  [${account.username}] Winner connection: ${fastProxyUsed}`);
+
+    // Close losing browsers immediately
+    for (const b of activeBrowsers) {
+      if (b !== fastBrowser) {
+        b.close().catch(() => {});
+      }
+    }
   } catch (e) {
     console.error(`  [${account.username}] Both connections failed to login:`, e.message);
+    // Close any remaining browser instances on total failure
+    for (const b of activeBrowsers) {
+      b.close().catch(() => {});
+    }
     await db.deleteUser(account.fb_id);
     await messenger.sendButtons(account.fb_id, "[X] Đăng nhập thất bại. Mã sinh viên hoặc mật khẩu cổng sinh viên không chính xác. Nhấn nút bên dưới để thử đăng nhập lại:", [
       {

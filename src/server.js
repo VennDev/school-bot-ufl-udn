@@ -308,20 +308,7 @@ async function handleMessage(sender_psid, received_message) {
     else if (payload === "TOGGLE_THI") await botRouter.handleMessage(sender_psid, "toggle thi");
     else if (payload === "TOGGLE_HOCPHI") await botRouter.handleMessage(sender_psid, "toggle hocphi");
     else if (payload === "TOGGLE_THONGBAO") await botRouter.handleMessage(sender_psid, "toggle thongbao");
-    else if (payload === "SYNC_POSTBACK") await botRouter.handleMessage(sender_psid, "SYNC_POSTBACK");
-    else if (payload === "MENU_POSTBACK") await botRouter.handleMessage(sender_psid, "MENU_POSTBACK");
-    else if (payload === "FAQ_POSTBACK") await botRouter.handleMessage(sender_psid, "FAQ_POSTBACK");
-    else if (payload === "LOGOUT_POSTBACK") await botRouter.handleMessage(sender_psid, "LOGOUT_POSTBACK");
-    else if (payload === "LICH_HOC") await botRouter.handleMessage(sender_psid, "LICH_HOC");
-    else if (payload === "LICH_THI") await botRouter.handleMessage(sender_psid, "LICH_THI");
-    else if (payload === "ALL_LICH_THI") await botRouter.handleMessage(sender_psid, "ALL_LICH_THI");
-    else if (payload === "DIEM_SO") await botRouter.handleMessage(sender_psid, "DIEM_SO");
-    else if (payload === "TIEN_DO") await botRouter.handleMessage(sender_psid, "TIEN_DO");
-    else if (payload === "HOC_PHI") await botRouter.handleMessage(sender_psid, "HOC_PHI");
-    else if (payload === "QC_HOCBONG") await botRouter.handleMessage(sender_psid, "QC_HOCBONG");
-    else if (payload === "QC_CANHBAO") await botRouter.handleMessage(sender_psid, "QC_CANHBAO");
-    else if (payload === "QC_XEPLOAI") await botRouter.handleMessage(sender_psid, "QC_XEPLOAI");
-    else if (payload === "QC_CAITHIEN") await botRouter.handleMessage(sender_psid, "QC_CAITHIEN");
+    else await botRouter.handleMessage(sender_psid, payload);
   } else if (received_message.text) {
     await botRouter.handleMessage(sender_psid, received_message.text);
   }
@@ -334,34 +321,8 @@ async function handlePostback(sender_psid, received_postback) {
   } else if (payload === "LOGIN_POSTBACK") {
     await botRouter.handleMessage(sender_psid, "/logout");
     await botRouter.handleMessage(sender_psid, "/login");
-  } else if (payload === "LOGOUT_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "LOGOUT_POSTBACK");
-  } else if (payload === "SYNC_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "SYNC_POSTBACK");
-  } else if (payload === "MENU_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "MENU_POSTBACK");
-  } else if (payload === "FAQ_POSTBACK") {
-    await botRouter.handleMessage(sender_psid, "FAQ_POSTBACK");
-  } else if (payload === "LICH_HOC") {
-    await botRouter.handleMessage(sender_psid, "LICH_HOC");
-  } else if (payload === "LICH_THI") {
-    await botRouter.handleMessage(sender_psid, "LICH_THI");
-  } else if (payload === "ALL_LICH_THI") {
-    await botRouter.handleMessage(sender_psid, "ALL_LICH_THI");
-  } else if (payload === "DIEM_SO") {
-    await botRouter.handleMessage(sender_psid, "DIEM_SO");
-  } else if (payload === "TIEN_DO") {
-    await botRouter.handleMessage(sender_psid, "TIEN_DO");
-  } else if (payload === "HOC_PHI") {
-    await botRouter.handleMessage(sender_psid, "HOC_PHI");
-  } else if (payload === "QC_HOCBONG") {
-    await botRouter.handleMessage(sender_psid, "QC_HOCBONG");
-  } else if (payload === "QC_CANHBAO") {
-    await botRouter.handleMessage(sender_psid, "QC_CANHBAO");
-  } else if (payload === "QC_XEPLOAI") {
-    await botRouter.handleMessage(sender_psid, "QC_XEPLOAI");
-  } else if (payload === "QC_CAITHIEN") {
-    await botRouter.handleMessage(sender_psid, "QC_CAITHIEN");
+  } else {
+    await botRouter.handleMessage(sender_psid, payload);
   }
 }
 

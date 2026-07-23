@@ -18,7 +18,7 @@ async function callOpenCode(systemPrompt, userPrompt) {
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.3
+      temperature: 0.0
     }),
   });
 
@@ -46,7 +46,7 @@ async function callOpenAI(systemPrompt, userPrompt) {
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.3
+      temperature: 0.0
     })
   });
 
@@ -75,7 +75,7 @@ async function callGemini(systemPrompt, userPrompt) {
         }
       ],
       generationConfig: {
-        temperature: 0.3
+        temperature: 0.0
       }
     })
   });
