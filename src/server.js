@@ -275,14 +275,24 @@ app.post("/webhook", async (req, res) => {
       if (!entry.messaging) continue;
       for (const webhook_event of entry.messaging) {
         const sender_psid = webhook_event.sender.id;
-        const message_id = webhook_event.message ? webhook_event.message.mid : null;
+        
+        let dedupKey = null;
+        if (webhook_event.message) {
+          dedupKey = webhook_event.message.mid || (sender_psid + "_" + (webhook_event.message.text || ""));
+          if (webhook_event.message.quick_reply && webhook_event.message.quick_reply.payload) {
+            // If it is a quick reply, dedup based on the payload to filter out duplicate text webhook events
+            dedupKey = sender_psid + "_" + webhook_event.message.quick_reply.payload;
+          }
+        } else if (webhook_event.postback) {
+          dedupKey = sender_psid + "_" + webhook_event.postback.payload + "_" + webhook_event.postback.timestamp;
+        }
 
-        if (message_id) {
-          if (processedMessageIds.has(message_id)) {
-            console.log(`[server] Ignored duplicated message ID (retry): ${message_id}`);
+        if (dedupKey) {
+          if (processedMessageIds.has(dedupKey)) {
+            console.log(`[server] Ignored duplicated event/message (retry or dual-event): ${dedupKey}`);
             continue;
           }
-          processedMessageIds.add(message_id);
+          processedMessageIds.add(dedupKey);
         }
 
         // Fire and forget (asynchronously) without blocking the thread

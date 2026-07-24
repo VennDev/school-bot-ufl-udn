@@ -1,11 +1,27 @@
 const db = require("./db");
 const OPENCODE_URL = "https://opencode.ai/zen/v1/chat/completions";
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+}
+
 async function callOpenCode(systemPrompt, userPrompt) {
   const apiKey = await db.getSystemSetting("opencode_api_key", process.env.OPENCODE_API_KEY || "public");
   const model = await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "deepseek-v4-flash-free");
 
-  const res = await fetch(OPENCODE_URL, {
+  const res = await fetchWithTimeout(OPENCODE_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -20,7 +36,7 @@ async function callOpenCode(systemPrompt, userPrompt) {
       ],
       temperature: 0.0
     }),
-  });
+  }, 8000);
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -34,7 +50,7 @@ async function callOpenAI(systemPrompt, userPrompt) {
   const apiKey = await db.getSystemSetting("openai_api_key", process.env.OPENAI_API_KEY);
   if (!apiKey) throw new Error("No OpenAI API key");
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -48,7 +64,7 @@ async function callOpenAI(systemPrompt, userPrompt) {
       ],
       temperature: 0.0
     })
-  });
+  }, 6000);
 
   if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
   const data = await res.json();
@@ -62,7 +78,7 @@ async function callGemini(systemPrompt, userPrompt) {
   const apiKey = await db.getSystemSetting("gemini_api_key", process.env.GEMINI_API_KEY);
   if (!apiKey) throw new Error("No Gemini API key");
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+  const res = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -78,7 +94,7 @@ async function callGemini(systemPrompt, userPrompt) {
         temperature: 0.0
       }
     })
-  });
+  }, 6000);
 
   if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
   const data = await res.json();

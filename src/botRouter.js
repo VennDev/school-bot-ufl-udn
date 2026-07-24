@@ -323,6 +323,13 @@ async function handleMessage(senderPsid, messageText) {
   else if (actionText === "qc_canhbao") actionText = "qc_canhbao";
   else if (actionText === "qc_xeploai") actionText = "qc_xeploai";
   else if (actionText === "qc_caithien") actionText = "qc_caithien";
+  
+  // Normalize text labels from Toggle Quick Replies to toggle commands
+  else if (actionText === "togglegpa" || actionText === "toggle gpa") actionText = "toggle gpa";
+  else if (actionText === "togglelịch" || actionText === "toggle lịch" || actionText === "toggle lich" || actionText === "toggle lịh") actionText = "toggle lich";
+  else if (actionText === "togglelichthi" || actionText === "toggle lịch thi" || actionText === "toggle lichthi" || actionText === "toggle_lichthi") actionText = "toggle thi";
+  else if (actionText === "toggle học phí" || actionText === "toggle hocphi" || actionText === "toggle họcphí") actionText = "toggle hocphi";
+  else if (actionText === "toggle thông báo" || actionText === "toggle thongbao" || actionText === "toggle thôngbáo") actionText = "toggle thongbao";
 
   // Use the mapped text for logic
   const normalizedLowerText = actionText;
