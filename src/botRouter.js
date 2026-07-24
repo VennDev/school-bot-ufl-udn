@@ -317,7 +317,7 @@ async function handleMessage(senderPsid, messageText) {
   else if (actionText === "sync_postback") actionText = "/sync";
   else if (actionText === "logout_postback") actionText = "/logout";
   else if (actionText === "login_postback") actionText = "/login";
-  else if (actionText === "menu_postback") actionText = "/settings"; // map Cài đặt to /settings view
+  else if (actionText === "menu_postback") actionText = "xem menu hoc vu"; // map Tra cứu học vụ to xem menu hoc vu view
   else if (actionText === "faq_postback") actionText = "xem menu cau hoi";
   else if (actionText === "qc_hocbong") actionText = "qc_hocbong";
   else if (actionText === "qc_canhbao") actionText = "qc_canhbao";
