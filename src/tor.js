@@ -45,6 +45,8 @@ async function rotateIP(idx = 0, waitMs = 10000) {
   return false;
 }
 
+const activeProcesses = [];
+
 function startTorInstance(idx) {
   const socks = socksPort(idx);
   const ctrl = controlPort(idx);
@@ -68,14 +70,15 @@ function startTorInstance(idx) {
       "--ControlPort", String(ctrl),
       "--DataDirectory", dataDir,
       "--CookieAuthentication", "0",
-      "--RunAsDaemon", "1",
-    ], { stdio: "inherit", detached: true });
+      "--RunAsDaemon", "0",
+    ], { stdio: "inherit", detached: false });
     
     proc.on("error", (err) => {
       console.error(`[tor-${idx}] Failed to start Tor process: ${err.message}. Please install Tor using: sudo apt install -y tor`);
     });
     
-    proc.unref();
+    // Store process to terminate later
+    activeProcesses[idx] = proc;
   } catch (e) {
     console.error(`[tor-${idx}] Spawn error:`, e.message);
     return null;
@@ -112,8 +115,14 @@ async function startMultipleTor(count) {
 }
 
 function stopAllTor() {
+  for (const proc of activeProcesses) {
+    if (proc) {
+      try { proc.kill("SIGKILL"); } catch {}
+    }
+  }
+  activeProcesses.length = 0;
   try {
-    execSync("pkill -f 'tor --SocksPort' 2>/dev/null || true");
+    execSync("pkill -9 -f 'tor --SocksPort' 2>/dev/null || true");
     console.log("[tor] All instances stopped");
   } catch {}
 }

@@ -111,17 +111,15 @@ async function scrapeBatch(account, pages, torProxy) {
     console.log(`  [${account.username}] Winner connection: ${fastProxyUsed}`);
 
     // Close losing browsers immediately
-    for (const b of activeBrowsers) {
-      if (b !== fastBrowser) {
-        b.close().catch(() => {});
-      }
-    }
+    await Promise.all(
+      activeBrowsers
+        .filter((b) => b !== fastBrowser)
+        .map((b) => b.close().catch(() => {}))
+    );
   } catch (e) {
     console.error(`  [${account.username}] Both connections failed to login:`, e.message);
     // Close any remaining browser instances on total failure
-    for (const b of activeBrowsers) {
-      b.close().catch(() => {});
-    }
+    await Promise.all(activeBrowsers.map((b) => b.close().catch(() => {})));
     await db.deleteUser(account.fb_id);
     await messenger.sendButtons(account.fb_id, "[X] Đăng nhập thất bại. Mã sinh viên hoặc mật khẩu cổng sinh viên không chính xác. Nhấn nút bên dưới để thử đăng nhập lại:", [
       {
