@@ -450,13 +450,13 @@ async function handleMessage(senderPsid, messageText) {
   if (normalizedLowerText === "/settings" || normalizedLowerText === "cài đặt") {
     console.log(`[botRouter] Processing settings view for "${senderPsid}"`);
     const s = await db.getSettings(senderPsid);
-    const textStatus = `[*] CÀI ĐẶT THÔNG BÁO CỦA BẠN:\n
-- GPA: ${s.notify_gpa ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle gpa)
-- Lịch học: ${s.notify_schedule ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle lich)
-- Lịch thi: ${s.notify_exam ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle thi)
-- Học phí: ${s.notify_tuition ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle hocphi)
-- Thông báo học vụ: ${s.notify_announcement ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle thongbao)
-- Email: ${s.email || "Chưa có"} (Gõ: email <địa chỉ email>)`;
+    const textStatus = `[*] CÀI ĐẶT THÔNG BÁO CỦA BẠN:
+~ GPA: ${s.notify_gpa ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle gpa)
+~ Lịch học: ${s.notify_schedule ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle lich)
+~ Lịch thi: ${s.notify_exam ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle thi)
+~ Học phí: ${s.notify_tuition ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle hocphi)
+~ Thông báo học vụ: ${s.notify_announcement ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle thongbao)
+~ Email: ${s.email || "Chưa có"} (Gõ: email <địa chỉ email>)`;
     
     return messenger.sendQuickReplies(senderPsid, textStatus, [
       { title: "Toggle GPA", payload: "TOGGLE_GPA" },
@@ -470,14 +470,18 @@ async function handleMessage(senderPsid, messageText) {
   // Handle toggle interactions
   if (normalizedLowerText.startsWith("toggle ") || normalizedLowerText.startsWith("toggle_")) {
     console.log(`[botRouter] Processing toggle setting command for "${senderPsid}"`);
-    const key = normalizedLowerText.replace("toggle ", "").replace("toggle_", "").trim();
+    let key = normalizedLowerText.replace("toggle ", "").replace("toggle_", "").trim();
+    // Normalize typos/differences in Vietnamese characters
+    if (key === "lịh" || key === "lịch") key = "lich";
+    if (key === "thí" || key === "thỉ") key = "thi";
+    
     const s = await db.getSettings(senderPsid);
     
     if (key === "gpa") s.notify_gpa = s.notify_gpa ? 0 : 1;
     else if (key === "lich") s.notify_schedule = s.notify_schedule ? 0 : 1;
     else if (key === "thi") s.notify_exam = s.notify_exam ? 0 : 1;
-    else if (key === "hocphi") s.notify_tuition = s.notify_tuition ? 0 : 1;
-    else if (key === "thongbao") s.notify_announcement = s.notify_announcement ? 0 : 1;
+    else if (key === "hocphi" || key === "hoc_phi" || key === "học phí") s.notify_tuition = s.notify_tuition ? 0 : 1;
+    else if (key === "thongbao" || key === "thông báo") s.notify_announcement = s.notify_announcement ? 0 : 1;
     else return messenger.sendTextMessage(senderPsid, "Lệnh toggle không hợp lệ.");
 
     await db.saveSettings(senderPsid, s);
