@@ -168,7 +168,7 @@ function extractDRL(drlData) {
   return null;
 }
 
-function getAcademicEvaluation(gpaAccumulated, gpaSemester) {
+function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
   let rank = "Chưa xếp loại";
   let comment = "";
   let warning = "";
@@ -188,7 +188,7 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester) {
   } else if (gpaAccumulated >= 1.0) {
     rank = "Yếu";
     comment = "Kết quả học tập đang dưới mức trung bình. Hãy tập trung cải thiện điểm số để tránh các rủi ro học vụ.";
-    warning = "⚠️ Cảnh báo: Học lực xếp hạng Yếu theo Điều 21.2 quy chế đào tạo.";
+    warning = "⚠️ Cảnh báo: Học lực xếp hạng Yếu theo quy chế đào tạo.";
   } else {
     rank = "Kém";
     comment = "Cần nghiêm túc xem xét lại phương pháp học tập ngay lập tức.";
@@ -198,10 +198,33 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester) {
   // Cảnh báo dựa trên GPA học kỳ (Điều 22.1.b)
   if (gpaSemester !== null && gpaSemester < 1.0) {
     warning += warning ? "\n" : "";
-    warning += `⚠️ Cảnh báo học vụ: GPA học kỳ (${gpaSemester}) dưới 1.0 có nguy cơ bị cảnh báo học tập (Điều 22.1.b).`;
+    warning += `⚠️ Cảnh báo học vụ: GPA học kỳ (${gpaSemester}) dưới 1.0 có nguy cơ bị cảnh báo học tập.`;
   }
 
-  return { rank, comment, warning };
+  // Lọc các môn điểm F (cần học lại) và các môn điểm thấp (cần cải thiện: D, D+) từ danh sách môn học thực tế
+  let subjectsToRelearn = [];
+  let subjectsToImprove = [];
+
+  courses.forEach((c) => {
+    const name = c.name;
+    const score10 = parseScore(c.score10);
+    if (score10 === null) return;
+
+    const nameLower = name.toLowerCase();
+    if (nameLower.includes("giáo dục quốc phòng") || nameLower.includes("giáo dục thể chất") || nameLower.includes("gdqp") || nameLower.includes("gdtc")) {
+      return;
+    }
+
+    const { letter } = getGradePoints(score10);
+    if (letter === "F") {
+      subjectsToRelearn.push(name);
+    } else if (letter === "D" || (score10 >= 4.0 && score10 < 5.5)) {
+      // D hoặc D+ (điểm hệ 10 từ 4.0 đến dưới 5.5)
+      subjectsToImprove.push(name);
+    }
+  });
+
+  return { rank, comment, warning, subjectsToRelearn, subjectsToImprove };
 }
 
 function getScholarshipAndActivityAdvice(gpaSemester10, gpaAccumulated, drlScore, credits) {

@@ -24,8 +24,12 @@
     "express": "^5.2.1",
     "mongoose": "^9.7.4",
     "nodemailer": "^9.0.3",
+    "pdf-parse": "^2.4.5",
     "playwright": "^1.61.1",
     "proxy-chain": "^3.0.0",
     "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.2.0"
   }
 }

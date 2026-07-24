@@ -19,6 +19,10 @@ app.get("/", (req, res) => {
   res.redirect("/admin.html");
 });
 
+app.get("/privacy", (req, res) => {
+  res.sendFile(path.join(__dirname, "../public/privacy.html"));
+});
+
 const pIndex = process.argv.indexOf('-p');
 const PORT = process.env.PORT || (pIndex !== -1 ? process.argv[pIndex + 1] : null) || process.argv[2] || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";

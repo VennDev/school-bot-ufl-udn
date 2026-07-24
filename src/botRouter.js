@@ -58,20 +58,24 @@ function formatKetQuaHocTap(scrapedData) {
   let gpa = extractGPA(rawKq);
   const targetTable = rawKq.find((t) => t.headers && t.headers.includes("Tên học phần"));
 
-  if (!gpa) {
-    if (!targetTable) return "Chưa cập nhật bảng điểm chính.";
-    const courses = targetTable.rows.map((r) => ({
+  let courses = [];
+  if (targetTable && targetTable.rows) {
+    courses = targetTable.rows.map((r) => ({
       name: r[2],
       credits: r[3],
       score10: r[6]
     }));
+  }
+
+  if (!gpa) {
+    if (!targetTable) return "Chưa cập nhật bảng điểm chính.";
     gpa = calculateGPA(courses);
   }
 
   if (!gpa) return "Không thể đọc dữ liệu điểm học tập.";
 
   const drl = extractDRL(rawDrl);
-  const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester);
+  const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester, courses);
   const advice = getScholarshipAndActivityAdvice(gpa.gpaSemester10 || null, gpa.gpaAccumulated, drl ? drl.score : null, gpa.creditsAccumulated);
 
   let txt = `📊 KẾT QUẢ HỌC TẬP (Dữ liệu từ UFLS):\n`;
@@ -83,6 +87,20 @@ function formatKetQuaHocTap(scrapedData) {
     txt += `- Điểm rèn luyện: ${drl.score}/100 (${drl.rank})\n`;
   }
   txt += `\n💬 Nhận xét: ${evalResult.comment}\n`;
+
+  if (evalResult.subjectsToRelearn.length > 0) {
+    txt += `\n❌ Môn cần học lại (Điểm F):\n`;
+    evalResult.subjectsToRelearn.forEach(m => {
+      txt += `  + ${m}\n`;
+    });
+  }
+
+  if (evalResult.subjectsToImprove.length > 0) {
+    txt += `\n⚠️ Môn cần cải thiện (Điểm thấp):\n`;
+    evalResult.subjectsToImprove.forEach(m => {
+      txt += `  + ${m}\n`;
+    });
+  }
 
   if (evalResult.warning) {
     txt += `\n${evalResult.warning}\n`;
@@ -99,6 +117,7 @@ function formatKetQuaHocTap(scrapedData) {
     });
   }
 
+  txt += `\n\n(Thông tin tham khảo từ Sổ tay sinh viên)`;
   return txt;
 }
 
@@ -211,19 +230,23 @@ function formatTienDo(scrapedData) {
   let gpa = extractGPA(rawKq);
   const targetTable = rawKq.find((t) => t.headers && t.headers.includes("Tên học phần"));
 
-  if (!gpa && targetTable) {
-    const courses = targetTable.rows.map((r) => ({
+  let courses = [];
+  if (targetTable && targetTable.rows) {
+    courses = targetTable.rows.map((r) => ({
       name: r[2],
       credits: r[3],
       score10: r[6]
     }));
+  }
+
+  if (!gpa && targetTable) {
     gpa = calculateGPA(courses);
   }
 
   if (!gpa) return "Không thể đọc thông tin tiến độ học tập.";
 
   const drl = extractDRL(rawDrl);
-  const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester);
+  const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester, courses);
   const advice = getScholarshipAndActivityAdvice(gpa.gpaSemester10 || null, gpa.gpaAccumulated, drl ? drl.score : null, gpa.creditsAccumulated);
 
   const rows = targetTable ? targetTable.rows || [] : [];
@@ -247,6 +270,20 @@ function formatTienDo(scrapedData) {
   }
   txt += `\n💬 Nhận xét: ${evalResult.comment}\n`;
 
+  if (evalResult.subjectsToRelearn.length > 0) {
+    txt += `\n❌ Môn cần học lại (Điểm F):\n`;
+    evalResult.subjectsToRelearn.forEach(m => {
+      txt += `  + ${m}\n`;
+    });
+  }
+
+  if (evalResult.subjectsToImprove.length > 0) {
+    txt += `\n⚠️ Môn cần cải thiện (Điểm thấp):\n`;
+    evalResult.subjectsToImprove.forEach(m => {
+      txt += `  + ${m}\n`;
+    });
+  }
+
   if (evalResult.warning) {
     txt += `\n${evalResult.warning}\n`;
   }
@@ -261,6 +298,8 @@ function formatTienDo(scrapedData) {
       txt += `- ${r[2]} (${r[3]} TC): ${r[6] || "Chưa học/Chưa có điểm"}\n`;
     });
   }
+  
+  txt += `\n\n(Thông tin tham khảo từ Sổ tay sinh viên)`;
   return txt;
 }
 

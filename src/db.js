@@ -6,12 +6,33 @@ if (!global.crypto) {
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/school-bot";
 
 let connected = false;
+let mongoServer = null;
 
 async function connect() {
   if (connected) return;
-  await mongoose.connect(MONGO_URI);
-  connected = true;
-  console.log("[db] MongoDB connected");
+  
+  const options = {
+    serverSelectionTimeoutMS: 3000,
+  };
+
+  try {
+    await mongoose.connect(MONGO_URI, options);
+    connected = true;
+    console.log("[db] MongoDB connected to native instance");
+  } catch (err) {
+    console.warn(`[db] Local MongoDB connection failed (${err.message}). Falling back to MongoMemoryServer...`);
+    try {
+      const { MongoMemoryServer } = require("mongodb-memory-server");
+      mongoServer = await MongoMemoryServer.create();
+      const memoryUri = mongoServer.getUri();
+      await mongoose.connect(memoryUri);
+      connected = true;
+      console.log(`[db] MongoDB connected to In-Memory instance: ${memoryUri}`);
+    } catch (memErr) {
+      console.error("[db] Fatal: Failed to initialize MongoMemoryServer", memErr);
+      throw memErr;
+    }
+  }
 }
 
 // ---------- Schemas ----------
@@ -77,13 +98,16 @@ const interactionSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const regNodeSchema = new mongoose.Schema({
+  title: String,
+  category: { type: String, index: true },
+  source_url: String,
   content: { type: String, required: true },
   start_page: Number,
   end_page: Number,
   start_line: Number,
   end_line: Number,
 });
-regNodeSchema.index({ content: "text" });
+regNodeSchema.index({ content: "text", title: "text" });
 
 // ---------- Models ----------
 
@@ -232,11 +256,13 @@ module.exports = {
     await RegNode.bulkWrite(ops);
   },
 
-  async searchRegNodes(queryText, limit = 4) {
+  async searchRegNodes(queryText, limit = 4, category = null) {
     await ensureInit();
+    const filter = category ? { category } : {};
+
     // 1. Try text index search first
     let results = await RegNode.find(
-      { $text: { $search: queryText } },
+      { ...filter, $text: { $search: queryText } },
       { score: { $meta: "textScore" } }
     ).sort({ score: { $meta: "textScore" } }).limit(limit).lean();
 
@@ -246,10 +272,17 @@ module.exports = {
       if (keywords.length) {
         const regexes = keywords.map(w => new RegExp(w, "i"));
         results = await RegNode.find({
+          ...filter,
           $or: regexes.map(r => ({ content: r }))
         }).limit(limit).lean();
       }
     }
+
+    // 3. Fallback: if category filtered returned nothing, search all nodes
+    if (!results.length && category) {
+      return this.searchRegNodes(queryText, limit, null);
+    }
+
     return results;
   },
 
