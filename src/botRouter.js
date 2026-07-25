@@ -580,6 +580,17 @@ async function handleMessage(senderPsid, messageText) {
   // Quick keywords
   const data = await db.getScrapedData(senderPsid) || {};
   console.log(`[botRouter] Querying data for keywords. Message: "${text}"`);
+
+  // Load system rules early so all AI-calling paths can use them
+  let systemPrompt = "";
+  try {
+    systemPrompt = fs.readFileSync(path.resolve(__dirname, "../rules.txt"), "utf8");
+  } catch (e) {
+    console.error("Failed to load rules.txt:", e.message);
+  }
+  if (!systemPrompt) {
+    systemPrompt = `Bạn là trợ lý AI hữu ích hỗ trợ sinh viên trường Đại học Ngoại ngữ - Đại học Đà Nẵng (UFL).`;
+  }
   
   if (normalizedLowerText === "lịch thi" || normalizedLowerText === "lich thi") {
     const raw = data.lich_thi ? JSON.parse(data.lich_thi) : null;
@@ -707,17 +718,7 @@ async function handleMessage(senderPsid, messageText) {
       canh_bao: data.canh_bao ? JSON.parse(data.canh_bao).slice(0, 3) : []
     };
 
-    const statsPrompt = `Bạn là trợ lý AI UFL. Hãy phân tích tiến độ học tập của sinh viên dựa trên dữ liệu sau:
-${JSON.stringify(cleanDataForStats, null, 2)}
-
-Yêu cầu định dạng phản hồi bắt buộc:
-1. Trả lời ngắn gọn, trực diện, không dài dòng.
-2. Sử dụng định dạng khung cố định sau:
-[+] Tóm tắt: (1-2 câu nhận xét chung)
-[+] Phân tích chi tiết:
-- Tiến độ học tập & GPA: (Mô tả ngắn)
-- Lịch thi & Học phí: (Mô tả ngắn)
-[+] Lời khuyên: (1 câu khuyên học tập)`;
+    const statsPrompt = `${systemPrompt}\n\nDữ liệu sinh viên cần phân tích:\n${JSON.stringify(cleanDataForStats, null, 2)}\n\nYêu cầu định dạng phản hồi:\n[+] Tóm tắt: (1-2 câu nhận xét chung)\n[+] Phân tích chi tiết:\n- Tiến độ học tập & GPA: (Mô tả ngắn)\n- Lịch thi & Học phí: (Mô tả ngắn)\n[+] Lời khuyên: (1 câu khuyên học tập)`;
 
     await messenger.sendTextMessage(senderPsid, "AI đang phân tích dữ liệu học tập của bạn...");
     const statsResult = await askAI(statsPrompt, "Hãy thống kê và phân tích tiến độ học tập của tôi.");
@@ -734,15 +735,7 @@ Yêu cầu định dạng phản hồi bắt buộc:
       canh_bao: data.canh_bao ? JSON.parse(data.canh_bao).slice(0, 2) : []
     };
 
-    const summaryPrompt = `Bạn là trợ lý AI UFL. Hãy tóm tắt tuần học tập cho sinh viên dựa trên dữ liệu sau:
-${JSON.stringify(cleanDataForSummary, null, 2)}
-
-Yêu cầu định dạng phản hồi bắt buộc:
-[+] Tóm tắt tuần học: (Nhận xét tổng quan tuần tới ngắn trong 1 câu)
-[+] Lịch trình:
-- Lịch học chính: (Các môn cần học tuần tới)
-- Lịch thi & Học phí: (Các môn thi sắp tới, tình trạng học phí/nợ nếu có)
-[+] Nhiệm vụ ưu tiên: (Bullet point ngắn gọn các việc cần làm)`;
+    const summaryPrompt = `${systemPrompt}\n\nDữ liệu tuần của sinh viên:\n${JSON.stringify(cleanDataForSummary, null, 2)}\n\nYêu cầu định dạng:\n[+] Tóm tắt tuần học: (Nhận xét tổng quan tuần tới ngắn trong 1 câu)\n[+] Lịch trình:\n- Lịch học chính: (Các môn cần học tuần tới)\n- Lịch thi & Học phí: (Các môn thi sắp tới, tình trạng học phí/nợ nếu có)\n[+] Nhiệm vụ ưu tiên: (Bullet point ngắn gọn các việc cần làm)`;
 
     await messenger.sendTextMessage(senderPsid, "AI đang tổng hợp và tóm tắt tuần của bạn...");
     const summaryResult = await askAI(summaryPrompt, "Hãy tóm tắt tuần học tập của tôi.");
@@ -858,19 +851,8 @@ Yêu cầu định dạng phản hồi bắt buộc:
     });
   }
 
-  // Load custom system rules
-  let systemPrompt = "";
-  try {
-    systemPrompt = fs.readFileSync(path.resolve(__dirname, "../rules.txt"), "utf8");
-  } catch (e) {
-    console.error("Failed to load rules.txt:", e.message);
-  }
-
-  if (!systemPrompt) {
-    systemPrompt = `Bạn là trợ lý AI hữu ích hỗ trợ sinh viên trường Đại học Ngoại ngữ - Đại học Đà Nẵng (UFL).`;
-  }
-
-  systemPrompt += `\nDưới đây là thông tin học vụ của sinh viên để bạn tham khảo. Câu trả lời của bạn PHẢI là văn bản thuần túy tiếng Việt, TUYỆT ĐỐI KHÔNG trả về định dạng JSON hay bất kỳ phân tích cấu trúc nào khác:\n${JSON.stringify(cleanData, null, 2)}\n${regContextText}`;
+  // Append student context data to existing system prompt
+  systemPrompt += `\n\n===== DỮ LIỆU HỌC VỤ THỰC TẾ CỦA SINH VIÊN (NGUỒN DUY NHẤT) =====\nQUAN TRỌNG: Đây là dữ liệu THỰC TẾ của sinh viên. Bạn CHỈ được sử dụng thông tin trong này để trả lời. Nếu thông tin không có trong này, hãy nói "Thông tin này không có trong dữ liệu của bạn" thay vì bịa ra. Tuyệt đối không tự ý thêm URL, số điện thoại, địa chỉ, quy trình hay bất kỳ chi tiết nào không có trong dữ liệu dưới đây.\n${JSON.stringify(cleanData, null, 2)}\n${regContextText}`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);
