@@ -196,6 +196,10 @@
                 <label class="block text-xs font-medium text-gray-600 mb-1">FB App Secret</label>
                 <input type="text" id="fb_app_secret" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
               </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">FB Page ID (dùng tạo Utility Templates)</label>
+                <input type="text" id="fb_page_id" placeholder="VD: 123456789" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
             </div>
           </div>
 
@@ -486,6 +490,7 @@
       document.getElementById('scraper_interval').value = data.scraper_interval;
       document.getElementById('scraper_mode').value = data.scraper_mode;
       document.getElementById('fb_page_token').value = data.fb_page_token;
+      document.getElementById('fb_page_id').value = data.fb_page_id || '';
       document.getElementById('fb_verify_token').value = data.fb_verify_token;
       document.getElementById('fb_app_secret').value = data.fb_app_secret;
       document.getElementById('smtp_host').value = data.smtp_host || '';
@@ -510,6 +515,7 @@
           scraper_interval: document.getElementById('scraper_interval').value,
           scraper_mode: document.getElementById('scraper_mode').value,
           fb_page_token: document.getElementById('fb_page_token').value,
+          fb_page_id: document.getElementById('fb_page_id').value,
           fb_verify_token: document.getElementById('fb_verify_token').value,
           fb_app_secret: document.getElementById('fb_app_secret').value,
           smtp_host: document.getElementById('smtp_host').value,

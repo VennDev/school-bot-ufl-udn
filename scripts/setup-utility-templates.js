@@ -20,82 +20,78 @@
 
 require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 
-const PAGE_TOKEN = process.env.FB_PAGE_TOKEN || "";
-const PAGE_ID = process.env.FB_PAGE_ID || "";
-
-if (!PAGE_TOKEN || !PAGE_ID) {
-  console.error("Missing FB_PAGE_TOKEN or FB_PAGE_ID in .env");
-  process.exit(1);
-}
-
-const API_BASE = `https://graph.facebook.com/v21.0/${PAGE_ID}/message_templates`;
-
-const TEMPLATES = [
-  {
-    name: "ufl_account_update",
-    language: "vi",
-    category: "UTILITY",
-    components: [
-      {
-        type: "BODY",
-        text: "{{1}}",
-      },
-    ],
-  },
-  {
-    name: "ufl_exam_reminder",
-    language: "vi",
-    category: "UTILITY",
-    components: [
-      {
-        type: "BODY",
-        text: "[UFL Bot] Nhắc thi:\nMôn: {{1}}\nNgày: {{2}} - Giờ: {{3}}\nPhòng: {{4}} - Hình thức: {{5}}",
-      },
-    ],
-  },
-  {
-    name: "ufl_tuition_alert",
-    language: "vi",
-    category: "UTILITY",
-    components: [
-      {
-        type: "BODY",
-        text: "{{1}}",
-      },
-    ],
-  },
-  {
-    name: "ufl_announcement",
-    language: "vi",
-    category: "UTILITY",
-    components: [
-      {
-        type: "BODY",
-        text: "{{1}}",
-      },
-    ],
-  },
-];
-
-async function createTemplate(tmpl) {
-  const url = `${API_BASE}?access_token=${PAGE_TOKEN}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(tmpl),
-  });
-  const data = await res.json();
-  return data;
+async function getCredentials() {
+  // Try DB first (set via admin UI), fall back to .env
+  try {
+    const db = require("../src/db");
+    const token = await db.getSystemSetting("fb_page_token", "");
+    const pageId = await db.getSystemSetting("fb_page_id", "");
+    if (token && pageId) return { token, pageId };
+  } catch (e) {
+    console.log("DB not available, falling back to .env");
+  }
+  return {
+    token: process.env.FB_PAGE_TOKEN || "",
+    pageId: process.env.FB_PAGE_ID || "",
+  };
 }
 
 async function main() {
+  const { token: PAGE_TOKEN, pageId: PAGE_ID } = await getCredentials();
+
+  if (!PAGE_TOKEN || !PAGE_ID) {
+    console.error("Missing FB_PAGE_TOKEN or FB_PAGE_ID (set via admin UI or .env)");
+    process.exit(1);
+  }
+
+  const API_BASE = `https://graph.facebook.com/v21.0/${PAGE_ID}/message_templates`;
+
+  const TEMPLATES = [
+    {
+      name: "ufl_account_update",
+      language: "vi",
+      category: "UTILITY",
+      components: [{ type: "BODY", text: "{{1}}" }],
+    },
+    {
+      name: "ufl_exam_reminder",
+      language: "vi",
+      category: "UTILITY",
+      components: [{
+        type: "BODY",
+        text: "[UFL Bot] Nhắc thi:\nMôn: {{1}}\nNgày: {{2}} - Giờ: {{3}}\nPhòng: {{4}} - Hình thức: {{5}}",
+      }],
+    },
+    {
+      name: "ufl_tuition_alert",
+      language: "vi",
+      category: "UTILITY",
+      components: [{ type: "BODY", text: "{{1}}" }],
+    },
+    {
+      name: "ufl_announcement",
+      language: "vi",
+      category: "UTILITY",
+      components: [{ type: "BODY", text: "{{1}}" }],
+    },
+  ];
+
+  async function createTemplate(tmpl) {
+    const url = `${API_BASE}?access_token=${PAGE_TOKEN}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tmpl),
+    });
+    return res.json();
+  }
+
   console.log(`Creating ${TEMPLATES.length} Utility Templates for Page ${PAGE_ID}...\n`);
 
   for (const tmpl of TEMPLATES) {
     console.log(`Creating: ${tmpl.name} ...`);
     const result = await createTemplate(tmpl);
     if (result.error) {
-      // Template may already exist (idempotent)
       if (result.error.code === 100 && result.error.error_subcode === 2654) {
         console.log(`  (already exists, skipping) ${result.error.message}`);
       } else {
