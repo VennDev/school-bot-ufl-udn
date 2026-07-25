@@ -1,4 +1,6 @@
 const mongoose = require("mongoose");
+const fs = require("fs");
+const path = require("path");
 if (!global.crypto) {
   global.crypto = require("crypto").webcrypto || require("crypto");
 }
@@ -259,26 +261,84 @@ module.exports = {
   async searchRegNodes(queryText, limit = 4, category = null) {
     await ensureInit();
     const filter = category ? { category } : {};
+    let results = [];
 
-    // 1. Try text index search first
-    let results = await RegNode.find(
-      { ...filter, $text: { $search: queryText } },
-      { score: { $meta: "textScore" } }
-    ).sort({ score: { $meta: "textScore" } }).limit(limit).lean();
+    // 1. Search in MongoDB/Mongoose database if initialized and has records
+    try {
+      results = await RegNode.find(
+        { ...filter, $text: { $search: queryText } },
+        { score: { $meta: "textScore" } }
+      ).sort({ score: { $meta: "textScore" } }).limit(limit).lean();
 
-    // 2. Fallback to simple keyword search if no results found
-    if (!results.length) {
-      const keywords = queryText.split(" ").filter(w => w.length > 2);
-      if (keywords.length) {
-        const regexes = keywords.map(w => new RegExp(w, "i"));
-        results = await RegNode.find({
-          ...filter,
-          $or: regexes.map(r => ({ content: r }))
-        }).limit(limit).lean();
+      if (!results.length) {
+        const keywords = queryText.split(" ").filter(w => w.length > 2);
+        if (keywords.length) {
+          const regexes = keywords.map(w => new RegExp(w, "i"));
+          results = await RegNode.find({
+            ...filter,
+            $or: regexes.map(r => ({ content: r }))
+          }).limit(limit).lean();
+        }
+      }
+    } catch (dbErr) {
+      console.warn("[db] MongoDB searchRegNodes failed, fallback to file search:", dbErr.message);
+    }
+
+    // 2. Search fallback/supplement in local data/rag_nodes.json
+    const ragPath = path.resolve(__dirname, "../data/rag_nodes.json");
+    if (fs.existsSync(ragPath)) {
+      try {
+        const fileContent = fs.readFileSync(ragPath, "utf8");
+        const nodes = JSON.parse(fileContent);
+        
+        // Split queries into keywords
+        const keywords = queryText.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        
+        if (keywords.length > 0) {
+          const matchedNodes = nodes.filter(n => {
+            // Apply category filter if specified
+            if (category && n.category !== category) return false;
+            
+            // Text matching score based on keyword hits in content or title
+            const contentLower = (n.content || "").toLowerCase();
+            const titleLower = (n.title || "").toLowerCase();
+            
+            let hits = 0;
+            keywords.forEach(kw => {
+              if (contentLower.includes(kw)) hits++;
+              if (titleLower.includes(kw)) hits += 2; // Weight title match higher
+            });
+            
+            n.temp_score = hits;
+            return hits > 0;
+          });
+
+          // Sort by hits descending and take top matching nodes
+          matchedNodes.sort((a, b) => b.temp_score - a.temp_score);
+          const topFileNodes = matchedNodes.slice(0, limit).map(n => ({
+            title: n.title,
+            category: n.category,
+            source_url: n.source_url,
+            content: n.content
+          }));
+
+          // Merge and avoid duplicate content chunks
+          const existingContents = new Set(results.map(r => r.content));
+          topFileNodes.forEach(fn => {
+            if (!existingContents.has(fn.content)) {
+              results.push(fn);
+            }
+          });
+        }
+      } catch (fileErr) {
+        console.error("[db] Failed to read/search rag_nodes.json:", fileErr.message);
       }
     }
 
-    // 3. Fallback: if category filtered returned nothing, search all nodes
+    // Trim results to limit
+    results = results.slice(0, limit);
+
+    // 3. Fallback: if category filtered returned nothing, search all nodes without category filter
     if (!results.length && category) {
       return this.searchRegNodes(queryText, limit, null);
     }

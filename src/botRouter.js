@@ -829,13 +829,32 @@ Yêu cầu định dạng phản hồi bắt buộc:
     schedule: filteredSchedule.slice(0, 4) // schedule usually represents current semester, but we pass it as is
   };
 
-  // RAG: Query matching regulation nodes from DB
-  const regs = await db.searchRegNodes(messageText, 4);
+  // Classify query intent to scope RAG search to correct category in hdsd site content
+  let detectedCategory = null;
+  const lowerQuery = messageText.toLowerCase();
+  if (lowerQuery.includes("học bổng") || lowerQuery.includes("khen thưởng") || lowerQuery.includes("tiêu chuẩn xét")) {
+    detectedCategory = "scholarship";
+  } else if (lowerQuery.includes("cảnh báo") || lowerQuery.includes("buộc thôi học") || lowerQuery.includes("kỷ luật")) {
+    detectedCategory = "warning";
+  } else if (lowerQuery.includes("quy chế") || lowerQuery.includes("tín chỉ") || lowerQuery.includes("điểm số") || lowerQuery.includes("đào tạo")) {
+    detectedCategory = "academic_rules";
+  } else if (lowerQuery.includes("thi kết thúc") || lowerQuery.includes("chấm thi") || lowerQuery.includes("phúc khảo") || lowerQuery.includes("exams")) {
+    detectedCategory = "exams";
+  } else if (lowerQuery.includes("lms3") || lowerQuery.includes("teams") || lowerQuery.includes("email") || lowerQuery.includes("tài khoản")) {
+    detectedCategory = "it_systems";
+  } else if (lowerQuery.includes("học phí") || lowerQuery.includes("tiền học") || lowerQuery.includes("công nợ")) {
+    detectedCategory = "tuition";
+  } else if (lowerQuery.includes("vstep") || lowerQuery.includes("nlnn") || lowerQuery.includes("chuẩn đầu ra")) {
+    detectedCategory = "vstep";
+  }
+
+  // RAG: Query matching regulation nodes from DB and hdsd crawl file
+  const regs = await db.searchRegNodes(messageText, 4, detectedCategory);
   let regContextText = "";
   if (regs && regs.length > 0) {
-    regContextText = "\n[!] QUY CHẾ ĐÀO TẠO THAM KHẢO (Được trích xuất từ tài liệu UFLS):\n";
+    regContextText = "\n[!] QUY CHẾ ĐÀO TẠO & HƯỚNG DẪN THAM KHẢO (Được trích xuất từ tài liệu UFLS):\n";
     regs.forEach((r, idx) => {
-      regContextText += `\nĐoạn ${idx + 1} (Trang số ${r.start_page} trong tài liệu sổ tay gốc):\n${r.content}\n`;
+      regContextText += `\nĐoạn ${idx + 1} (Nguồn: ${r.title || "Sổ tay sinh viên"} - ${r.source_url || "UFLS"}):\n${r.content}\n`;
     });
   }
 
