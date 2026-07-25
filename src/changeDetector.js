@@ -85,28 +85,44 @@ function detectTuition(oldData, newData) {
   return [];
 }
 
+// Tag mapping per notification category for Message Tags (bypasses 24h window).
+// Deprecated April 27, 2026 — migrate to Utility Templates.
+const TAG_ACCOUNT = "ACCOUNT_UPDATE";
+const TAG_EVENT = "CONFIRMED_EVENT_UPDATE";
+
 async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
-  const alerts = [];
+  // Collect (alert, tag) pairs
+  const items = [];
 
   if (settings.notify_gpa) {
-    alerts.push(...detectGrades(oldRaw.ketQuaHocTap, newRaw.ketQuaHocTap));
+    for (const a of detectGrades(oldRaw.ketQuaHocTap, newRaw.ketQuaHocTap)) {
+      items.push([a, TAG_ACCOUNT]);
+    }
   }
   if (settings.notify_exam) {
-    alerts.push(...detectExams(oldRaw.lichThi, newRaw.lichThi));
+    for (const a of detectExams(oldRaw.lichThi, newRaw.lichThi)) {
+      items.push([a, TAG_EVENT]);
+    }
   }
   if (settings.notify_announcement) {
-    alerts.push(...detectAnnouncements(oldRaw.canhBao, newRaw.canhBao));
+    for (const a of detectAnnouncements(oldRaw.canhBao, newRaw.canhBao)) {
+      items.push([a, TAG_ACCOUNT]);
+    }
   }
   if (settings.notify_schedule) {
-    alerts.push(...detectSchedule(oldRaw.lichHoc, newRaw.lichHoc));
+    for (const a of detectSchedule(oldRaw.lichHoc, newRaw.lichHoc)) {
+      items.push([a, TAG_EVENT]);
+    }
   }
   if (settings.notify_tuition) {
-    alerts.push(...detectTuition(oldRaw.hocPhi, newRaw.hocPhi));
+    for (const a of detectTuition(oldRaw.hocPhi, newRaw.hocPhi)) {
+      items.push([a, TAG_ACCOUNT]);
+    }
   }
 
-  for (const alert of alerts) {
-    console.log(`[notifier] Sending to ${fbId}: ${alert}`);
-    await messenger.sendTextMessage(fbId, alert);
+  for (const [alert, tag] of items) {
+    console.log(`[notifier] Sending to ${fbId} [${tag}]: ${alert}`);
+    await messenger.sendTaggedTextMessage(fbId, alert, tag);
     db.logChange(fbId, "alert", alert);
 
     if (settings.email) {
