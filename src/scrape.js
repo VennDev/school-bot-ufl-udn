@@ -34,8 +34,13 @@ async function loadResult(account) {
   };
 }
 
-async function saveResult(account, result) {
-  const oldData = await loadResult(account);
+async function saveResult(account, result, baselineOldData) {
+  // baselineOldData: original snapshot before any scraping this session.
+  // Prevents partial-save pollution: if scrape runs multiple batches,
+  // every checkAndNotify compares against the same original baseline,
+  // not against the intermediate DB state (which may have nulls for
+  // not-yet-scraped categories, suppressing notifications as "first sync").
+  const oldData = baselineOldData !== undefined ? baselineOldData : await loadResult(account);
   
   await db.saveScrapedData(account.fb_id, {
     canh_bao: result.canhBao,
@@ -190,6 +195,11 @@ async function scrapeBatch(account, pages, torProxy) {
 
 async function scrapeAccount(account, torIdx, useTor) {
   let result = await loadResult(account);
+  // Snapshot original DB state ONCE before any scraping.
+  // All change-detection calls compare against this baseline,
+  // so multi-batch retries don't suppress notifications via
+  // intermediate null fields ("first sync" guard false-positive).
+  const baselineOldData = await loadResult(account);
   let pending = PAGES.filter((p) => !result[p.key]);
 
   if (!pending.length) {
@@ -218,7 +228,7 @@ async function scrapeAccount(account, torIdx, useTor) {
 
     const gotNew = Object.keys(scraped).length > 0;
     Object.assign(result, scraped);
-    await saveResult(account, result);
+    await saveResult(account, result, baselineOldData);
 
     pending = PAGES.filter((p) => !result[p.key]);
     console.log(`  [${account.username}] Progress: ${Object.keys(result).length}/${PAGES.length}`);
