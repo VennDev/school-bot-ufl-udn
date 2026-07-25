@@ -543,6 +543,19 @@ async function handleMessage(senderPsid, messageText) {
       }
 
       if (session.step === "AWAITING_PASSWORD") {
+        // Allow user to cancel login flow
+        const cancelKeywords = ["không", "hủy", "cancel", "thoát", "dừng", "/logout", "ko", "k", "no"];
+        if (cancelKeywords.includes(text.toLowerCase().trim())) {
+          loginSessions.delete(senderPsid);
+          return messenger.sendTextMessage(senderPsid, "Đã hủy đăng nhập. Gõ /login để thử lại khi cần.");
+        }
+        // Reject empty or obviously invalid passwords (questions, refusals)
+        if (!text.trim() || text.trim().length < 2) {
+          return messenger.sendTextMessage(senderPsid, "Mật khẩu không được để trống. Vui lòng nhập mật khẩu cổng sinh viên, hoặc gõ 'hủy' để thoát:");
+        }
+        if (text.trim().length > 128) {
+          return messenger.sendTextMessage(senderPsid, "Mật khẩu quá dài (tối đa 128 ký tự). Vui lòng nhập lại, hoặc gõ 'hủy' để thoát:");
+        }
         console.log(`[botRouter] Login State Machine: AWAITING_PASSWORD -> password received, starting scrape process.`);
         const username = session.username;
         const passwordEnc = crypto.encrypt(text);
@@ -551,7 +564,7 @@ async function handleMessage(senderPsid, messageText) {
         await db.saveUser(senderPsid, username, passwordEnc, "0");
         loginSessions.delete(senderPsid);
 
-        await messenger.sendTextMessage(senderPsid, "Đang kết nối & tiến hành đồng bộ dữ liệu lần đầu. Quá trình này có thể mất 1-2 phút qua Tor, vui lòng đợi...");
+        await messenger.sendTextMessage(senderPsid, "Đang kết nối & tiến hành đồng bộ dữ liệu lần đầu. Quá trình này có thể mất 1-2 phút, vui lòng đợi...");
 
         // Trigger async scrape immediately for this user
         if (scrapingInProgress.has(senderPsid)) {
@@ -565,18 +578,24 @@ async function handleMessage(senderPsid, messageText) {
           scrapingInProgress.delete(senderPsid);
           if (err) {
             console.error(`[async-sync] Scrape process exited with error for ${username}:`, err.message);
+            // Check if user still exists — scraper deletes user on login failure
+            const stillExists = await db.getUser(senderPsid);
+            if (stillExists) {
+              // Process crashed but user wasn't deleted — scraper may not have sent error message
+              await messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ gặp lỗi. Vui lòng thử /login lại sau.");
+            }
+            // If user was deleted, scraper already sent the failure message — do nothing
           } else {
             console.log(`[async-sync] Scrape for ${username} succeeded.`);
-            // After successful login and sync, show welcome text and main options (as requested in prompt)
-            const welcomeText = `Chúc mừng ${username} đã kết nối tài khoản sinh viên thành công! Tôi có thể giúp gì cho bạn?`;
-            await messenger.sendQuickReplies(senderPsid, welcomeText, [
-              { title: "Lịch học", payload: "LICH_HOC" },
-              { title: "Lịch thi", payload: "LICH_THI" },
-              { title: "Điểm số", payload: "DIEM_SO" },
-              { title: "Học phí", payload: "HOC_PHI" },
-              { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
-              { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
-            ]);
+            // Check if user still exists — scraper deletes user on login failure even when process exits cleanly
+            const stillExists = await db.getUser(senderPsid);
+            if (!stillExists) {
+              // Login failed, scraper already sent "[X] Đăng nhập thất bại..." — do not send conflicting success message
+              return;
+            }
+            // Only send welcome if user actually survived (login succeeded).
+            // ponytail: scraper also sends welcome on full sync complete. If duplicate welcome becomes issue,
+            // remove either this block or the one in scrape.js scrapeAccount().
           }
         });
         child.stdout.on("data", (data) => {
