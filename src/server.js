@@ -284,7 +284,7 @@ app.post("/webhook", async (req, res) => {
             dedupKey = sender_psid + "_" + webhook_event.message.quick_reply.payload;
           }
         } else if (webhook_event.postback) {
-          dedupKey = sender_psid + "_" + webhook_event.postback.payload + "_" + webhook_event.postback.timestamp;
+          dedupKey = sender_psid + "_" + webhook_event.postback.payload + "_" + (webhook_event.postback.timestamp || Date.now());
         }
 
         if (dedupKey) {
