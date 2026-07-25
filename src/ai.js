@@ -36,7 +36,7 @@ async function callOpenCode(systemPrompt, userPrompt) {
       ],
       temperature: 0.0
     }),
-  }, 8000);
+  }, 25000);
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -64,7 +64,7 @@ async function callOpenAI(systemPrompt, userPrompt) {
       ],
       temperature: 0.0
     })
-  }, 6000);
+  }, 15000);
 
   if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
   const data = await res.json();
@@ -94,7 +94,7 @@ async function callGemini(systemPrompt, userPrompt) {
         temperature: 0.0
       }
     })
-  }, 6000);
+  }, 15000);
 
   if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
   const data = await res.json();

@@ -754,6 +754,35 @@ Yêu cầu định dạng phản hồi bắt buộc:
   const targetGradeTable = rawGrades ? rawGrades.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
   const gradesRows = targetGradeTable ? (targetGradeTable.rows || []) : [];
 
+  // Compact grade data to reduce token load and prevent AI timeout/refusal
+  let gpaSummary = null;
+  let recentGradesFiltered = [];
+  if (gradesRows && gradesRows.length > 0) {
+    const courses = gradesRows.map((r) => ({
+      name: r[2],
+      credits: r[3],
+      score10: r[6]
+    }));
+    const calculated = calculateGPA(courses);
+    const evalResult = getAcademicEvaluation(calculated.gpaAccumulated, calculated.gpaSemester, courses);
+    
+    gpaSummary = {
+      gpaSemester: calculated.gpaSemester,
+      gpaAccumulated: calculated.gpaAccumulated,
+      creditsAccumulated: calculated.creditsAccumulated,
+      rank: evalResult.rank,
+      subjectsToRelearn: evalResult.subjectsToRelearn,
+      subjectsToImprove: evalResult.subjectsToImprove
+    };
+    // Only send the 8 most recent courses to prevent system overload
+    recentGradesFiltered = gradesRows.slice(0, 8).map(r => ({
+      name: r[2],
+      credits: r[3],
+      score10: r[6],
+      grade: r[8]
+    }));
+  }
+
   // Filter cleanData sent to AI based on current year to prevent AI from seeing old schedule/exams/announcements by default
   const today = new Date();
   const currentYear = today.getFullYear().toString();
@@ -782,7 +811,8 @@ Yêu cầu định dạng phản hồi bắt buộc:
           const content = item.content || JSON.stringify(item);
           return content.includes(currentYear) || content.includes("/" + currentYear.slice(2));
         }).slice(0, 3),
-    gpa_data: gradesRows, // Send full grades data so AI can calculate/analyze any semester or whole course
+    gpa_summary: gpaSummary,
+    recent_grades: recentGradesFiltered,
     exams: isRequestingAll 
       ? filteredExams.slice(0, 5)
       : filteredExams.slice(1).filter(r => {
