@@ -13,7 +13,8 @@
     "scrape:parallel": "node src/scrape.js --parallel",
     "import-regs": "node src/importRegulations.js",
     "test": "node tests/login.js",
-    "setup-https": "bash scripts/setup-https.sh"
+    "setup-https": "bash scripts/setup-https.sh",
+    "setup-templates": "node scripts/setup-utility-templates.js"
   },
   "keywords": [],
   "author": "",

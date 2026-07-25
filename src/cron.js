@@ -44,13 +44,26 @@ async function checkExamReminders() {
             const daysUntil = Math.ceil((examDate - now) / (1000 * 60 * 60 * 24));
 
             if (daysUntil === 0) {
+              // Utility Template: ufl_exam_reminder (5 params: subject, date, time, room, format)
+              messenger.sendUtilityMessage(u.fb_id, "EVENT_REMINDER", [
+                exam[2] || "?",
+                exam[3] || "?",
+                exam[5] || "?",
+                exam[9] || "?",
+                exam[10] || "?"
+              ]);
               const msg = `(!) HÔM NAY THI môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
-              messenger.sendTaggedTextMessage(u.fb_id, msg, "CONFIRMED_EVENT_UPDATE");
               db.logChange(u.fb_id, "exam_reminder", msg);
               if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Nhắc nhở thi hôm nay", msg);
             } else if (daysUntil === 1) {
+              messenger.sendUtilityMessage(u.fb_id, "EVENT_REMINDER", [
+                exam[2] || "?",
+                exam[3] || "?",
+                exam[5] || "?",
+                exam[9] || "?",
+                exam[10] || "?"
+              ]);
               const msg = `[@] NGÀY MAI THI môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
-              messenger.sendTaggedTextMessage(u.fb_id, msg, "CONFIRMED_EVENT_UPDATE");
               db.logChange(u.fb_id, "exam_reminder", msg);
               if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Nhắc nhở thi ngày mai", msg);
             }
@@ -102,7 +115,8 @@ async function checkExamReminders() {
 
             if (upcomingExams.length > 0) {
               const alertMsg = `⚠️ CẢNH BÁO HỌC PHÍ TRƯỚC KÌ THI!\n\nBạn có lịch thi sắp tới trong vòng 7 ngày:\n- ${upcomingExams.join("\n- ")}\n\nTuy nhiên, hệ thống ghi nhận bạn vẫn chưa hoàn thành học phí:\n- ${debtDetails.slice(0, 3).join("\n- ")}\n\nVui lòng hoàn thành học phí sớm để tránh bị cấm thi hoặc ảnh hưởng kết quả thi.`;
-              messenger.sendTaggedTextMessage(u.fb_id, alertMsg, "ACCOUNT_UPDATE");
+              // Utility Template: ufl_tuition_alert (1 param: full alert text)
+              messenger.sendUtilityMessage(u.fb_id, "TUITION_ALERT", [alertMsg]);
               db.logChange(u.fb_id, "tuition_exam_warning", alertMsg);
               if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Cảnh báo học phí trước kì thi", alertMsg);
             }

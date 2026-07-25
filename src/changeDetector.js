@@ -85,44 +85,43 @@ function detectTuition(oldData, newData) {
   return [];
 }
 
-// Tag mapping per notification category for Message Tags (bypasses 24h window).
-// Deprecated April 27, 2026 — migrate to Utility Templates.
-const TAG_ACCOUNT = "ACCOUNT_UPDATE";
-const TAG_EVENT = "CONFIRMED_EVENT_UPDATE";
+// Utility Template mapping per notification category.
+// Templates bypass 24h window. Created via: npm run setup-templates
+const T = messenger.UTILITY_TEMPLATES;
 
 async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
-  // Collect (alert, tag) pairs
+  // Collect (alert, templateKey) pairs
   const items = [];
 
   if (settings.notify_gpa) {
     for (const a of detectGrades(oldRaw.ketQuaHocTap, newRaw.ketQuaHocTap)) {
-      items.push([a, TAG_ACCOUNT]);
+      items.push([a, "ACCOUNT_UPDATE"]);
     }
   }
   if (settings.notify_exam) {
     for (const a of detectExams(oldRaw.lichThi, newRaw.lichThi)) {
-      items.push([a, TAG_EVENT]);
+      items.push([a, "EVENT_REMINDER"]);
     }
   }
   if (settings.notify_announcement) {
     for (const a of detectAnnouncements(oldRaw.canhBao, newRaw.canhBao)) {
-      items.push([a, TAG_ACCOUNT]);
+      items.push([a, "ANNOUNCEMENT"]);
     }
   }
   if (settings.notify_schedule) {
     for (const a of detectSchedule(oldRaw.lichHoc, newRaw.lichHoc)) {
-      items.push([a, TAG_EVENT]);
+      items.push([a, "ANNOUNCEMENT"]);
     }
   }
   if (settings.notify_tuition) {
     for (const a of detectTuition(oldRaw.hocPhi, newRaw.hocPhi)) {
-      items.push([a, TAG_ACCOUNT]);
+      items.push([a, "TUITION_ALERT"]);
     }
   }
 
-  for (const [alert, tag] of items) {
-    console.log(`[notifier] Sending to ${fbId} [${tag}]: ${alert}`);
-    await messenger.sendTaggedTextMessage(fbId, alert, tag);
+  for (const [alert, templateKey] of items) {
+    console.log(`[notifier] Sending to ${fbId} [${templateKey}]: ${alert}`);
+    await messenger.sendUtilityMessage(fbId, templateKey, [alert]);
     db.logChange(fbId, "alert", alert);
 
     if (settings.email) {

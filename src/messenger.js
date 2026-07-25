@@ -1,15 +1,21 @@
 const db = require("./db");
 
+// ---- Utility Template names (create via: npm run setup-templates) ----
+// ponytail: if template names change, update here AND re-run setup-templates.
+const UTILITY_TEMPLATES = {
+  ACCOUNT_UPDATE: "ufl_account_update",   // grades, account status
+  EVENT_REMINDER: "ufl_exam_reminder",     // exam date/time/room reminders
+  TUITION_ALERT: "ufl_tuition_alert",      // tuition debt warnings
+  ANNOUNCEMENT: "ufl_announcement",        // academic announcements, schedule changes
+};
+
 async function callSendAPI(sender_psid, response, messagingType, tag) {
   const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
-  const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${pageToken}`;
+  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
   const body = {
     recipient: { id: sender_psid },
     message: response,
   };
-  // messaging_type: "MESSAGE_TAG" with a valid tag bypasses the 24h window.
-  // Tags CONFIRMED_EVENT_UPDATE and ACCOUNT_UPDATE deprecated April 27, 2026.
-  // ponytail: migrate to Utility Templates before that deadline.
   if (messagingType) body.messaging_type = messagingType;
   if (tag) body.tag = tag;
 
@@ -21,10 +27,53 @@ async function callSendAPI(sender_psid, response, messagingType, tag) {
     });
     const data = await res.json();
     if (data.error) {
-      console.error("[messenger] API Error:", data.error.message, "| tag:", tag || "none");
+      console.error("[messenger] API Error:", data.error.message, "| type:", messagingType || "RESPONSE");
     }
   } catch (e) {
     console.error("[messenger] Fetch failed:", e.message);
+  }
+}
+
+// ---- Utility Message sender (replaces Message Tags) ----
+// Sends a proactive message outside 24h window using a pre-approved Utility Template.
+// templateName: one of UTILITY_TEMPLATES keys or a raw template name string.
+// params: array of text values to fill into the template's {{1}}, {{2}}, ... placeholders.
+async function callSendUtility(sender_psid, templateName, params = []) {
+  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
+
+  const body = {
+    recipient: { id: sender_psid },
+    messaging_type: "UTILITY",
+    message: {
+      template: {
+        name: templateName,
+        language: { code: "en" },
+        components: [
+          {
+            type: "body",
+            parameters: params.map((text) => ({
+              type: "text",
+              text: String(text).substring(0, 2000),
+            })),
+          },
+        ],
+      },
+    },
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.error) {
+      console.error("[messenger] Utility API Error:", data.error.message, "| template:", templateName);
+    }
+  } catch (e) {
+    console.error("[messenger] Utility fetch failed:", e.message);
   }
 }
 
@@ -54,13 +103,12 @@ async function sendTextMessage(sender_psid, text) {
   }
 }
 
-// Proactive notification with Message Tag — bypasses 24h window.
-// tag: "ACCOUNT_UPDATE" for grades/tuition, "CONFIRMED_EVENT_UPDATE" for exams/schedule.
-async function sendTaggedTextMessage(sender_psid, text, tag) {
-  const chunks = chunkText(text);
-  for (const chunk of chunks) {
-    await callSendAPI(sender_psid, { text: chunk }, "MESSAGE_TAG", tag);
-  }
+// Preferred API: send proactive notification via Utility Template (bypasses 24h window).
+// templateName: key of UTILITY_TEMPLATES (e.g. "ACCOUNT_UPDATE", "EVENT_REMINDER").
+// params: array of strings filling {{1}}, {{2}}, ... in order.
+async function sendUtilityMessage(sender_psid, templateName, params = []) {
+  const resolvedName = UTILITY_TEMPLATES[templateName] || templateName;
+  await callSendUtility(sender_psid, resolvedName, params);
 }
 
 async function sendButtons(sender_psid, text, buttons) {
@@ -101,7 +149,8 @@ async function sendGenericTemplate(sender_psid, elements) {
 
 module.exports = {
   sendTextMessage,
-  sendTaggedTextMessage,
+  sendUtilityMessage,     // proactive notifications via Utility Templates
+  UTILITY_TEMPLATES,      // template name constants
   sendButtons,
   sendQuickReplies,
   sendGenericTemplate,
