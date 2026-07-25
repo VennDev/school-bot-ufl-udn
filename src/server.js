@@ -31,6 +31,7 @@ const MOCK_TOKEN = crypto.encrypt("admin-session");
 // Cache to prevent duplicate messages (Facebook retry mitigation)
 const processedMessageIds = new Set();
 const clearCacheInterval = setInterval(() => processedMessageIds.clear(), 60000); // clear every 1 minute
+let globalSyncRunning = false; // prevent overlapping admin sync-all spawns
 
 // Start cron job scheduler for scraping
 startScheduler();
@@ -114,8 +115,13 @@ app.get("/api/admin/stats", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/sync-all", requireAdmin, (req, res) => {
+  if (globalSyncRunning) {
+    return res.json({ success: false, message: "Một tiến trình đồng bộ toàn cục đang chạy. Vui lòng đợi." });
+  }
+  globalSyncRunning = true;
   const scraperPath = path.resolve(__dirname, "./scrape.js");
   exec(`node ${scraperPath} --parallel`, (err) => {
+    globalSyncRunning = false;
     if (err) console.error("[admin-sync] Global failed:", err.message);
   });
   res.json({ success: true, message: "Bắt đầu chạy scraper ngầm cho toàn bộ users qua Tor." });

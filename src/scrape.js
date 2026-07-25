@@ -53,28 +53,37 @@ async function saveResult(account, result) {
 }
 
 async function scrapeBatch(account, pages, torProxy) {
-  // We will run a race between Direct IP (no proxy) and Tor proxy to see which one logs in successfully first.
+  // Race Direct IP vs Tor — first to login wins. Loser gets closed.
+  // ponytail: if >2 proxy types needed, refactor to generic raceWithCleanup helper.
   let fastBrowser = null;
   let fastPage = null;
   let fastProxyUsed = null;
 
   const activeBrowsers = [];
+  let raceSettled = false; // guard against late-arriving loser leaking browser
+
   const tryLogin = async (proxyServer, label) => {
     const launchOpts = { headless: true };
     if (proxyServer) launchOpts.proxy = { server: proxyServer };
-    
+
     let browser;
     try {
       browser = await chromium.launch(launchOpts);
+      // If race already settled, close immediately — don't leak
+      if (raceSettled) {
+        await browser.close().catch(() => {});
+        throw new Error(`RACE_SETTLED: ${label} arrived after winner`);
+      }
       activeBrowsers.push(browser);
     } catch (e) {
+      if (e.message.startsWith("RACE_SETTLED")) throw e;
       console.error(`  [${account.username}] Failed to launch browser for ${label}:`, e.message);
       throw e;
     }
-    
+
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
     const page = await context.newPage();
-    
+
     try {
       console.log(`  [${account.username}] Attempting login via ${label}...`);
       await page.goto(`${BASE}/DangNhap/Login`, { waitUntil: "domcontentloaded", timeout: 25000 });
@@ -83,11 +92,11 @@ async function scrapeBatch(account, pages, torProxy) {
       await page.fill("#Password", account.password);
       await page.click('button[type="submit"]');
       await page.waitForURL("**/SinhVien**", { timeout: 25000 });
-      
+
       return { browser, page, label };
     } catch (e) {
       console.error(`  [${account.username}] Error inside ${label}:`, e.message);
-      await browser.close();
+      await browser.close().catch(() => {});
       const idx = activeBrowsers.indexOf(browser);
       if (idx !== -1) activeBrowsers.splice(idx, 1);
       throw e;
@@ -95,8 +104,6 @@ async function scrapeBatch(account, pages, torProxy) {
   };
 
   try {
-    // Start both login requests concurrently. Tor might be slow to boot or route, Direct IP is fast but might get blocked.
-    // If Tor proxy isn't available, we catch and ignore that branch.
     const loginPromises = [
       tryLogin(null, "Direct IP"),
     ];
@@ -105,18 +112,20 @@ async function scrapeBatch(account, pages, torProxy) {
     }
 
     const winner = await Promise.any(loginPromises);
+    raceSettled = true;
     fastBrowser = winner.browser;
     fastPage = winner.page;
     fastProxyUsed = winner.label;
     console.log(`  [${account.username}] Winner connection: ${fastProxyUsed}`);
 
-    // Close losing browsers immediately
+    // Close losing browsers immediately (those that made it into activeBrowsers before race settled)
     await Promise.all(
       activeBrowsers
         .filter((b) => b !== fastBrowser)
         .map((b) => b.close().catch(() => {}))
     );
   } catch (e) {
+    raceSettled = true;
     console.error(`  [${account.username}] Both connections failed to login:`, e.message);
     // Close any remaining browser instances on total failure
     await Promise.all(activeBrowsers.map((b) => b.close().catch(() => {})));
@@ -173,7 +182,7 @@ async function scrapeBatch(account, pages, torProxy) {
     console.log(`  [${account.username}] Session error: ${msg.split("\n")[0]}`);
     await messenger.sendTextMessage(account.fb_id, `[X] Lỗi kết nối khi lấy dữ liệu: ${msg.split("\n")[0]}`);
   } finally {
-    await fastBrowser.close();
+    if (fastBrowser) await fastBrowser.close().catch(() => {});
   }
 
   return { scraped, blocked };
@@ -347,4 +356,13 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main()
+  .catch(console.error)
+  .finally(async () => {
+    // Disconnect MongoDB to prevent connection pool leak in child processes
+    try {
+      const mongoose = require("mongoose");
+      await mongoose.disconnect();
+      console.log("[scrape] MongoDB disconnected.");
+    } catch {}
+  });

@@ -18,6 +18,9 @@ try {
 // Memory map for login sessions
 const loginSessions = new Map();
 
+// Mutex to prevent concurrent scrape spawns per user
+const scrapingInProgress = new Set();
+
 // Get base URL for Webview from request
 let appBaseUrl = "http://localhost:3000";
 
@@ -345,10 +348,15 @@ async function handleMessage(senderPsid, messageText) {
     if (!user) {
       return messenger.sendTextMessage(senderPsid, "Bạn chưa kết nối tài khoản. Vui lòng gõ /login để đăng nhập.");
     }
+    if (scrapingInProgress.has(senderPsid)) {
+      return messenger.sendTextMessage(senderPsid, "Quá trình đồng bộ trước đó vẫn đang chạy. Vui lòng đợi...");
+    }
+    scrapingInProgress.add(senderPsid);
     await messenger.sendTextMessage(senderPsid, "Đang khởi động đồng bộ dữ liệu tức thời từ cổng sinh viên. Quá trình có thể mất 1-2 phút...");
     const scraperPath = path.resolve(__dirname, "./scrape.js");
     const execCmd = `node "${scraperPath}" --account="${user.username.replace(/"/g, '\\"')}"`;
     exec(execCmd, (err) => {
+      scrapingInProgress.delete(senderPsid);
       if (err) {
         messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ dữ liệu tức thời thất bại hoặc bị nghẽn mạng.");
       }
@@ -546,10 +554,15 @@ async function handleMessage(senderPsid, messageText) {
         await messenger.sendTextMessage(senderPsid, "Đang kết nối & tiến hành đồng bộ dữ liệu lần đầu. Quá trình này có thể mất 1-2 phút qua Tor, vui lòng đợi...");
 
         // Trigger async scrape immediately for this user
+        if (scrapingInProgress.has(senderPsid)) {
+          return messenger.sendTextMessage(senderPsid, "Đang có quá trình đồng bộ khác chạy. Vui lòng đợi...");
+        }
+        scrapingInProgress.add(senderPsid);
         const scraperPath = path.resolve(__dirname, "./scrape.js");
         const execCmd = `node "${scraperPath}" --account="${username.replace(/"/g, '\\"')}"`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
         const child = exec(execCmd, async (err, stdout, stderr) => {
+          scrapingInProgress.delete(senderPsid);
           if (err) {
             console.error(`[async-sync] Scrape process exited with error for ${username}:`, err.message);
           } else {

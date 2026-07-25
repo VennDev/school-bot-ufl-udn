@@ -7,6 +7,7 @@ const mailer = require("./mailer");
 const scraperPath = path.resolve(__dirname, "./scrape.js");
 let schedulerInterval = null;
 let reminderInterval = null;
+let scraperRunning = false; // prevent overlapping scheduled runs
 
 function parseDate(str) {
   if (!str) return null;
@@ -115,17 +116,23 @@ async function checkExamReminders() {
 }
 
 async function runScraper() {
+  if (scraperRunning) {
+    console.log("[cron] Scraper skipped: previous run still in progress.");
+    return;
+  }
   const botStatus = await db.getSystemSetting("bot_status", "running");
   if (botStatus === "stopped") {
     console.log("[cron] Scraper skipped: Bot is stopped.");
     return;
   }
+  scraperRunning = true;
   console.log(`[cron] Starting scheduled scrape: ${new Date().toISOString()}`);
   
   const mode = await db.getSystemSetting("scraper_mode", "parallel");
   const cmd = `node ${scraperPath} ${mode === "parallel" ? "--parallel" : ""}`;
 
   exec(cmd, (err, stdout, stderr) => {
+    scraperRunning = false;
     if (err) {
       console.error("[cron] Scraper failed:", err.message);
       return;
