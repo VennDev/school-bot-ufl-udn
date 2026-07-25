@@ -134,7 +134,18 @@ async function askAI(systemPrompt, userPrompt) {
       }
     }
   }
-  return stripMarkdown(reply);
+  const cleanReply = stripMarkdown(reply);
+  if (cleanReply.startsWith("{") && cleanReply.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(cleanReply);
+      if (parsed.response) return stripMarkdown(parsed.response);
+      if (parsed.content) return stripMarkdown(parsed.content);
+      if (parsed.message) return stripMarkdown(parsed.message);
+    } catch (e) {
+      // not a valid JSON or parsing error, fallback to raw text
+    }
+  }
+  return cleanReply;
 }
 
 module.exports = { askAI };

@@ -851,7 +851,7 @@ Yêu cầu định dạng phản hồi bắt buộc:
     systemPrompt = `Bạn là trợ lý AI hữu ích hỗ trợ sinh viên trường Đại học Ngoại ngữ - Đại học Đà Nẵng (UFL).`;
   }
 
-  systemPrompt += `\nDưới đây là thông tin học vụ của sinh viên (định dạng JSON):\n${JSON.stringify(cleanData, null, 2)}\n${regContextText}`;
+  systemPrompt += `\nDưới đây là thông tin học vụ của sinh viên để bạn tham khảo. Câu trả lời của bạn PHẢI là văn bản thuần túy tiếng Việt, TUYỆT ĐỐI KHÔNG trả về định dạng JSON hay bất kỳ phân tích cấu trúc nào khác:\n${JSON.stringify(cleanData, null, 2)}\n${regContextText}`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);
