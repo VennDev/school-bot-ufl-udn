@@ -62,19 +62,16 @@ async function callSendUtility(sender_psid, templateName, params = []) {
     },
   };
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.error) {
-      console.error("[messenger] Utility API Error:", data.error.message, "| template:", templateName);
-    }
-  } catch (e) {
-    console.error("[messenger] Utility fetch failed:", e.message);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.error) {
+    throw new Error(`${data.error.message} (Code: ${data.error.code}, Subcode: ${data.error.error_subcode})`);
   }
+  return data;
 }
 
 function chunkText(text) {
@@ -108,7 +105,7 @@ async function sendTextMessage(sender_psid, text) {
 // params: array of strings filling {{1}}, {{2}}, ... in order.
 async function sendUtilityMessage(sender_psid, templateName, params = []) {
   const resolvedName = UTILITY_TEMPLATES[templateName] || templateName;
-  await callSendUtility(sender_psid, resolvedName, params);
+  return await callSendUtility(sender_psid, resolvedName, params);
 }
 
 async function sendButtons(sender_psid, text, buttons) {
@@ -147,9 +144,42 @@ async function sendGenericTemplate(sender_psid, elements) {
   });
 }
 
+async function ensureUtilityTemplateCreated() {
+  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+  const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
+  if (!pageToken || !pageId) return { success: false, error: "Thiếu FB_PAGE_TOKEN hoặc FB_PAGE_ID" };
+
+  const url = `https://graph.facebook.com/v21.0/${pageId}/message_templates?access_token=${pageToken}`;
+  const tmpl = {
+    name: "ufl_account_update",
+    language: "vi",
+    category: "UTILITY",
+    components: [{ type: "BODY", text: "{{1}}" }],
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tmpl),
+    });
+    const data = await res.json();
+    if (data.error) {
+      if (data.error.code === 100 && data.error.error_subcode === 2654) {
+        return { success: true, message: "Template đã tồn tại sẵn" };
+      }
+      return { success: false, error: `${data.error.message} (Code: ${data.error.code})` };
+    }
+    return { success: true, message: `Tạo template thành công (ID: ${data.id})` };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
 module.exports = {
   sendTextMessage,
   sendUtilityMessage,     // proactive notifications via Utility Templates
+  ensureUtilityTemplateCreated,
   UTILITY_TEMPLATES,      // template name constants
   sendButtons,
   sendQuickReplies,

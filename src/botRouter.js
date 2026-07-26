@@ -430,14 +430,21 @@ async function handleMessage(senderPsid, messageText) {
 
   // Handle Test Utility Messaging API call
   if (normalizedLowerText === "/testutility" || normalizedLowerText === "test utility" || normalizedLowerText === "test utility messaging") {
-    await messenger.sendTextMessage(senderPsid, "Đang gửi tin nhắn mẫu qua Utility Templates API...");
+    await messenger.sendTextMessage(senderPsid, "Đang khởi tạo/kiểm tra Utility Template...");
+    const setupRes = await messenger.ensureUtilityTemplateCreated();
+    if (setupRes.success) {
+      await messenger.sendTextMessage(senderPsid, `[✓] Trạng thái template: ${setupRes.message}. Đang gửi tin nhắn mẫu...`);
+    } else {
+      await messenger.sendTextMessage(senderPsid, `[⚠️] Không thể kiểm tra/tạo template: ${setupRes.error}. Vẫn thử gửi...`);
+    }
+
     try {
       await messenger.sendUtilityMessage(
         senderPsid,
         "ACCOUNT_UPDATE",
         ["[UFL Bot] Thông báo: Đây là tin nhắn thử nghiệm tính năng Pages Utility Messaging (Proactive Notification)."]
       );
-      await messenger.sendTextMessage(senderPsid, "[✓] Đã gọi API gửi Utility Template. Hãy kiểm tra xem bạn có nhận được tin nhắn mẫu từ bot không. Nếu có, Meta App Dashboard sẽ ghi nhận 1/1 lệnh gọi API.");
+      await messenger.sendTextMessage(senderPsid, "[✓] Đã gọi API gửi Utility Template thành công! Hãy kiểm tra xem bạn có nhận được tin nhắn mẫu từ bot không. Nếu có, Meta App Dashboard sẽ ghi nhận 1/1 lệnh gọi API.");
     } catch (e) {
       await messenger.sendTextMessage(senderPsid, `[X] Gửi Utility Template thất bại: ${e.message}`);
     }
