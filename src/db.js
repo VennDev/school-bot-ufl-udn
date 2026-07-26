@@ -219,6 +219,15 @@ module.exports = {
     );
   },
 
+  // Clear a single scraped page field (for /testpage retry)
+  async clearScrapedPage(fbId, dbKey) {
+    await ensureInit();
+    await ScrapedData.findOneAndUpdate(
+      { fb_id: fbId },
+      { $set: { [dbKey]: null, updated_at: Date.now() } }
+    );
+  },
+
   async logChange(fbId, type, content) {
     await ensureInit();
     await ChangeLog.create({ fb_id: fbId, type, content });

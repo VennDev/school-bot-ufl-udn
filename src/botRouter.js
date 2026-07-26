@@ -3,6 +3,7 @@ const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { askAI } = require("./ai");
 const { calculateGPA, extractGPA, extractDRL, getAcademicEvaluation, getScholarshipAndActivityAdvice } = require("./gpaHelper");
+const { PAGES } = require("./pages");
 const { exec } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -359,6 +360,73 @@ async function handleMessage(senderPsid, messageText) {
 
   console.log(`[botRouter] Received message from "${senderPsid}": "${text}" (Normalized: "${normalizedLowerText}")`);
   console.log(`[botRouter] Database user check: ${user ? `Found user "${user.username}"` : "User not found"}`);
+
+  // Handle Pages status command
+  if (normalizedLowerText === "/pages" || normalizedLowerText === "pages" || normalizedLowerText === "trang") {
+    if (!user) {
+      return messenger.sendTextMessage(senderPsid, "Bạn chưa kết nối tài khoản. Vui lòng gõ /login để đăng nhập.");
+    }
+    const data = await db.getScrapedData(senderPsid) || {};
+    const keyMap = {
+      canh_bao: "Cảnh báo", thong_tin_sv: "Hồ sơ SV", ket_qua_hoc_tap: "Điểm số",
+      diem_ren_luyen: "Điểm rèn luyện", lich_thi: "Lịch thi", hoc_bong_ktkl: "HB/KT/KL",
+      lich_hoc: "Lịch học", hoc_phi: "Học phí"
+    };
+    let txt = `📋 TRẠNG THÁI DỮ LIỆU (${Object.values(keyMap).length} mục):\n`;
+    let done = 0;
+    for (const [dbKey, label] of Object.entries(keyMap)) {
+      const has = !!data[dbKey];
+      if (has) done++;
+      txt += `\n${has ? "✅" : "❌"} ${label}`;
+    }
+    txt += `\n\nHoàn thành: ${done}/${Object.keys(keyMap).length}`;
+    if (done < Object.keys(keyMap).length) {
+      txt += `\nGõ /sync để đồng bộ các mục còn thiếu.`;
+      txt += `\nGõ /testpage <tên> để kiểm tra lại một mục.`;
+    }
+    return messenger.sendTextMessage(senderPsid, txt);
+  }
+
+  // Handle Test single page command
+  if (normalizedLowerText.startsWith("/testpage") || normalizedLowerText.startsWith("testpage")) {
+    if (!user) {
+      return messenger.sendTextMessage(senderPsid, "Bạn chưa kết nối tài khoản. Vui lòng gõ /login để đăng nhập.");
+    }
+    const keyMap = {
+      "canhbao": "canh_bao", "cảnh báo": "canh_bao", "canh bao": "canh_bao",
+      "thongtinsv": "thong_tin_sv", "hồ sơ": "thong_tin_sv", "ho so": "thong_tin_sv", "thông tin": "thong_tin_sv",
+      "diem": "ket_qua_hoc_tap", "điểm": "ket_qua_hoc_tap", "ketqua": "ket_qua_hoc_tap", "kết quả": "ket_qua_hoc_tap",
+      "diemrenluyen": "diem_ren_luyen", "điểm rèn luyện": "diem_ren_luyen", "drl": "diem_ren_luyen",
+      "lichthi": "lich_thi", "lịch thi": "lich_thi", "thi": "lich_thi",
+      "hocbong": "hoc_bong_ktkl", "học bổng": "hoc_bong_ktkl", "khen thưởng": "hoc_bong_ktkl",
+      "lichhoc": "lich_hoc", "lịch học": "lich_hoc", "thời khóa biểu": "lich_hoc",
+      "hocphi": "hoc_phi", "học phí": "hoc_phi", "tài chính": "hoc_phi"
+    };
+    const arg = text.replace(/\/testpage\s*/i, "").replace(/testpage\s*/i, "").trim().toLowerCase();
+    const dbKey = keyMap[arg];
+    if (!dbKey) {
+      const validKeys = [...new Set(Object.values(keyMap))].join(", ");
+      return messenger.sendTextMessage(senderPsid, `Không rõ mục cần kiểm tra. Dùng: /testpage <tên>\nCác mục: ${validKeys}\nVí dụ: /testpage điểm, /testpage lịch học`);
+    }
+    // Clear just that page's data, then trigger sync
+    await db.clearScrapedPage(senderPsid, dbKey);
+    await messenger.sendTextMessage(senderPsid, `Đã xóa dữ liệu cũ của mục "${arg}". Đang chạy đồng bộ lại...`);
+    if (scrapingInProgress.has(senderPsid)) {
+      return messenger.sendTextMessage(senderPsid, "Đang có quá trình đồng bộ khác chạy. Vui lòng đợi...");
+    }
+    scrapingInProgress.add(senderPsid);
+    const scraperPath = path.resolve(__dirname, "./scrape.js");
+    const execCmd = `node "${scraperPath}" --account="${user.username.replace(/"/g, '\\"')}"`;
+    exec(execCmd, (err) => {
+      scrapingInProgress.delete(senderPsid);
+      if (err) {
+        messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ thất bại.");
+      } else {
+        messenger.sendTextMessage(senderPsid, `[✓] Đã đồng bộ xong mục "${arg}". Gõ /pages để kiểm tra.`);
+      }
+    });
+    return;
+  }
 
   // Handle Sync command
   if (normalizedLowerText === "/sync" || normalizedLowerText === "đồng bộ" || normalizedLowerText === "sync") {
