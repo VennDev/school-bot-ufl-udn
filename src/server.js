@@ -471,7 +471,14 @@ app.post("/webhook", async (req, res) => {
         }
 
         // Fire and forget (asynchronously) without blocking the thread
-        if (webhook_event.message) {
+        if (webhook_event.optin && webhook_event.optin.type === "one_time_notif_req") {
+          const token = webhook_event.optin.one_time_notif_token;
+          const topic = webhook_event.optin.payload || "ACCOUNT_UPDATE";
+          db.saveOtnToken(sender_psid, token, topic).then(() => {
+            console.log(`[webhook] Saved OTN token for ${sender_psid} on topic ${topic}`);
+            messenger.sendTextMessage(sender_psid, "✓ Đã đăng ký thành công! Hệ thống sẽ tự động thông báo khi có điểm mới hoặc cập nhật học vụ.");
+          }).catch(console.error);
+        } else if (webhook_event.message) {
           handleMessage(sender_psid, webhook_event.message).catch(console.error);
         } else if (webhook_event.postback) {
           handlePostback(sender_psid, webhook_event.postback).catch(console.error);

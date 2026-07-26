@@ -289,6 +289,15 @@ async function scrapeAccount(account, torIdx, useTor, silent = false) {
         { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
         { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
       ]);
+
+      // Prompt user to grant first OTN Token for 24h bypass
+      setTimeout(async () => {
+        try {
+          await messenger.sendOtnRequest(account.fb_id, "Đăng ký nhận thông báo GPA & Điểm mới tự động", "ACCOUNT_UPDATE");
+        } catch (e) {
+          console.error("[scrape] Failed to send OTN request:", e.message);
+        }
+      }, 2000);
     }
   }
 

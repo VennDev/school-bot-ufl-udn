@@ -119,7 +119,45 @@ async function getAdminDerivedPageToken() {
   return null;
 }
 
+// Send message using Meta One-Time Notification Token (bypasses 24h limit)
+async function callSendOtnMessage(otnToken, textContent) {
+  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
+
+  const body = {
+    recipient: { one_time_notif_token: otnToken },
+    message: { text: textContent }
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.error) {
+    console.error("[messenger] FB OTN Error details:", JSON.stringify(data.error));
+    throw new Error(`FB OTN Error (${data.error.code}): ${data.error.message}`);
+  }
+  return data;
+}
+
+// Send One-Time Notification Request button to student
+async function sendOtnRequest(sender_psid, title = "Nhận thông báo điểm mới & học vụ", payload = "NOTIFY_GPA") {
+  return callSendAPI(sender_psid, {
+    attachment: {
+      type: "template",
+      payload: {
+        template_type: "one_time_notif_req",
+        title: title.substring(0, 65), // FB caps title to 65 chars
+        payload: payload
+      }
+    }
+  });
+}
+
 // Preferred API: multi-tier waterfall sender for proactive notifications.
+// Tier 0: Meta One-Time Notification Token (100% compliant, bypasses 24h).
 // Tier 1: Try 24h window RESPONSE message (100% success if user chatted recently).
 // Tier 2: Try Admin-derived Page Token (from fb_user_token via /me/accounts) with HUMAN_AGENT tag (7-day window) & CONFIRMED_EVENT_UPDATE tag.
 // Tier 3: Try Default Page Token with CONFIRMED_EVENT_UPDATE tag.
@@ -127,6 +165,19 @@ async function getAdminDerivedPageToken() {
 async function sendUtilityMessage(sender_psid, templateName, params = []) {
   const textContent = Array.isArray(params) ? params.join("\n") : String(params);
   const msgObj = { text: textContent };
+
+  // Tier 0: One-Time Notification Token (OTN)
+  try {
+    const otnToken = await db.getAndConsumeOtnToken(sender_psid, templateName);
+    if (otnToken) {
+      console.log(`[messenger] Tier 0: Found OTN token for ${sender_psid}! Sending via OTN...`);
+      const otnRes = await callSendOtnMessage(otnToken, textContent);
+      console.log(`[messenger] Tier 0 (OTN) succeeded!`);
+      return otnRes;
+    }
+  } catch (otnErr) {
+    console.warn(`[messenger] Tier 0 (OTN) failed: ${otnErr.message}. Moving to Tier 1...`);
+  }
 
   // Tier 1: Standard RESPONSE message (inside 24h window)
   console.log(`[messenger] Tier 1: Trying 24h RESPONSE message to ${sender_psid}...`);
@@ -232,6 +283,7 @@ async function ensureUtilityTemplateCreated() {
 module.exports = {
   sendTextMessage,
   sendUtilityMessage,     // proactive notifications via Utility Templates
+  sendOtnRequest,         // request OTN token
   ensureUtilityTemplateCreated,
   UTILITY_TEMPLATES,      // template name constants
   sendButtons,

@@ -99,6 +99,12 @@ const interactionSchema = new mongoose.Schema({
   payload: String,
 }, { timestamps: true });
 
+const otnTokenSchema = new mongoose.Schema({
+  fb_id: { type: String, required: true },
+  token: { type: String, unique: true, required: true },
+  topic: { type: String, required: true },
+}, { timestamps: true });
+
 const regNodeSchema = new mongoose.Schema({
   title: String,
   category: { type: String, index: true },
@@ -113,7 +119,7 @@ regNodeSchema.index({ content: "text", title: "text" });
 
 // ---------- Models ----------
 
-let User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode;
+let User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode, OtnToken;
 
 function initModels() {
   User = mongoose.model("User", userSchema);
@@ -125,6 +131,7 @@ function initModels() {
   SystemSetting = mongoose.model("SystemSetting", systemSettingSchema);
   Interaction = mongoose.model("Interaction", interactionSchema);
   RegNode = mongoose.model("RegNode", regNodeSchema);
+  OtnToken = mongoose.model("OtnToken", otnTokenSchema);
 }
 
 // ---------- Lazy init ----------
@@ -378,9 +385,38 @@ module.exports = {
 
   async deleteRecord(modelName, id) {
     await ensureInit();
-    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode };
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode, OtnToken };
     const Model = models[modelName];
     if (!Model) throw new Error("Model not found");
     await Model.findByIdAndDelete(id);
+  },
+
+  // ---------- OTN Token Helpers ----------
+  async saveOtnToken(fbId, token, topic) {
+    await ensureInit();
+    await OtnToken.findOneAndUpdate(
+      { token },
+      { fb_id: fbId, token, topic },
+      { upsert: true }
+    );
+  },
+
+  async getAndConsumeOtnToken(fbId, topic) {
+    await ensureInit();
+    // Try to find a token specifically for this topic first, otherwise fall back to any topic
+    let doc = await OtnToken.findOne({ fb_id: fbId, topic }).sort({ createdAt: 1 });
+    if (!doc) {
+      doc = await OtnToken.findOne({ fb_id: fbId }).sort({ createdAt: 1 });
+    }
+    if (doc) {
+      await OtnToken.deleteOne({ _id: doc._id });
+      return doc.token;
+    }
+    return null;
+  },
+
+  async getOtnTokenCount(fbId) {
+    await ensureInit();
+    return OtnToken.countDocuments({ fb_id: fbId });
   }
 };

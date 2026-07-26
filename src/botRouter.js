@@ -479,6 +479,16 @@ async function handleMessage(senderPsid, messageText) {
   if (normalizedLowerText === "/menu" || normalizedLowerText === "menu" || normalizedLowerText === "xem menu" || normalizedLowerText === "cho xem menu") {
     const s = await db.getSettings(senderPsid);
     const menuText = "📚 MENU CHỨC NĂNG UFL BOT\nChọn phím tắt bên dưới để tra cứu nhanh thông tin học vụ của bạn hoặc hỏi các câu hỏi mẫu:";
+    
+    // Check OTN token count and prompt user to replenish if count is 0
+    db.getOtnTokenCount(senderPsid).then((count) => {
+      if (count === 0) {
+        setTimeout(() => {
+          messenger.sendOtnRequest(senderPsid, "Đăng ký nhận thông báo GPA & Điểm mới tự động (Ngoài 24h)", "ACCOUNT_UPDATE").catch(() => {});
+        }, 1500);
+      }
+    }).catch(() => {});
+
     return messenger.sendButtons(senderPsid, menuText, [
       {
         type: "postback",
