@@ -306,6 +306,23 @@ function formatTienDo(scrapedData) {
   return txt;
 }
 
+// Detect if input looks like a natural language chat question (not a credential)
+function isNaturalLanguageQuestion(text) {
+  const t = text.trim();
+  // Must have spaces — student IDs and passwords typically don't
+  if (!t.includes(" ")) return false;
+  const words = t.split(/\s+/).filter(w => w.length >= 2);
+  if (words.length < 2) return false;
+  // Vietnamese question/sentence markers
+  const questionMarkers = /[?？]|gì|nào|sao|không|bao nhiêu|làm sao|như thế nào|ở đâu|khi nào|ai\b|hỏi|cho\b|tôi|mình|bạn|em|anh|chị|giúp|hướng dẫn|cách|muốn|học\b|thi\b|điểm|học phí|lịch|quy chế|\blà\b/i;
+  const hasDiacritics = /[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
+  // Long text with spaces is likely chat
+  if (t.length > 30) return true;
+  // Has question markers or Vietnamese diacritics with multiple words
+  if ((questionMarkers.test(t) || hasDiacritics.test(t)) && words.length >= 2) return true;
+  return false;
+}
+
 async function handleMessage(senderPsid, messageText) {
   const text = messageText.trim();
 
@@ -518,22 +535,22 @@ async function handleMessage(senderPsid, messageText) {
     const session = loginSessions.get(senderPsid);
     console.log(`[botRouter] Login State Machine. Current session for "${senderPsid}":`, session);
     
-    // If not in login session and doesn't trigger explicit /login, do not proceed with login state machine
-    if (!session && normalizedLowerText !== "/login") {
-      return messenger.sendButtons(senderPsid, "Xin chào! Mình có thể giúp gì cho bạn?\nĐể bắt đầu sử dụng, vui lòng đăng nhập tài khoản sinh viên UFL.", [
-        {
-          type: "postback",
-          title: "Đăng nhập ngay",
-          payload: "LOGIN_POSTBACK"
-        }
-      ]);
-    }
-    
     if (session) {
       if (session.step === "AWAITING_USERNAME") {
         console.log(`[botRouter] Login State Machine: AWAITING_USERNAME -> username "${text}" received.`);
-        // Validate student code format (simple digit check or basic length check to reject garbage strings)
+        // If input looks like a natural language question, fallback to AI
         if (!/^\d+$/.test(text)) {
+          if (isNaturalLanguageQuestion(text)) {
+            loginSessions.delete(senderPsid);
+            // Fall through to AI below — load system prompt and ask
+            let fallbackPrompt = "";
+            try {
+              fallbackPrompt = fs.readFileSync(path.resolve(__dirname, "../rules.txt"), "utf8");
+            } catch (e) { /* use empty */ }
+            await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
+            const reply = await askAI(fallbackPrompt, text);
+            return messenger.sendTextMessage(senderPsid, reply);
+          }
           return messenger.sendTextMessage(senderPsid, "Mã sinh viên không hợp lệ. Vui lòng nhập lại (chỉ gồm các chữ số):");
         }
         session.username = text;
@@ -543,13 +560,24 @@ async function handleMessage(senderPsid, messageText) {
       }
 
       if (session.step === "AWAITING_PASSWORD") {
+        // If input looks like a natural language question, fallback to AI
+        if (isNaturalLanguageQuestion(text)) {
+          loginSessions.delete(senderPsid);
+          let fallbackPrompt = "";
+          try {
+            fallbackPrompt = fs.readFileSync(path.resolve(__dirname, "../rules.txt"), "utf8");
+          } catch (e) { /* use empty */ }
+          await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
+          const reply = await askAI(fallbackPrompt, text);
+          return messenger.sendTextMessage(senderPsid, reply);
+        }
         // Allow user to cancel login flow
         const cancelKeywords = ["không", "hủy", "cancel", "thoát", "dừng", "/logout", "ko", "k", "no"];
         if (cancelKeywords.includes(text.toLowerCase().trim())) {
           loginSessions.delete(senderPsid);
           return messenger.sendTextMessage(senderPsid, "Đã hủy đăng nhập. Gõ /login để thử lại khi cần.");
         }
-        // Reject empty or obviously invalid passwords (questions, refusals)
+        // Reject empty or obviously invalid passwords
         if (!text.trim() || text.trim().length < 2) {
           return messenger.sendTextMessage(senderPsid, "Mật khẩu không được để trống. Vui lòng nhập mật khẩu cổng sinh viên, hoặc gõ 'hủy' để thoát:");
         }
@@ -606,6 +634,17 @@ async function handleMessage(senderPsid, messageText) {
         });
         return;
       }
+    }
+
+    // If not in login session and doesn't trigger explicit /login, do not proceed with login state machine
+    if (!session && normalizedLowerText !== "/login") {
+      return messenger.sendButtons(senderPsid, "Xin chào! Mình có thể giúp gì cho bạn?\nĐể bắt đầu sử dụng, vui lòng đăng nhập tài khoản sinh viên UFL.", [
+        {
+          type: "postback",
+          title: "Đăng nhập ngay",
+          payload: "LOGIN_POSTBACK"
+        }
+      ]);
     }
   }
 
