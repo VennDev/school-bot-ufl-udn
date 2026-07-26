@@ -71,6 +71,41 @@
           </button>
           <p class="text-xs text-gray-500 text-center">Kích hoạt scraper qua Tor cho toàn bộ user đang lưu trong cơ sở dữ liệu.</p>
         </div>
+
+        <!-- Test Notification Panel -->
+        <div class="bg-white p-6 rounded-lg shadow-md space-y-4 border-l-4 border-orange-400">
+          <h3 class="text-lg font-semibold text-gray-700">[!] Kiểm tra thông báo</h3>
+          <p class="text-xs text-gray-500">Xóa một trang dữ liệu → đồng bộ lần 1 (điền dữ liệu, không báo) → đồng bộ lần 2 (so sánh baseline, có báo nếu web đổi).</p>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Mã sinh viên</label>
+              <input type="text" id="test-username" placeholder="VD: 411230510" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Trang cần xóa & đồng bộ lại</label>
+              <select id="test-page" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+                <option value="diem">Điểm số (ket_qua_hoc_tap)</option>
+                <option value="lichthi">Lịch thi (lich_thi)</option>
+                <option value="canhbao">Cảnh báo học vụ (canh_bao)</option>
+                <option value="lichhoc">Lịch học (lich_hoc)</option>
+                <option value="hocphi">Học phí (hoc_phi)</option>
+                <option value="thongtinsv">Hồ sơ SV (thong_tin_sv)</option>
+                <option value="diemrenluyen">Điểm rèn luyện (diem_ren_luyen)</option>
+                <option value="hocbong">Học bổng/KT/KL (hoc_bong_ktkl)</option>
+              </select>
+            </div>
+            <div class="flex space-x-2">
+              <button onclick="testClearAndSync()" class="flex-1 bg-orange-500 text-white font-medium py-2 rounded hover:bg-orange-600 transition shadow text-sm">
+                Bước 1: Xóa + Sync
+              </button>
+              <button onclick="testSyncOnly()" class="flex-1 bg-blue-600 text-white font-medium py-2 rounded hover:bg-blue-700 transition shadow text-sm">
+                Bước 2: Sync lại (so sánh)
+              </button>
+            </div>
+            <p class="text-xs text-gray-400">Bước 1 xóa trang → sync điền dữ liệu (first-sync guard chặn báo). Bước 2 sync lại, baseline đã có dữ liệu → phát hiện thay đổi nếu web có điểm mới.</p>
+          </div>
+          <p id="test-result" class="text-xs text-gray-600 hidden"></p>
+        </div>
       </div>
 
       <!-- Right Panel: User List -->
@@ -472,6 +507,7 @@
             </span>
           </td>
           <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+            <button onclick="testNotifyUser('${u.username}', this)" class="text-orange-500 hover:text-orange-700 mr-3" title="Sửa nhẹ điểm, sync, kiểm tra có alert không">Test Notify</button>
             <button onclick="syncSingleUser('${u.username}')" class="text-blue-600 hover:text-blue-900 mr-3">Sync</button>
             <button onclick="deleteUser('${u.fb_id}')" class="text-red-600 hover:text-red-900">Xóa</button>
           </td>
@@ -557,6 +593,79 @@
       alert(data.message);
     }
 
+    async function testNotifyUser(username, btnEl) {
+      if (!confirm(`Test thông báo cho ${username}?\n\nBot sẽ sửa nhẹ 1 điểm trong DB, sync từ web, và kiểm tra xem change-detector có gửi alert không.`)) return;
+
+      const originalText = btnEl.innerText;
+      btnEl.innerText = '...';
+      btnEl.disabled = true;
+
+      try {
+        // Step 1: tamper data + trigger sync
+        const res1 = await fetch('/api/admin/test-notify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ username })
+        });
+        const data1 = await res1.json();
+        if (!data1.success) {
+          alert(`[X] ${data1.error}`);
+          btnEl.innerText = originalText;
+          btnEl.disabled = false;
+          return;
+        }
+
+        btnEl.innerText = 'Đợi...';
+
+        // Step 2: poll for result (up to 10 tries, 5s apart)
+        let result = null;
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 5000));
+          const res2 = await fetch(`/api/admin/test-notify-result?username=${encodeURIComponent(username)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data2 = await res2.json();
+          if (data2.status === 'ok') {
+            result = { success: true, alert: data2.lastAlert };
+            break;
+          } else if (data2.status === 'fail') {
+            result = { success: false };
+            break;
+          }
+          // status === 'running' → keep polling
+          btnEl.innerText = `${data2.elapsed || '...'}s`;
+        }
+
+        if (result && result.success) {
+          btnEl.innerText = '✓ OK';
+          btnEl.className = 'text-green-600 hover:text-green-800 mr-3 font-bold';
+          alert(`[✓] THÀNH CÔNG! Alert đã được gửi:\n\n${result.alert.content}\n\nThời gian: ${new Date(result.alert.time).toLocaleTimeString("vi-VN")}`);
+        } else if (result && !result.success) {
+          btnEl.innerText = '✗ Fail';
+          btnEl.className = 'text-red-600 hover:text-red-800 mr-3 font-bold';
+          alert(`[X] THẤT BẠI: Scraper chạy xong nhưng không có alert nào được tạo.\n\nPipeline thông báo có thể đang bị lỗi (changeDetector, messenger, hoặc first-sync guard).`);
+        } else {
+          btnEl.innerText = '⏱ Timeout';
+          btnEl.className = 'text-yellow-600 hover:text-yellow-800 mr-3';
+          alert(`[⚠️] Timeout sau 50s. Scraper có thể đang bị kẹt hoặc web trường không phản hồi.`);
+        }
+      } catch (e) {
+        btnEl.innerText = originalText;
+        btnEl.disabled = false;
+        alert(`[X] Lỗi: ${e.message}`);
+      }
+
+      btnEl.disabled = false;
+      // Reset button style after 5s
+      setTimeout(() => {
+        btnEl.innerText = originalText;
+        btnEl.className = 'text-orange-500 hover:text-orange-700 mr-3';
+      }, 5000);
+    }
+
     async function deleteUser(fbId) {
       if (!confirm("Xác nhận xóa tài khoản người dùng và tất cả dữ liệu?")) return;
       await fetch(`/api/admin/delete-user?fb_id=${fbId}`, {
@@ -564,6 +673,79 @@
         headers: { 'Authorization': `Bearer ${token}` }
       });
       loadStats();
+    }
+
+    async function testClearAndSync() {
+      const username = document.getElementById('test-username').value.trim();
+      const page = document.getElementById('test-page').value;
+      const resultEl = document.getElementById('test-result');
+
+      if (!username) {
+        resultEl.className = 'text-xs text-red-600';
+        resultEl.classList.remove('hidden');
+        resultEl.innerText = 'Vui lòng nhập mã sinh viên.';
+        return;
+      }
+
+      resultEl.className = 'text-xs text-blue-600';
+      resultEl.classList.remove('hidden');
+      resultEl.innerText = '[Bước 1] Đang xóa dữ liệu cũ và đồng bộ lần 1 (điền dữ liệu, không báo do first-sync guard)...';
+
+      try {
+        const res = await fetch('/api/admin/clear-page', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ username, page })
+        });
+        const data = await res.json();
+        if (data.success) {
+          resultEl.className = 'text-xs text-green-600';
+          resultEl.innerText = `[✓] Bước 1 hoàn tất: ${data.message} Đợi ~30s rồi nhấn "Bước 2: Sync lại" để test thông báo.`;
+        } else {
+          resultEl.className = 'text-xs text-red-600';
+          resultEl.innerText = `[X] ${data.error || data.message}`;
+        }
+      } catch (e) {
+        resultEl.className = 'text-xs text-red-600';
+        resultEl.innerText = `[X] Lỗi kết nối: ${e.message}`;
+      }
+    }
+
+    async function testSyncOnly() {
+      const username = document.getElementById('test-username').value.trim();
+      const resultEl = document.getElementById('test-result');
+
+      if (!username) {
+        resultEl.className = 'text-xs text-red-600';
+        resultEl.classList.remove('hidden');
+        resultEl.innerText = 'Vui lòng nhập mã sinh viên.';
+        return;
+      }
+
+      resultEl.className = 'text-xs text-blue-600';
+      resultEl.classList.remove('hidden');
+      resultEl.innerText = '[Bước 2] Đang đồng bộ lần 2 (so sánh baseline vs dữ liệu mới từ web)...';
+
+      try {
+        const res = await fetch(`/api/admin/sync-user?username=${encodeURIComponent(username)}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          resultEl.className = 'text-xs text-green-600';
+          resultEl.innerText = `[✓] Bước 2 hoàn tất: ${data.message} Kiểm tra chatbot — nếu web có điểm mới, bot sẽ báo. Nếu không có thay đổi, bot sẽ không gửi gì (đúng).`;
+        } else {
+          resultEl.className = 'text-xs text-red-600';
+          resultEl.innerText = `[X] ${data.error || data.message}`;
+        }
+      } catch (e) {
+        resultEl.className = 'text-xs text-red-600';
+        resultEl.innerText = `[X] Lỗi kết nối: ${e.message}`;
+      }
     }
 
     function logout() {

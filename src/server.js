@@ -138,6 +138,164 @@ app.post("/api/admin/sync-user", requireAdmin, (req, res) => {
   res.json({ success: true, message: `Bắt đầu chạy scraper cho tài khoản ${username}.` });
 });
 
+// Per-user notify test: tweak one grade in DB, re-sync, verify change-log.
+// Admin clicks "Test Notify" → backend tampers old data → scraper detects "change" → notifies.
+app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
+  const { username } = req.body;
+  if (!username) return res.status(400).json({ error: "Missing username" });
+
+  const users = await db.getAllUsers();
+  const user = users.find(u => u.username === username);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const fbId = user.fb_id;
+  const data = await db.getScrapedData(fbId);
+  if (!data || !data.ket_qua_hoc_tap) {
+    return res.status(400).json({ error: "User chưa có dữ liệu điểm. Hãy sync lần đầu trước." });
+  }
+
+  // Parse current grades, tweak one score to simulate "old data"
+  let grades;
+  try {
+    grades = JSON.parse(data.ket_qua_hoc_tap);
+  } catch {
+    return res.status(400).json({ error: "Dữ liệu điểm bị hỏng, không parse được JSON." });
+  }
+
+  const targetTable = grades.find(t => t.headers?.some(h => h.includes("Tên học phần")));
+  if (!targetTable || !targetTable.rows || !targetTable.rows.length) {
+    return res.status(400).json({ error: "Không tìm thấy bảng điểm có cột 'Tên học phần'." });
+  }
+
+  // Tweak: flip the first course's score so change-detector fires
+  const row = targetTable.rows[0];
+  const originalScore = row[6];
+  const tweakedScore = (parseFloat(originalScore) || 5) >= 9 ? "1.0" : "9.9";
+  row[6] = tweakedScore;
+
+  // Save tampered data as the new DB baseline
+  await db.saveScrapedData(fbId, {
+    canh_bao: data.canh_bao,
+    thong_tin_sv: data.thong_tin_sv,
+    ket_qua_hoc_tap: JSON.stringify(grades),
+    diem_ren_luyen: data.diem_ren_luyen,
+    lich_thi: data.lich_thi,
+    hoc_bong_ktkl: data.hoc_bong_ktkl,
+    lich_hoc: data.lich_hoc,
+    hoc_phi: data.hoc_phi,
+  });
+
+  // Record test timestamp so result endpoint knows which alert is ours
+  const testKey = `test_notify_ts_${username}`;
+  const beforeTs = Date.now();
+  await db.saveSystemSetting(testKey, String(beforeTs));
+
+  // Trigger scraper — it will compare tampered baseline vs real web data → detects "change"
+  const scraperPath = path.resolve(__dirname, "./scrape.js");
+
+  exec(`node ${scraperPath} --account=${username}`, async (err) => {
+    if (err) {
+      console.error(`[admin-test-notify] Scraper failed for ${username}:`, err.message);
+      return;
+    }
+
+    // Check ChangeLog for a new alert after the sync
+    const logs = await db.getChangeLogs(fbId, 5);
+    const newAlert = logs.find(l => l.type === "alert" && new Date(l.createdAt).getTime() > beforeTs);
+
+    if (newAlert) {
+      console.log(`[admin-test-notify] SUCCESS for ${username}: alert logged: ${newAlert.content?.substring(0, 100)}`);
+      await db.saveSystemSetting(testKey, `ok_${Date.now()}`);
+    } else {
+      console.log(`[admin-test-notify] WARNING for ${username}: no alert found after sync.`);
+      await db.saveSystemSetting(testKey, `fail_${Date.now()}`);
+    }
+  });
+
+  res.json({
+    success: true,
+    message: `Đã sửa điểm môn "${row[2]}" từ ${originalScore} → ${tweakedScore}. Đang chạy sync... Kiểm tra ChangeLog sau ~30s.`,
+    detail: { course: row[2], original: originalScore, tweaked: tweakedScore },
+  });
+});
+
+// Check latest test-notify result for a user
+app.get("/api/admin/test-notify-result", requireAdmin, async (req, res) => {
+  const { username } = req.query;
+  if (!username) return res.status(400).json({ error: "Missing username" });
+
+  const users = await db.getAllUsers();
+  const user = users.find(u => u.username === username);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const testKey = `test_notify_ts_${username}`;
+  const testState = await db.getSystemSetting(testKey, "");
+
+  if (!testState) {
+    return res.json({ success: true, status: "not_started", lastAlert: null });
+  }
+
+  if (testState.startsWith("ok_") || testState.startsWith("fail_")) {
+    const logs = await db.getChangeLogs(user.fb_id, 3);
+    const lastAlert = logs.find(l => l.type === "alert");
+    return res.json({
+      success: true,
+      status: testState.startsWith("ok_") ? "ok" : "fail",
+      lastAlert: lastAlert ? {
+        content: lastAlert.content,
+        time: lastAlert.createdAt,
+      } : null,
+    });
+  }
+
+  // testState is a numeric timestamp → test still running
+  const elapsed = Math.round((Date.now() - parseInt(testState)) / 1000);
+  res.json({ success: true, status: "running", elapsed });
+});
+
+// Simulate test: clear one page from a user's scraped data, then re-sync.
+// Used to verify change-detection + notification pipeline from admin UI.
+app.post("/api/admin/clear-page", requireAdmin, async (req, res) => {
+  const { username, page } = req.body;
+  if (!username || !page) return res.status(400).json({ error: "Missing username or page" });
+
+  // Map page key to DB column name (same as /testpage in botRouter)
+  const keyMap = {
+    "canhbao": "canh_bao", "canh_bao": "canh_bao",
+    "thongtinsv": "thong_tin_sv", "thong_tin_sv": "thong_tin_sv",
+    "diem": "ket_qua_hoc_tap", "ket_qua_hoc_tap": "ket_qua_hoc_tap",
+    "diemrenluyen": "diem_ren_luyen", "diem_ren_luyen": "diem_ren_luyen",
+    "lichthi": "lich_thi", "lich_thi": "lich_thi",
+    "hocbong": "hoc_bong_ktkl", "hoc_bong_ktkl": "hoc_bong_ktkl",
+    "lichhoc": "lich_hoc", "lich_hoc": "lich_hoc",
+    "hocphi": "hoc_phi", "hoc_phi": "hoc_phi",
+  };
+  const dbKey = keyMap[page.toLowerCase()];
+  if (!dbKey) {
+    return res.status(400).json({ error: `Unknown page: ${page}. Valid: diem, lichthi, canhbao, lichhoc, hocphi, thongtinsv, diemrenluyen, hocbong` });
+  }
+
+  // Find user by username
+  const users = await db.getAllUsers();
+  const user = users.find(u => u.username === username);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  // Clear the page
+  await db.clearScrapedPage(user.fb_id, dbKey);
+  console.log(`[admin] Cleared page "${page}" (${dbKey}) for user ${username}`);
+
+  // Trigger re-sync
+  const scraperPath = path.resolve(__dirname, "./scrape.js");
+  exec(`node ${scraperPath} --account=${username}`, (err) => {
+    if (err) console.error(`[admin-clear-page] Re-sync for ${username} failed:`, err.message);
+  });
+
+  res.json({
+    success: true,
+    message: `Đã xóa dữ liệu mục "${page}" (${dbKey}) của ${username}. Đang chạy đồng bộ lại...`,
+  });
+});
+
 app.post("/api/admin/delete-user", requireAdmin, async (req, res) => {
   const { fb_id } = req.query;
   if (!fb_id) return res.status(400).json({ error: "Missing fb_id" });
