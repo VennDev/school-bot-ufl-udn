@@ -430,13 +430,19 @@ async function handleMessage(senderPsid, messageText) {
 
   // Handle Test Utility Messaging API call
   if (normalizedLowerText === "/testutility" || normalizedLowerText === "test utility" || normalizedLowerText === "test utility messaging") {
-    await messenger.sendTextMessage(senderPsid, "Đang gửi tin nhắn thử nghiệm qua API Utility Message Tag (ACCOUNT_UPDATE)...");
+    await messenger.sendTextMessage(senderPsid, "Đang kiểm tra/khởi tạo Utility Template trên Facebook Page...");
+    const setupRes = await messenger.ensureUtilityTemplateCreated();
+    if (setupRes.success) {
+      await messenger.sendTextMessage(senderPsid, `[✓] Trạng thái template: ${setupRes.message}. Đang gửi tin nhắn...`);
+    } else {
+      await messenger.sendTextMessage(senderPsid, `[⚠️] Lưu ý template: ${setupRes.error}. Đang thử gửi...`);
+    }
 
     try {
       const resData = await messenger.sendUtilityMessage(
         senderPsid,
         "ACCOUNT_UPDATE",
-        ["[UFL Bot] Thông báo thử nghiệm: Đây là tin nhắn Utility Tag ACCOUNT_UPDATE gửi ngoài cửa sổ 24h."]
+        ["[UFL Bot] Thông báo thử nghiệm: Đây là tin nhắn Utility Template gửi qua Facebook Messenger API."]
       );
       await messenger.sendTextMessage(
         senderPsid,
