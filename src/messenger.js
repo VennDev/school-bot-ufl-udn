@@ -102,13 +102,15 @@ async function getAdminDerivedPageToken() {
     const url = `https://graph.facebook.com/v21.0/me/accounts?access_token=${userToken}`;
     const res = await fetch(url);
     const data = await res.json();
-    if (data.data && Array.isArray(data.data)) {
-      const match = pageId ? data.data.find(p => p.id === pageId) : data.data[0];
+    if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+      let match = pageId ? data.data.find(p => p.id === pageId) : null;
+      if (!match) {
+        // Fall back to first managed page if pageId was wrong or set to App ID
+        match = data.data[0];
+      }
       if (match && match.access_token) {
-        console.log(`[messenger] Successfully derived Page Access Token for Page "${match.name}" (${match.id}) from Admin User Token!`);
+        console.log(`[messenger] Derived Page Access Token for Page "${match.name}" (${match.id}) from Admin User Token!`);
         return match.access_token;
-      } else {
-        console.warn(`[messenger] Could not find matching Page ID (${pageId}) in user's managed pages:`, data.data.map(p => `${p.name}:${p.id}`).join(", "));
       }
     } else if (data.error) {
       console.warn("[messenger] Could not derive Page Token via /me/accounts:", data.error.message);
