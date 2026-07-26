@@ -8,6 +8,7 @@ const { exec } = require("child_process");
 const db = require("./db");
 const crypto = require("./crypto");
 const botRouter = require("./botRouter");
+const messenger = require("./messenger");
 const { startScheduler } = require("./cron");
 const { PAGES } = require("./pages");
 
@@ -530,4 +531,6 @@ async function handlePostback(sender_psid, received_postback) {
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  // Automatically subscribe Page to messaging_optins webhook on startup
+  messenger.ensurePageSubscribed().catch(console.error);
 });

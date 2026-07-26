@@ -282,10 +282,30 @@ async function ensureUtilityTemplateCreated() {
   return { success: true, message: "Sẵn sàng gửi Utility Message (messaging_type: UTILITY)" };
 }
 
+// Automatically force Meta to subscribe Page to messaging_optins via Graph API
+async function ensurePageSubscribed() {
+  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+  if (!pageToken) return;
+
+  try {
+    const url = `https://graph.facebook.com/v21.0/me/subscribed_apps?subscribed_fields=messages,messaging_postbacks,messaging_optins,message_reads,message_deliveries&access_token=${pageToken}`;
+    const res = await fetch(url, { method: "POST" });
+    const data = await res.json();
+    if (data.success) {
+      console.log("[messenger] ✓ Đã tự động kích hoạt quyền Webhook messaging_optins thành công trên Meta!");
+    } else {
+      console.warn("[messenger] Cảnh báo kích hoạt Webhook Page:", JSON.stringify(data));
+    }
+  } catch (e) {
+    console.error("[messenger] Lỗi kích hoạt Webhook Page:", e.message);
+  }
+}
+
 module.exports = {
   sendTextMessage,
   sendUtilityMessage,     // proactive notifications via Utility Templates
   sendOtnRequest,         // request OTN token
+  ensurePageSubscribed,   // auto-subscribe Page webhooks including messaging_optins
   ensureUtilityTemplateCreated,
   UTILITY_TEMPLATES,      // template name constants
   sendButtons,
