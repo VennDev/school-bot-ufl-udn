@@ -586,13 +586,15 @@ async function handleMessage(senderPsid, messageText) {
   if (normalizedLowerText === "/settings" || normalizedLowerText === "cài đặt") {
     console.log(`[botRouter] Processing settings view for "${senderPsid}"`);
     const s = await db.getSettings(senderPsid);
+    const tokenCount = await db.getOtnTokenCount(senderPsid);
     const textStatus = `[*] CÀI ĐẶT THÔNG BÁO CỦA BẠN:
 ~ GPA: ${s.notify_gpa ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle gpa)
 ~ Lịch học: ${s.notify_schedule ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle lich)
 ~ Lịch thi: ${s.notify_exam ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle thi)
 ~ Học phí: ${s.notify_tuition ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle hocphi)
 ~ Thông báo học vụ: ${s.notify_announcement ? "Bật [ON]" : "Tắt [OFF]"} (Gõ: toggle thongbao)
-~ Email: ${s.email || "Chưa có"} (Gõ: email <địa chỉ email>)`;
+~ Email: ${s.email || "Chưa có"} (Gõ: email <địa chỉ email>)
+~ Tin nhắn tự động dự phòng: ${tokenCount} lượt (Gõ /menu để lấy thêm)`;
     
     return messenger.sendQuickReplies(senderPsid, textStatus, [
       { title: "Toggle GPA", payload: "TOGGLE_GPA" },

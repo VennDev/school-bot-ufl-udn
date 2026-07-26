@@ -474,9 +474,10 @@ app.post("/webhook", async (req, res) => {
         if (webhook_event.optin && webhook_event.optin.type === "one_time_notif_req") {
           const token = webhook_event.optin.one_time_notif_token;
           const topic = webhook_event.optin.payload || "ACCOUNT_UPDATE";
-          db.saveOtnToken(sender_psid, token, topic).then(() => {
+          db.saveOtnToken(sender_psid, token, topic).then(async () => {
             console.log(`[webhook] Saved OTN token for ${sender_psid} on topic ${topic}`);
-            messenger.sendTextMessage(sender_psid, "✓ Đã đăng ký thành công! Hệ thống sẽ tự động thông báo khi có điểm mới hoặc cập nhật học vụ.");
+            const count = await db.getOtnTokenCount(sender_psid);
+            await messenger.sendTextMessage(sender_psid, `✓ Đăng ký nhận thông báo thành công!\n\n[i] Số tin nhắn tự động dự phòng hiện có: ${count} lượt (mỗi tin nhắn thông báo điểm sẽ tiêu hao 1 lượt).`);
           }).catch(console.error);
         } else if (webhook_event.message) {
           handleMessage(sender_psid, webhook_event.message).catch(console.error);
