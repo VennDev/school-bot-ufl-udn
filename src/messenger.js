@@ -42,24 +42,16 @@ async function callSendUtility(sender_psid, templateName, params = []) {
   const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
   const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
 
+  const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+
+  // Send via Messenger MESSAGE_TAG ACCOUNT_UPDATE (standard Meta Utility Message Tag)
   const body = {
     recipient: { id: sender_psid },
-    messaging_type: "UTILITY",
+    messaging_type: "MESSAGE_TAG",
+    tag: "ACCOUNT_UPDATE",
     message: {
-      template: {
-        name: templateName,
-        language: { code: "vi" },
-        components: [
-          {
-            type: "body",
-            parameters: params.map((text) => ({
-              type: "text",
-              text: String(text).substring(0, 2000),
-            })),
-          },
-        ],
-      },
-    },
+      text: textContent || "[UFL Bot] Thử nghiệm tin nhắn Utility (ACCOUNT_UPDATE)."
+    }
   };
 
   const res = await fetch(url, {
@@ -69,7 +61,7 @@ async function callSendUtility(sender_psid, templateName, params = []) {
   });
   const data = await res.json();
   if (data.error) {
-    throw new Error(`${data.error.message} (Code: ${data.error.code}, Subcode: ${data.error.error_subcode})`);
+    throw new Error(`FB Error (${data.error.code}): ${data.error.message}`);
   }
   return data;
 }
