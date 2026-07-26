@@ -108,33 +108,84 @@ async function sendTextMessage(sender_psid, text) {
   }
 }
 
+// Fallback method: Send message via Page Inbox API using Admin's User Access Token.
+// Bypasses the 24-hour limit without requiring App Review or Utility Templates,
+// by simulating a Page Admin replying in the Facebook Page Inbox thread.
+async function sendViaPageInbox(sender_psid, text) {
+  const userToken = await db.getSystemSetting("fb_user_token", process.env.FB_USER_TOKEN || "");
+  const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
+  
+  if (!userToken || !pageId) {
+    throw new Error("Chưa cấu hình FB User Token hoặc FB Page ID");
+  }
+
+  // 1. Find conversation thread ID for this PSID
+  const convUrl = `https://graph.facebook.com/v21.0/${pageId}/conversations?user_id=${sender_psid}&access_token=${userToken}`;
+  const convRes = await fetch(convUrl);
+  const convData = await convRes.json();
+  
+  if (convData.error) {
+    throw new Error(`Inbox Thread Search Error: ${convData.error.message}`);
+  }
+  
+  const thread = convData.data?.[0];
+  if (!thread) {
+    throw new Error("Không tìm thấy hội thoại giữa Page và user này");
+  }
+  
+  const threadId = thread.id;
+
+  // 2. Post message to thread using User Access Token (bypasses 24h limit)
+  const msgUrl = `https://graph.facebook.com/v21.0/${threadId}/messages?access_token=${userToken}`;
+  const msgRes = await fetch(msgUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: text
+    })
+  });
+  
+  const msgData = await msgRes.json();
+  if (msgData.error) {
+    throw new Error(`Inbox Send Message Error: ${msgData.error.message}`);
+  }
+  
+  return msgData;
+}
+
 // Preferred API: send proactive notification via Utility Template (bypasses 24h window).
-// If the Facebook App lacks App Review approval for Pages Utility Messaging (error 10),
-// automatically fall back to standard Message Tags (ACCOUNT_UPDATE, CONFIRMED_EVENT_UPDATE)
-// which work out-of-the-box for developers/testers outside the 24h window.
+// If Utility Template fails (error 10) AND standard tags fail, fall back to Page Inbox API (User Access Token).
 async function sendUtilityMessage(sender_psid, templateName, params = []) {
+  const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+
   try {
     const resolvedName = UTILITY_TEMPLATES[templateName] || templateName;
     console.log(`[messenger] Trying Utility Template: ${resolvedName}`);
     return await callSendUtility(sender_psid, resolvedName, params);
   } catch (e) {
-    console.warn(`[messenger] Utility Template failed (${e.message}). Falling back to Message Tag...`);
+    console.warn(`[messenger] Utility Template failed (${e.message}). Trying Page Inbox via FB User Token...`);
     
-    // Map utility template to standard FB Message Tag
-    const tagMap = {
-      ACCOUNT_UPDATE: "ACCOUNT_UPDATE",
-      EVENT_REMINDER: "CONFIRMED_EVENT_UPDATE",
-      TUITION_ALERT: "ACCOUNT_UPDATE",
-      ANNOUNCEMENT: "CONFIRMED_EVENT_UPDATE"
-    };
-    const tag = tagMap[templateName] || "ACCOUNT_UPDATE";
-    const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+    try {
+      const inboxRes = await sendViaPageInbox(sender_psid, textContent);
+      console.log(`[messenger] Page Inbox send succeeded for ${sender_psid}!`);
+      return inboxRes;
+    } catch (inboxErr) {
+      console.warn(`[messenger] Page Inbox failed (${inboxErr.message}). Falling back to Message Tag...`);
+      
+      const tagMap = {
+        ACCOUNT_UPDATE: "ACCOUNT_UPDATE",
+        EVENT_REMINDER: "CONFIRMED_EVENT_UPDATE",
+        TUITION_ALERT: "ACCOUNT_UPDATE",
+        ANNOUNCEMENT: "CONFIRMED_EVENT_UPDATE"
+      };
+      const tag = tagMap[templateName] || "ACCOUNT_UPDATE";
 
-    const res = await callSendAPI(sender_psid, { text: textContent }, "MESSAGE_TAG", tag);
-    if (res.error) {
-      throw new Error(`Fallback failed: ${res.error.message || JSON.stringify(res.error)}`);
+      const res = await callSendAPI(sender_psid, { text: textContent }, "MESSAGE_TAG", tag);
+      if (res.error) {
+        throw new Error(`Gửi tin thất bại mọi phương thức. Utility: ${e.message} | Inbox: ${inboxErr.message} | Tag: ${res.error.message}`);
+      }
+      return res;
     }
-    return res;
   }
 }
 

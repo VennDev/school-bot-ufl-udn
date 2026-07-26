@@ -374,6 +374,7 @@ app.get("/api/admin/settings", requireAdmin, async (req, res) => {
     scraper_mode: await db.getSystemSetting("scraper_mode", "parallel"), // parallel / sequential
     fb_page_token: await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || ""),
     fb_page_id: await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || ""),
+    fb_user_token: await db.getSystemSetting("fb_user_token", process.env.FB_USER_TOKEN || ""),
     fb_verify_token: await db.getSystemSetting("fb_verify_token", process.env.FB_VERIFY_TOKEN || ""),
     fb_app_secret: await db.getSystemSetting("fb_app_secret", process.env.FB_APP_SECRET || ""),
     smtp_host: await db.getSystemSetting("smtp_host", ""),
@@ -385,7 +386,7 @@ app.get("/api/admin/settings", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/settings", requireAdmin, async (req, res) => {
-  const { ai_provider, opencode_api_key, opencode_model, scraper_interval, scraper_mode, fb_page_token, fb_page_id, fb_verify_token, fb_app_secret, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from } = req.body;
+  const { ai_provider, opencode_api_key, opencode_model, scraper_interval, scraper_mode, fb_page_token, fb_page_id, fb_user_token, fb_verify_token, fb_app_secret, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from } = req.body;
   
   if (ai_provider) await db.saveSystemSetting("ai_provider", ai_provider);
   if (opencode_api_key) await db.saveSystemSetting("opencode_api_key", opencode_api_key);
@@ -394,6 +395,7 @@ app.post("/api/admin/settings", requireAdmin, async (req, res) => {
   if (scraper_mode) await db.saveSystemSetting("scraper_mode", scraper_mode);
   if (fb_page_token) await db.saveSystemSetting("fb_page_token", fb_page_token);
   if (fb_page_id) await db.saveSystemSetting("fb_page_id", fb_page_id);
+  if (fb_user_token) await db.saveSystemSetting("fb_user_token", fb_user_token);
   if (fb_verify_token) await db.saveSystemSetting("fb_verify_token", fb_verify_token);
   if (fb_app_secret) await db.saveSystemSetting("fb_app_secret", fb_app_secret);
   if (smtp_host !== undefined) await db.saveSystemSetting("smtp_host", smtp_host);
