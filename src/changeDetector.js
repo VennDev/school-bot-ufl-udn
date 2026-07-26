@@ -130,4 +130,4 @@ async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
   }
 }
 
-module.exports = { checkAndNotify };
+module.exports = { checkAndNotify, detectGrades, detectExams, detectAnnouncements, detectSchedule, detectTuition };

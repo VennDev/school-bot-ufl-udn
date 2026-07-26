@@ -202,12 +202,12 @@ async function scrapeAccount(account, torIdx, useTor) {
   const baselineOldData = await loadResult(account);
   let pending = PAGES.filter((p) => !result[p.key]);
 
-  if (!pending.length) {
-    console.log(`[${account.username}] All data collected.`);
-    return result;
-  }
+  // Always re-scrape all pages so change-detection works on every cron run.
+  // Previously skipped when pending.length === 0, meaning completed accounts
+  // never got grade/exam/tuition updates after initial sync.
+  pending = PAGES;
 
-  console.log(`[${account.username}] Need ${pending.length} pages (tor-${torIdx})`);
+  console.log(`[${account.username}] Refreshing all ${pending.length} pages (tor-${torIdx})`);
   let attempt = 0;
   let consecutiveFails = 0;
   const proxy = useTor ? socksUrl(torIdx) : null;
