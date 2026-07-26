@@ -48,7 +48,7 @@ async function callSendUtility(sender_psid, templateName, params = []) {
     message: {
       template: {
         name: templateName,
-        language: { code: "en" },
+        language: { code: "vi" },
         components: [
           {
             type: "body",

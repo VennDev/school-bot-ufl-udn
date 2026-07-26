@@ -428,6 +428,22 @@ async function handleMessage(senderPsid, messageText) {
     return;
   }
 
+  // Handle Test Utility Messaging API call
+  if (normalizedLowerText === "/testutility" || normalizedLowerText === "test utility" || normalizedLowerText === "test utility messaging") {
+    await messenger.sendTextMessage(senderPsid, "Đang gửi tin nhắn mẫu qua Utility Templates API...");
+    try {
+      await messenger.sendUtilityMessage(
+        senderPsid,
+        "ACCOUNT_UPDATE",
+        ["[UFL Bot] Thông báo: Đây là tin nhắn thử nghiệm tính năng Pages Utility Messaging (Proactive Notification)."]
+      );
+      await messenger.sendTextMessage(senderPsid, "[✓] Đã gọi API gửi Utility Template. Hãy kiểm tra xem bạn có nhận được tin nhắn mẫu từ bot không. Nếu có, Meta App Dashboard sẽ ghi nhận 1/1 lệnh gọi API.");
+    } catch (e) {
+      await messenger.sendTextMessage(senderPsid, `[X] Gửi Utility Template thất bại: ${e.message}`);
+    }
+    return;
+  }
+
   // Handle Sync command
   if (normalizedLowerText === "/sync" || normalizedLowerText === "đồng bộ" || normalizedLowerText === "sync") {
     if (!user) {
