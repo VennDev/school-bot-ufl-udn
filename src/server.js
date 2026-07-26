@@ -120,7 +120,7 @@ app.post("/api/admin/sync-all", requireAdmin, (req, res) => {
   }
   globalSyncRunning = true;
   const scraperPath = path.resolve(__dirname, "./scrape.js");
-  exec(`node ${scraperPath} --parallel`, (err) => {
+  exec(`node ${scraperPath} --silent --parallel`, (err) => {
     globalSyncRunning = false;
     if (err) console.error("[admin-sync] Global failed:", err.message);
   });
@@ -132,7 +132,7 @@ app.post("/api/admin/sync-user", requireAdmin, (req, res) => {
   if (!username) return res.status(400).json({ error: "Missing username" });
 
   const scraperPath = path.resolve(__dirname, "./scrape.js");
-  exec(`node ${scraperPath} --account=${username}`, (err) => {
+  exec(`node ${scraperPath} --silent --account=${username}`, (err) => {
     if (err) console.error(`[admin-sync] User ${username} failed:`, err.message);
   });
   res.json({ success: true, message: `Bắt đầu chạy scraper cho tài khoản ${username}.` });
@@ -193,7 +193,7 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
   // Trigger scraper — it will compare tampered baseline vs real web data → detects "change"
   const scraperPath = path.resolve(__dirname, "./scrape.js");
 
-  const child = exec(`node ${scraperPath} --account=${username}`, { timeout: 120000 }, async (err, stdout, stderr) => {
+  const child = exec(`node ${scraperPath} --silent --account=${username}`, { timeout: 120000 }, async (err, stdout, stderr) => {
     if (err) {
       console.error(`[admin-test-notify] Scraper failed for ${username}:`, err.message);
       console.error(`[admin-test-notify] stderr:`, stderr?.slice(-500));
@@ -293,7 +293,7 @@ app.post("/api/admin/clear-page", requireAdmin, async (req, res) => {
 
   // Trigger re-sync
   const scraperPath = path.resolve(__dirname, "./scrape.js");
-  exec(`node ${scraperPath} --account=${username}`, (err) => {
+  exec(`node ${scraperPath} --silent --account=${username}`, (err) => {
     if (err) console.error(`[admin-clear-page] Re-sync for ${username} failed:`, err.message);
   });
 

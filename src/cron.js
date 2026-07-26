@@ -143,7 +143,7 @@ async function runScraper() {
   console.log(`[cron] Starting scheduled scrape: ${new Date().toISOString()}`);
   
   const mode = await db.getSystemSetting("scraper_mode", "parallel");
-  const cmd = `node ${scraperPath} ${mode === "parallel" ? "--parallel" : ""}`;
+  const cmd = `node ${scraperPath} --silent ${mode === "parallel" ? "--parallel" : ""}`;
 
   exec(cmd, (err, stdout, stderr) => {
     scraperRunning = false;

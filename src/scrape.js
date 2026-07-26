@@ -57,7 +57,7 @@ async function saveResult(account, result, baselineOldData) {
   await checkAndNotify(account.fb_id, oldData, result, settings);
 }
 
-async function scrapeBatch(account, pages, torProxy) {
+async function scrapeBatch(account, pages, torProxy, silent = false) {
   // Race Direct IP vs Tor — first to login wins. Loser gets closed.
   // ponytail: if >2 proxy types needed, refactor to generic raceWithCleanup helper.
   let fastBrowser = null;
@@ -134,14 +134,19 @@ async function scrapeBatch(account, pages, torProxy) {
     console.error(`  [${account.username}] Both connections failed to login:`, e.message);
     // Close any remaining browser instances on total failure
     await Promise.all(activeBrowsers.map((b) => b.close().catch(() => {})));
-    await db.deleteUser(account.fb_id);
-    await messenger.sendButtons(account.fb_id, "[X] Đăng nhập thất bại. Mã sinh viên hoặc mật khẩu cổng sinh viên không chính xác. Nhấn nút bên dưới để thử đăng nhập lại:", [
-      {
-        type: "postback",
-        title: "Đăng nhập lại",
-        payload: "LOGIN_POSTBACK"
-      }
-    ]);
+    
+    // Background sync (silent) should NEVER delete users or send failure buttons.
+    // That prevents school server downtime from deleting active accounts.
+    if (!silent) {
+      await db.deleteUser(account.fb_id);
+      await messenger.sendButtons(account.fb_id, "[X] Đăng nhập thất bại. Mã sinh viên hoặc mật khẩu cổng sinh viên không chính xác. Nhấn nút bên dưới để thử đăng nhập lại:", [
+        {
+          type: "postback",
+          title: "Đăng nhập lại",
+          payload: "LOGIN_POSTBACK"
+        }
+      ]);
+    }
     return { scraped: {}, blocked: true };
   }
 
@@ -149,7 +154,9 @@ async function scrapeBatch(account, pages, torProxy) {
   let blocked = false;
 
   try {
-    await messenger.sendTextMessage(account.fb_id, `[✓] Đăng nhập thành công qua kết nối [${fastProxyUsed}]! Đang tiến hành tải dữ liệu học tập...`);
+    if (!silent) {
+      await messenger.sendTextMessage(account.fb_id, `[✓] Đăng nhập thành công qua kết nối [${fastProxyUsed}]! Đang tiến hành tải dữ liệu học tập...`);
+    }
  
     for (const p of pages) {
       await sleep(DELAY);
@@ -158,13 +165,15 @@ async function scrapeBatch(account, pages, torProxy) {
         await fastPage.waitForLoadState("networkidle").catch(() => {});
         scraped[p.key] = await fastPage.evaluate(p.extract);
         console.log(`  [${account.username}] ${p.key}: OK`);
-        await messenger.sendTextMessage(account.fb_id, `[+] Tải thành công danh mục: ${p.key === "canhBao" ? "Cảnh báo học vụ" : 
-                         p.key === "thongTinSV" ? "Hồ sơ sinh viên" : 
-                         p.key === "ketQuaHocTap" ? "Điểm học tập" : 
-                         p.key === "diemRenLuyen" ? "Điểm rèn luyện" : 
-                         p.key === "lichThi" ? "Lịch thi" : 
-                         p.key === "hocBongKTKL" ? "Học bổng & Khen thưởng" : 
-                         p.key === "lichHoc" ? "Lịch học" : "Học phí"}`);
+        if (!silent) {
+          await messenger.sendTextMessage(account.fb_id, `[+] Tải thành công danh mục: ${p.key === "canhBao" ? "Cảnh báo học vụ" : 
+                           p.key === "thongTinSV" ? "Hồ sơ sinh viên" : 
+                           p.key === "ketQuaHocTap" ? "Điểm học tập" : 
+                           p.key === "diemRenLuyen" ? "Điểm rèn luyện" : 
+                           p.key === "lichThi" ? "Lịch thi" : 
+                           p.key === "hocBongKTKL" ? "Học bổng & Khen thưởng" : 
+                           p.key === "lichHoc" ? "Lịch học" : "Học phí"}`);
+        }
       } catch (e) {
         const msg = e.message || "";
         if (msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
@@ -185,7 +194,9 @@ async function scrapeBatch(account, pages, torProxy) {
       blocked = true;
     }
     console.log(`  [${account.username}] Session error: ${msg.split("\n")[0]}`);
-    await messenger.sendTextMessage(account.fb_id, `[X] Lỗi kết nối khi lấy dữ liệu: ${msg.split("\n")[0]}`);
+    if (!silent) {
+      await messenger.sendTextMessage(account.fb_id, `[X] Lỗi kết nối khi lấy dữ liệu: ${msg.split("\n")[0]}`);
+    }
   } finally {
     if (fastBrowser) await fastBrowser.close().catch(() => {});
   }
@@ -193,7 +204,7 @@ async function scrapeBatch(account, pages, torProxy) {
   return { scraped, blocked };
 }
 
-async function scrapeAccount(account, torIdx, useTor) {
+async function scrapeAccount(account, torIdx, useTor, silent = false) {
   let result = await loadResult(account);
   // Snapshot original DB state ONCE before any scraping.
   // All change-detection calls compare against this baseline,
@@ -217,7 +228,7 @@ async function scrapeAccount(account, torIdx, useTor) {
     attempt++;
     console.log(`\n  [${account.username}] Attempt ${attempt}/${MAX_RETRIES}: ${batch.map((p) => p.key).join(", ")}`);
 
-    const { scraped, blocked } = await scrapeBatch(account, batch, proxy);
+    const { scraped, blocked } = await scrapeBatch(account, batch, proxy, silent);
     
     // Check if user still exists in database. If not (e.g. login failed and user was deleted), exit retry loop immediately.
     const userExists = await db.getUser(account.fb_id);
@@ -263,18 +274,22 @@ async function scrapeAccount(account, torIdx, useTor) {
   if (pending.length > 0) {
     console.log(`  [${account.username}] INCOMPLETE after ${attempt} attempts`);
     console.log(`  Missing: ${pending.map((p) => p.key).join(", ")}`);
-    await messenger.sendTextMessage(account.fb_id, "[!] Quá trình đồng bộ dữ liệu chưa hoàn tất. Một số mục có thể đã thất bại do lỗi kết nối mạng. Bạn có thể gõ /login để thử đồng bộ lại phần còn thiếu.");
+    if (!silent) {
+      await messenger.sendTextMessage(account.fb_id, "[!] Quá trình đồng bộ dữ liệu chưa hoàn tất. Một số mục có thể đã thất bại do lỗi kết nối mạng. Bạn có thể gõ /login để thử đồng bộ lại phần còn thiếu.");
+    }
   } else {
-    // When successfully synced, show a welcome message with a chat list (Quick Replies) as in the image, containing a logout option.
-    const successMsg = `Chúc mừng ${account.username} đã kết nối tài khoản sinh viên thành công! Tôi có thể giúp gì cho bạn?`;
-    await messenger.sendQuickReplies(account.fb_id, successMsg, [
-      { title: "Lịch học", payload: "LICH_HOC" },
-      { title: "Lịch thi", payload: "LICH_THI" },
-      { title: "Điểm số", payload: "DIEM_SO" },
-      { title: "Học phí", payload: "HOC_PHI" },
-      { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
-      { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
-    ]);
+    if (!silent) {
+      // When successfully synced, show a welcome message with a chat list (Quick Replies) as in the image, containing a logout option.
+      const successMsg = `Chúc mừng ${account.username} đã kết nối tài khoản sinh viên thành công! Tôi có thể giúp gì cho bạn?`;
+      await messenger.sendQuickReplies(account.fb_id, successMsg, [
+        { title: "Lịch học", payload: "LICH_HOC" },
+        { title: "Lịch thi", payload: "LICH_THI" },
+        { title: "Điểm số", payload: "DIEM_SO" },
+        { title: "Học phí", payload: "HOC_PHI" },
+        { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
+        { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
+      ]);
+    }
   }
 
   return result;
@@ -284,6 +299,7 @@ async function main() {
   const args = process.argv.slice(2);
   const useTor = !args.includes("--no-tor");
   const parallel = args.includes("--parallel");
+  const silent = args.includes("--silent");
   const accountFilter = args.find((a) => a.startsWith("--account="));
   const filterUser = accountFilter ? accountFilter.split("=")[1] : null;
 
@@ -306,7 +322,7 @@ async function main() {
   }
 
   const mode = parallel ? "PARALLEL" : "SEQUENTIAL";
-  console.log(`Scraping ${accounts.length} account(s), Tor: ${useTor ? "ON" : "OFF"}, Mode: ${mode}\n`);
+  console.log(`Scraping ${accounts.length} account(s), Tor: ${useTor ? "ON" : "OFF"}, Mode: ${mode}, Silent: ${silent}\n`);
 
   if (parallel && useTor) {
     const needed = Math.min(accounts.length, MAX_PARALLEL);
@@ -325,7 +341,7 @@ async function main() {
     for (const chunk of chunks) {
       const promises = chunk.map((account, i) => {
         const torIdx = instances[i % instances.length].idx;
-        return scrapeAccount(account, torIdx, true);
+        return scrapeAccount(account, torIdx, true, silent);
       });
       await Promise.all(promises);
 
@@ -338,12 +354,12 @@ async function main() {
   } else if (parallel && !useTor) {
     console.log("Parallel without Tor: running sequentially (same IP = instant block)\n");
     for (const account of accounts) {
-      await scrapeAccount(account, 0, false);
+      await scrapeAccount(account, 0, false, silent);
     }
   } else {
     for (const account of accounts) {
       console.log(`\n=== ${account.label || account.username} ===`);
-      await scrapeAccount(account, 0, useTor);
+      await scrapeAccount(account, 0, useTor, silent);
 
       if (useTor && accounts.indexOf(account) < accounts.length - 1) {
         await rotateIP(0);
