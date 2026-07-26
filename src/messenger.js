@@ -37,35 +37,19 @@ async function callSendAPI(sender_psid, response, messagingType, tag) {
 }
 
 // ---- Utility Message sender (replaces Message Tags) ----
-// Sends a proactive message outside 24h window using a pre-approved Utility Template.
-// templateName: one of UTILITY_TEMPLATES keys or a raw template name string.
-// params: array of text values to fill into the template's {{1}}, {{2}}, ... placeholders.
+// Sends a proactive message outside 24h window using Pages Utility Messaging.
+// If approved by Meta, messaging_type: "UTILITY" with message.text works.
 async function callSendUtility(sender_psid, templateName, params = []) {
   const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
   const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
 
-  // Build the correct Facebook Utility Template payload
+  const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+
   const body = {
     recipient: { id: sender_psid },
     messaging_type: "UTILITY",
     message: {
-      attachment: {
-        type: "template",
-        payload: {
-          template_type: "utility",
-          template_name: templateName,
-          locale: "vi",
-          components: [
-            {
-              type: "body",
-              parameters: params.map(p => ({
-                type: "text",
-                text: String(p)
-              }))
-            }
-          ]
-        }
-      }
+      text: textContent || "[UFL Bot] Thông báo tiện ích"
     }
   };
 
@@ -108,83 +92,59 @@ async function sendTextMessage(sender_psid, text) {
   }
 }
 
-// Fallback method: Send message via Page Inbox API using Admin's User Access Token.
+// Fallback method: Send message via /{PAGE_ID}/messages API using Admin's User Access Token.
 // Bypasses the 24-hour limit without requiring App Review or Utility Templates,
-// by simulating a Page Admin replying in the Facebook Page Inbox thread.
+// by acting as a Page Admin sending a direct message to the user.
 async function sendViaPageInbox(sender_psid, text) {
-  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
   const userToken = await db.getSystemSetting("fb_user_token", process.env.FB_USER_TOKEN || "");
   const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
   
-  if (!pageToken || !pageId) {
-    throw new Error("Chưa cấu hình FB Page Token hoặc FB Page ID");
+  if (!userToken || !pageId) {
+    throw new Error("Chưa cấu hình FB User Token hoặc FB Page ID");
   }
 
-  // 1. Find conversation thread ID for this PSID using Page Token via "/me" alias (foolproof Page ID)
-  const convUrl = `https://graph.facebook.com/v21.0/me/conversations?user_id=${sender_psid}&access_token=${pageToken}`;
-  const convRes = await fetch(convUrl);
-  const convData = await convRes.json();
-  
-  if (convData.error) {
-    throw new Error(`Inbox Thread Search Error: ${convData.error.message}`);
-  }
-  
-  const thread = convData.data?.[0];
-  if (!thread) {
-    throw new Error("Không tìm thấy hội thoại giữa Page và user này");
-  }
-  
-  const threadId = thread.id;
-  const tokenToUse = userToken || pageToken;
-
-  // 2. Post message to thread using User Access Token (bypasses 24h limit) or Page Token as fallback
-  const msgUrl = `https://graph.facebook.com/v21.0/${threadId}/messages?access_token=${tokenToUse}`;
-  const msgRes = await fetch(msgUrl, {
+  // Post directly to /{PAGE_ID}/messages using Admin User Token (bypasses 24h limit)
+  const url = `https://graph.facebook.com/v21.0/${pageId}/messages?access_token=${userToken}`;
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: text
+      recipient: { id: sender_psid },
+      message: { text: text }
     })
   });
   
-  const msgData = await msgRes.json();
-  if (msgData.error) {
-    throw new Error(`Inbox Send Message Error: ${msgData.error.message}`);
+  const data = await res.json();
+  if (data.error) {
+    throw new Error(`FB Admin User Token Error (${data.error.code}): ${data.error.message}`);
   }
-  
-  return msgData;
+  return data;
 }
 
-// Preferred API: send proactive notification via Utility Template (bypasses 24h window).
-// If Utility Template fails (error 10) AND standard tags fail, fall back to Page Inbox API (User Access Token).
+// Preferred API: send proactive notification via Utility Message (bypasses 24h window).
+// If Utility Message fails (error 10), try Page Admin User Access Token (Func.vn technique).
+// As last resort, try Message Tag CONFIRMED_EVENT_UPDATE.
 async function sendUtilityMessage(sender_psid, templateName, params = []) {
   const textContent = Array.isArray(params) ? params.join("\n") : String(params);
 
   try {
     const resolvedName = UTILITY_TEMPLATES[templateName] || templateName;
-    console.log(`[messenger] Trying Utility Template: ${resolvedName}`);
+    console.log(`[messenger] Trying Utility Message: ${resolvedName}`);
     return await callSendUtility(sender_psid, resolvedName, params);
   } catch (e) {
-    console.warn(`[messenger] Utility Template failed (${e.message}). Trying Page Inbox via FB User Token...`);
+    console.warn(`[messenger] Utility Message failed (${e.message}). Trying Page Admin User Token (Func.vn method)...`);
     
     try {
       const inboxRes = await sendViaPageInbox(sender_psid, textContent);
-      console.log(`[messenger] Page Inbox send succeeded for ${sender_psid}!`);
+      console.log(`[messenger] Admin User Token send succeeded for ${sender_psid}!`);
       return inboxRes;
     } catch (inboxErr) {
-      console.warn(`[messenger] Page Inbox failed (${inboxErr.message}). Falling back to Message Tag...`);
+      console.warn(`[messenger] Admin User Token failed (${inboxErr.message}). Trying CONFIRMED_EVENT_UPDATE Tag...`);
       
-      const tagMap = {
-        ACCOUNT_UPDATE: "ACCOUNT_UPDATE",
-        EVENT_REMINDER: "CONFIRMED_EVENT_UPDATE",
-        TUITION_ALERT: "ACCOUNT_UPDATE",
-        ANNOUNCEMENT: "CONFIRMED_EVENT_UPDATE"
-      };
-      const tag = tagMap[templateName] || "ACCOUNT_UPDATE";
-
+      const tag = "CONFIRMED_EVENT_UPDATE";
       const res = await callSendAPI(sender_psid, { text: textContent }, "MESSAGE_TAG", tag);
       if (res.error) {
-        throw new Error(`Gửi tin thất bại mọi phương thức. Utility: ${e.message} | Inbox: ${inboxErr.message} | Tag: ${res.error.message}`);
+        throw new Error(`Gửi tin thất bại mọi phương thức. Utility: ${e.message} | Admin User Token: ${inboxErr.message} | Tag: ${res.error.message}`);
       }
       return res;
     }
