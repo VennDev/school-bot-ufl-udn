@@ -120,8 +120,8 @@ async function sendViaPageInbox(sender_psid, text) {
     throw new Error("Chưa cấu hình FB Page Token hoặc FB Page ID");
   }
 
-  // 1. Find conversation thread ID for this PSID using Page Token (which has guaranteed access)
-  const convUrl = `https://graph.facebook.com/v21.0/${pageId}/conversations?user_id=${sender_psid}&access_token=${pageToken}`;
+  // 1. Find conversation thread ID for this PSID using Page Token via "/me" alias (foolproof Page ID)
+  const convUrl = `https://graph.facebook.com/v21.0/me/conversations?user_id=${sender_psid}&access_token=${pageToken}`;
   const convRes = await fetch(convUrl);
   const convData = await convRes.json();
   
