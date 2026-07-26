@@ -42,29 +42,15 @@ async function callSendUtility(sender_psid, templateName, params = []) {
   const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
   const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
 
-  // Send via Messenger Utility Template (tin nhắn tiện ích đã phê duyệt)
+  const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+
+  // Send Messenger Utility Message via messaging_type: "UTILITY"
   const body = {
     recipient: { id: sender_psid },
     messaging_type: "UTILITY",
     message: {
-      attachment: {
-        type: "template",
-        payload: {
-          template_type: "utility",
-          name: templateName,
-          language: { code: "vi" },
-          components: [
-            {
-              type: "body",
-              parameters: params.map((text) => ({
-                type: "text",
-                text: String(text).substring(0, 2000),
-              })),
-            },
-          ],
-        },
-      },
-    },
+      text: textContent || "[UFL Bot] Thông báo thử nghiệm: Đây là tin nhắn tiện ích (Utility Message)."
+    }
   };
 
   const res = await fetch(url, {
@@ -151,35 +137,7 @@ async function sendGenericTemplate(sender_psid, elements) {
 }
 
 async function ensureUtilityTemplateCreated() {
-  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
-  const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
-  if (!pageToken || !pageId) return { success: false, error: "Thiếu FB_PAGE_TOKEN hoặc FB_PAGE_ID" };
-
-  const url = `https://graph.facebook.com/v21.0/${pageId}/message_templates?access_token=${pageToken}`;
-  const tmpl = {
-    name: "ufl_account_update",
-    language: "vi",
-    category: "UTILITY",
-    components: [{ type: "BODY", text: "{{1}}" }],
-  };
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(tmpl),
-    });
-    const data = await res.json();
-    if (data.error) {
-      if (data.error.code === 100 && data.error.error_subcode === 2654) {
-        return { success: true, message: "Template đã tồn tại sẵn" };
-      }
-      return { success: false, error: `${data.error.message} (Code: ${data.error.code})` };
-    }
-    return { success: true, message: `Tạo template thành công (ID: ${data.id})` };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
+  return { success: true, message: "Sẵn sàng gửi Utility Message (messaging_type: UTILITY)" };
 }
 
 module.exports = {
