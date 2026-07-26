@@ -700,6 +700,11 @@ async function handleMessage(senderPsid, messageText) {
 
         await messenger.sendTextMessage(senderPsid, "Đang kết nối & tiến hành đồng bộ dữ liệu lần đầu. Quá trình này có thể mất 1-2 phút, vui lòng đợi...");
 
+        // Prompt student to register for OTN notification right after entering credentials
+        setTimeout(() => {
+          messenger.sendOtnRequest(senderPsid, "Đăng ký nhận thông báo GPA & Điểm mới tự động (Ngoài 24h)", "ACCOUNT_UPDATE").catch(() => {});
+        }, 1200);
+
         // Trigger async scrape immediately for this user
         if (scrapingInProgress.has(senderPsid)) {
           return messenger.sendTextMessage(senderPsid, "Đang có quá trình đồng bộ khác chạy. Vui lòng đợi...");
