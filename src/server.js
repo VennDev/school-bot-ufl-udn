@@ -193,11 +193,15 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
   // Trigger scraper — it will compare tampered baseline vs real web data → detects "change"
   const scraperPath = path.resolve(__dirname, "./scrape.js");
 
-  exec(`node ${scraperPath} --account=${username}`, async (err) => {
+  const child = exec(`node ${scraperPath} --account=${username}`, { timeout: 120000 }, async (err, stdout, stderr) => {
     if (err) {
       console.error(`[admin-test-notify] Scraper failed for ${username}:`, err.message);
+      console.error(`[admin-test-notify] stderr:`, stderr?.slice(-500));
+      await db.saveSystemSetting(testKey, `fail_${Date.now()}`);
       return;
     }
+
+    console.log(`[admin-test-notify] Scraper stdout (last 300 chars):`, stdout?.slice(-300));
 
     // Check ChangeLog for a new alert after the sync
     const logs = await db.getChangeLogs(fbId, 5);
@@ -211,6 +215,9 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
       await db.saveSystemSetting(testKey, `fail_${Date.now()}`);
     }
   });
+
+  child.stdout.on('data', (d) => process.stdout.write(`[scraper-test] ${d}`));
+  child.stderr.on('data', (d) => process.stderr.write(`[scraper-test-err] ${d}`));
 
   res.json({
     success: true,

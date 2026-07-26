@@ -149,9 +149,11 @@ async function runScraper() {
     scraperRunning = false;
     if (err) {
       console.error("[cron] Scraper failed:", err.message);
+      if (stderr) console.error("[cron] Scraper stderr:", stderr.slice(-500));
       return;
     }
     console.log("[cron] Scraper completed successfully.");
+    if (stdout) console.log("[cron] Scraper stdout (last 300):", stdout.slice(-300));
   });
 }
 
