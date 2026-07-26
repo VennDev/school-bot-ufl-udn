@@ -92,21 +92,26 @@ async function sendTextMessage(sender_psid, text) {
   }
 }
 
-// Derive a full Page Access Token with Admin privileges from FB User Access Token (Func.vn technique)
+// Derive a full Page Access Token with Admin privileges from FB User Access Token (via /me/accounts)
 async function getAdminDerivedPageToken() {
   const userToken = await db.getSystemSetting("fb_user_token", process.env.FB_USER_TOKEN || "");
   const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
-  if (!userToken || !pageId) return null;
+  if (!userToken) return null;
 
   try {
-    const url = `https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${userToken}`;
+    const url = `https://graph.facebook.com/v21.0/me/accounts?access_token=${userToken}`;
     const res = await fetch(url);
     const data = await res.json();
-    if (data.access_token) {
-      console.log("[messenger] Successfully derived Page Access Token from Admin User Token!");
-      return data.access_token;
+    if (data.data && Array.isArray(data.data)) {
+      const match = pageId ? data.data.find(p => p.id === pageId) : data.data[0];
+      if (match && match.access_token) {
+        console.log(`[messenger] Successfully derived Page Access Token for Page "${match.name}" (${match.id}) from Admin User Token!`);
+        return match.access_token;
+      } else {
+        console.warn(`[messenger] Could not find matching Page ID (${pageId}) in user's managed pages:`, data.data.map(p => `${p.name}:${p.id}`).join(", "));
+      }
     } else if (data.error) {
-      console.warn("[messenger] Could not derive Page Token:", data.error.message);
+      console.warn("[messenger] Could not derive Page Token via /me/accounts:", data.error.message);
     }
   } catch (e) {
     console.warn("[messenger] Error deriving Page Token:", e.message);
@@ -116,7 +121,7 @@ async function getAdminDerivedPageToken() {
 
 // Preferred API: multi-tier waterfall sender for proactive notifications.
 // Tier 1: Try 24h window RESPONSE message (100% success if user chatted recently).
-// Tier 2: Try Admin-derived Page Token (from fb_user_token) with CONFIRMED_EVENT_UPDATE tag.
+// Tier 2: Try Admin-derived Page Token (from fb_user_token via /me/accounts) with HUMAN_AGENT tag (7-day window) & CONFIRMED_EVENT_UPDATE tag.
 // Tier 3: Try Default Page Token with CONFIRMED_EVENT_UPDATE tag.
 // Tier 4: Try Utility Template.
 async function sendUtilityMessage(sender_psid, templateName, params = []) {
@@ -133,14 +138,21 @@ async function sendUtilityMessage(sender_psid, templateName, params = []) {
 
   console.warn(`[messenger] Tier 1 failed (${res1.error.message}). User outside 24h window. Trying Tier 2 (Admin User Token)...`);
 
-  // Tier 2: Admin-derived Page Token (from fb_user_token)
+  // Tier 2: Admin-derived Page Token (from fb_user_token via /me/accounts)
   const adminPageToken = await getAdminDerivedPageToken();
   if (adminPageToken) {
-    console.log(`[messenger] Tier 2: Trying Admin Page Token (MESSAGE_TAG: CONFIRMED_EVENT_UPDATE)...`);
-    const res2 = await callSendAPI(sender_psid, msgObj, "MESSAGE_TAG", "CONFIRMED_EVENT_UPDATE", adminPageToken);
-    if (!res2.error) {
+    console.log(`[messenger] Tier 2: Trying Admin Page Token (HUMAN_AGENT tag - 7 day window)...`);
+    const res2Human = await callSendAPI(sender_psid, msgObj, "MESSAGE_TAG", "HUMAN_AGENT", adminPageToken);
+    if (!res2Human.error) {
+      console.log(`[messenger] Tier 2 (Admin Page Token HUMAN_AGENT) succeeded!`);
+      return res2Human;
+    }
+
+    console.log(`[messenger] Tier 2: Trying Admin Page Token (CONFIRMED_EVENT_UPDATE tag)...`);
+    const res2Tag = await callSendAPI(sender_psid, msgObj, "MESSAGE_TAG", "CONFIRMED_EVENT_UPDATE", adminPageToken);
+    if (!res2Tag.error) {
       console.log(`[messenger] Tier 2 (Admin Page Token Tag) succeeded!`);
-      return res2;
+      return res2Tag;
     }
 
     console.log(`[messenger] Tier 2: Trying Admin Page Token (RESPONSE)...`);
@@ -152,11 +164,18 @@ async function sendUtilityMessage(sender_psid, templateName, params = []) {
   }
 
   // Tier 3: Default Page Token with MESSAGE_TAG
-  console.log(`[messenger] Tier 3: Trying Default Page Token (MESSAGE_TAG: CONFIRMED_EVENT_UPDATE)...`);
-  const res3 = await callSendAPI(sender_psid, msgObj, "MESSAGE_TAG", "CONFIRMED_EVENT_UPDATE");
-  if (!res3.error) {
+  console.log(`[messenger] Tier 3: Trying Default Page Token (HUMAN_AGENT tag)...`);
+  const res3Human = await callSendAPI(sender_psid, msgObj, "MESSAGE_TAG", "HUMAN_AGENT");
+  if (!res3Human.error) {
+    console.log(`[messenger] Tier 3 (Default Page Token HUMAN_AGENT) succeeded!`);
+    return res3Human;
+  }
+
+  console.log(`[messenger] Tier 3: Trying Default Page Token (CONFIRMED_EVENT_UPDATE tag)...`);
+  const res3Tag = await callSendAPI(sender_psid, msgObj, "MESSAGE_TAG", "CONFIRMED_EVENT_UPDATE");
+  if (!res3Tag.error) {
     console.log(`[messenger] Tier 3 (Default Page Token Tag) succeeded!`);
-    return res3;
+    return res3Tag;
   }
 
   // Tier 4: Utility Template
