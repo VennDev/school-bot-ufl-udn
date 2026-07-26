@@ -29,8 +29,10 @@ async function callSendAPI(sender_psid, response, messagingType, tag) {
     if (data.error) {
       console.error("[messenger] API Error:", data.error.message, "| type:", messagingType || "RESPONSE");
     }
+    return data;
   } catch (e) {
     console.error("[messenger] Fetch failed:", e.message);
+    return { error: e };
   }
 }
 
@@ -107,11 +109,33 @@ async function sendTextMessage(sender_psid, text) {
 }
 
 // Preferred API: send proactive notification via Utility Template (bypasses 24h window).
-// templateName: key of UTILITY_TEMPLATES (e.g. "ACCOUNT_UPDATE", "EVENT_REMINDER").
-// params: array of strings filling {{1}}, {{2}}, ... in order.
+// If the Facebook App lacks App Review approval for Pages Utility Messaging (error 10),
+// automatically fall back to standard Message Tags (ACCOUNT_UPDATE, CONFIRMED_EVENT_UPDATE)
+// which work out-of-the-box for developers/testers outside the 24h window.
 async function sendUtilityMessage(sender_psid, templateName, params = []) {
-  const resolvedName = UTILITY_TEMPLATES[templateName] || templateName;
-  return await callSendUtility(sender_psid, resolvedName, params);
+  try {
+    const resolvedName = UTILITY_TEMPLATES[templateName] || templateName;
+    console.log(`[messenger] Trying Utility Template: ${resolvedName}`);
+    return await callSendUtility(sender_psid, resolvedName, params);
+  } catch (e) {
+    console.warn(`[messenger] Utility Template failed (${e.message}). Falling back to Message Tag...`);
+    
+    // Map utility template to standard FB Message Tag
+    const tagMap = {
+      ACCOUNT_UPDATE: "ACCOUNT_UPDATE",
+      EVENT_REMINDER: "CONFIRMED_EVENT_UPDATE",
+      TUITION_ALERT: "ACCOUNT_UPDATE",
+      ANNOUNCEMENT: "CONFIRMED_EVENT_UPDATE"
+    };
+    const tag = tagMap[templateName] || "ACCOUNT_UPDATE";
+    const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+
+    const res = await callSendAPI(sender_psid, { text: textContent }, "MESSAGE_TAG", tag);
+    if (res.error) {
+      throw new Error(`Fallback failed: ${res.error.message || JSON.stringify(res.error)}`);
+    }
+    return res;
+  }
 }
 
 async function sendButtons(sender_psid, text, buttons) {
