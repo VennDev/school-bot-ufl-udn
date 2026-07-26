@@ -112,15 +112,16 @@ async function sendTextMessage(sender_psid, text) {
 // Bypasses the 24-hour limit without requiring App Review or Utility Templates,
 // by simulating a Page Admin replying in the Facebook Page Inbox thread.
 async function sendViaPageInbox(sender_psid, text) {
+  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
   const userToken = await db.getSystemSetting("fb_user_token", process.env.FB_USER_TOKEN || "");
   const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
   
-  if (!userToken || !pageId) {
-    throw new Error("Chưa cấu hình FB User Token hoặc FB Page ID");
+  if (!pageToken || !pageId) {
+    throw new Error("Chưa cấu hình FB Page Token hoặc FB Page ID");
   }
 
-  // 1. Find conversation thread ID for this PSID
-  const convUrl = `https://graph.facebook.com/v21.0/${pageId}/conversations?user_id=${sender_psid}&access_token=${userToken}`;
+  // 1. Find conversation thread ID for this PSID using Page Token (which has guaranteed access)
+  const convUrl = `https://graph.facebook.com/v21.0/${pageId}/conversations?user_id=${sender_psid}&access_token=${pageToken}`;
   const convRes = await fetch(convUrl);
   const convData = await convRes.json();
   
@@ -134,9 +135,10 @@ async function sendViaPageInbox(sender_psid, text) {
   }
   
   const threadId = thread.id;
+  const tokenToUse = userToken || pageToken;
 
-  // 2. Post message to thread using User Access Token (bypasses 24h limit)
-  const msgUrl = `https://graph.facebook.com/v21.0/${threadId}/messages?access_token=${userToken}`;
+  // 2. Post message to thread using User Access Token (bypasses 24h limit) or Page Token as fallback
+  const msgUrl = `https://graph.facebook.com/v21.0/${threadId}/messages?access_token=${tokenToUse}`;
   const msgRes = await fetch(msgUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
