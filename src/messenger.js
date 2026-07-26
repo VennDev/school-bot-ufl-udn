@@ -42,14 +42,28 @@ async function callSendUtility(sender_psid, templateName, params = []) {
   const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
   const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
 
-  const textContent = Array.isArray(params) ? params.join("\n") : String(params);
-
-  // Send Messenger Utility Message via messaging_type: "UTILITY"
+  // Build the correct Facebook Utility Template payload
   const body = {
     recipient: { id: sender_psid },
     messaging_type: "UTILITY",
     message: {
-      text: textContent || "[UFL Bot] Thông báo thử nghiệm: Đây là tin nhắn tiện ích (Utility Message)."
+      attachment: {
+        type: "template",
+        payload: {
+          template_type: "utility",
+          template_name: templateName,
+          locale: "vi",
+          components: [
+            {
+              type: "body",
+              parameters: params.map(p => ({
+                type: "text",
+                text: String(p)
+              }))
+            }
+          ]
+        }
+      }
     }
   };
 

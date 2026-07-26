@@ -100,7 +100,7 @@ async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
   }
   if (settings.notify_exam) {
     for (const a of detectExams(oldRaw.lichThi, newRaw.lichThi)) {
-      items.push([a, "EVENT_REMINDER"]);
+      items.push([a, "ANNOUNCEMENT"]);
     }
   }
   if (settings.notify_announcement) {
