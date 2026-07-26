@@ -383,7 +383,10 @@ async function main() {
 }
 
 main()
-  .catch(console.error)
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  })
   .finally(async () => {
     // Disconnect MongoDB to prevent connection pool leak in child processes
     try {

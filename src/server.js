@@ -173,16 +173,16 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
   const tweakedScore = (parseFloat(originalScore) || 5) >= 9 ? "1.0" : "9.9";
   row[6] = tweakedScore;
 
-  // Save tampered data as the new DB baseline
+  // Save tampered data as the new DB baseline (parse first to prevent double-stringification)
   await db.saveScrapedData(fbId, {
-    canh_bao: data.canh_bao,
-    thong_tin_sv: data.thong_tin_sv,
-    ket_qua_hoc_tap: JSON.stringify(grades),
-    diem_ren_luyen: data.diem_ren_luyen,
-    lich_thi: data.lich_thi,
-    hoc_bong_ktkl: data.hoc_bong_ktkl,
-    lich_hoc: data.lich_hoc,
-    hoc_phi: data.hoc_phi,
+    canh_bao: data.canh_bao ? JSON.parse(data.canh_bao) : null,
+    thong_tin_sv: data.thong_tin_sv ? JSON.parse(data.thong_tin_sv) : null,
+    ket_qua_hoc_tap: grades,
+    diem_ren_luyen: data.diem_ren_luyen ? JSON.parse(data.diem_ren_luyen) : null,
+    lich_thi: data.lich_thi ? JSON.parse(data.lich_thi) : null,
+    hoc_bong_ktkl: data.hoc_bong_ktkl ? JSON.parse(data.hoc_bong_ktkl) : null,
+    lich_hoc: data.lich_hoc ? JSON.parse(data.lich_hoc) : null,
+    hoc_phi: data.hoc_phi ? JSON.parse(data.hoc_phi) : null,
   });
 
   // Record test timestamp so result endpoint knows which alert is ours
