@@ -61,7 +61,8 @@ async function callSendUtility(sender_psid, templateName, params = []) {
   });
   const data = await res.json();
   if (data.error) {
-    throw new Error(`FB Error (${data.error.code}): ${data.error.message}`);
+    console.error("[messenger] FB Utility Error details:", JSON.stringify(data.error));
+    throw new Error(`FB Error (${data.error.code}): ${data.error.message} | Full: ${JSON.stringify(data.error)}`);
   }
   return data;
 }
