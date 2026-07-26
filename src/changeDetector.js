@@ -9,14 +9,20 @@ function detectGrades(oldData, newData) {
   if (!newTable) return [];
   if (!oldTable) return []; // Ignore first sync notify to avoid spam
 
+  const headers = newTable.headers || [];
+  const keyIdx = headers.indexOf("Mã học phần") !== -1 ? headers.indexOf("Mã học phần") : (headers.indexOf("Mã lớp học phần") !== -1 ? headers.indexOf("Mã lớp học phần") : 1);
+  const nameIdx = headers.indexOf("Tên học phần") !== -1 ? headers.indexOf("Tên học phần") : 2;
+  const scoreIdx = headers.indexOf("Điểm TBCHP") !== -1 ? headers.indexOf("Điểm TBCHP") : (headers.indexOf("Điểm tổng kết (10)") !== -1 ? headers.indexOf("Điểm tổng kết (10)") : 6);
+  const charIdx = headers.indexOf("Điểm chữ") !== -1 ? headers.indexOf("Điểm chữ") : 8;
+
   const alerts = [];
-  const oldRows = new Map(oldTable.rows.map((r) => [r[1], r])); // Ky hieu làm key
+  const oldRows = new Map(oldTable.rows.map((r) => [r[keyIdx], r])); // Ky hieu làm key
   newTable.rows.forEach((r) => {
-    const oldRow = oldRows.get(r[1]);
+    const oldRow = oldRows.get(r[keyIdx]);
     if (!oldRow) {
-      alerts.push(`[=] Điểm mới môn: ${r[2]} - TBCHP: ${r[6]} (${r[8]})`);
-    } else if (oldRow[6] !== r[6]) {
-      alerts.push(`(->) Thay đổi điểm môn: ${r[2]} -> TBCHP mới: ${r[6]} (${r[8]})`);
+      alerts.push(`[=] Điểm mới môn: ${r[nameIdx]} - TBCHP: ${r[scoreIdx]} (${r[charIdx] || "?"})`);
+    } else if (oldRow[scoreIdx] !== r[scoreIdx]) {
+      alerts.push(`(->) Thay đổi điểm môn: ${r[nameIdx]} -> TBCHP mới: ${r[scoreIdx]} (${r[charIdx] || "?"})`);
     }
   });
   return alerts;
@@ -61,14 +67,26 @@ function detectSchedule(oldData, newData) {
   if (!newTable) return [];
   if (!oldTable) return []; // Ignore first sync notify to avoid spam
 
+  // Dynamically find header indices to prevent column shift bugs
+  const headers = newTable.headers || [];
+  const nameIdx = headers.indexOf("Tên học phần");
+  const thuIdx = headers.indexOf("Thứ");
+  const tietIdx = headers.indexOf("Tiết");
+  const phongIdx = headers.indexOf("Phòng");
+
+  const nameK = nameIdx !== -1 ? nameIdx : 2;
+  const thuK = thuIdx !== -1 ? thuIdx : 0;
+  const tietK = tietIdx !== -1 ? tietIdx : 1;
+  const phongK = phongIdx !== -1 ? phongIdx : 3;
+
   const alerts = [];
-  const oldRows = new Map((oldTable.rows || []).map((r) => [r[2], r]));
+  const oldRows = new Map((oldTable.rows || []).map((r) => [r[nameK], r]));
   (newTable.rows || []).forEach((r) => {
-    const oldRow = oldRows.get(r[2]);
+    const oldRow = oldRows.get(r[nameK]);
     if (!oldRow) {
-      alerts.push(`[~] Lịch học mới: ${r[2]} - Thứ ${r[0]} tiết ${r[1]} phòng ${r[3]}`);
-    } else if (oldRow[0] !== r[0] || oldRow[1] !== r[1] || oldRow[3] !== r[3]) {
-      alerts.push(`(->) Thay đổi lịch học môn: ${r[2]} -> Thứ ${r[0]} tiết ${r[1]} phòng ${r[3]}`);
+      alerts.push(`[~] Lịch học mới: ${r[nameK]} - Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
+    } else if (oldRow[thuK] !== r[thuK] || oldRow[tietK] !== r[tietK] || oldRow[phongK] !== r[phongK]) {
+      alerts.push(`(->) Thay đổi lịch học môn: ${r[nameK]} -> Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
     }
   });
   return alerts;

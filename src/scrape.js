@@ -34,7 +34,7 @@ async function loadResult(account) {
   };
 }
 
-async function saveResult(account, result, baselineOldData) {
+async function saveResult(account, result, baselineOldData, runNotify = false) {
   // baselineOldData: original snapshot before any scraping this session.
   // Prevents partial-save pollution: if scrape runs multiple batches,
   // every checkAndNotify compares against the same original baseline,
@@ -53,8 +53,10 @@ async function saveResult(account, result, baselineOldData) {
     hoc_phi: result.hocPhi,
   });
 
-  const settings = await db.getSettings(account.fb_id);
-  await checkAndNotify(account.fb_id, oldData, result, settings);
+  if (runNotify) {
+    const settings = await db.getSettings(account.fb_id);
+    await checkAndNotify(account.fb_id, oldData, result, settings);
+  }
 }
 
 async function scrapeBatch(account, pages, torProxy, silent = false) {
@@ -239,7 +241,7 @@ async function scrapeAccount(account, torIdx, useTor, silent = false) {
 
     const gotNew = Object.keys(scraped).length > 0;
     Object.assign(result, scraped);
-    await saveResult(account, result, baselineOldData);
+    await saveResult(account, result, baselineOldData, false);
 
     pending = PAGES.filter((p) => !result[p.key]);
     console.log(`  [${account.username}] Progress: ${Object.keys(result).length}/${PAGES.length}`);
@@ -300,6 +302,10 @@ async function scrapeAccount(account, torIdx, useTor, silent = false) {
       }, 2000);
     }
   }
+
+  // Trigger change detection and notify EXACTLY ONCE at the end of the scraper session.
+  // Prevents duplicate spamming when scraper saves multiple batches.
+  await saveResult(account, result, baselineOldData, true);
 
   return result;
 }
