@@ -158,9 +158,9 @@ async function runScraper() {
 let schedulerTimeout = null;
 
 function scheduleNextRun() {
-  // Random delay between 10 and 30 minutes
-  const minMins = 10;
-  const maxMins = 30;
+  // Random delay between 1 and 5 minutes
+  const minMins = 1;
+  const maxMins = 5;
   const randomMins = Math.floor(Math.random() * (maxMins - minMins + 1)) + minMins;
   const delayMs = randomMins * 60 * 1000;
 
@@ -174,7 +174,7 @@ function scheduleNextRun() {
 }
 
 async function startScheduler() {
-  console.log(`[cron] Scheduler started with random interval (10 - 30 mins).`);
+  console.log(`[cron] Scheduler started with random interval (1 - 5 mins).`);
 
   await runScraper();
   await checkExamReminders();
