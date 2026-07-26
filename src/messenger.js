@@ -9,8 +9,8 @@ const UTILITY_TEMPLATES = {
   ANNOUNCEMENT: "ufl_announcement",        // academic announcements, schedule changes
 };
 
-async function callSendAPI(sender_psid, response, messagingType, tag) {
-  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+async function callSendAPI(sender_psid, response, messagingType, tag, customToken) {
+  const pageToken = customToken || await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
   const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
   const body = {
     recipient: { id: sender_psid },
@@ -92,62 +92,81 @@ async function sendTextMessage(sender_psid, text) {
   }
 }
 
-// Fallback method: Send message via /{PAGE_ID}/messages API using Admin's User Access Token.
-// Bypasses the 24-hour limit without requiring App Review or Utility Templates,
-// by acting as a Page Admin sending a direct message to the user.
-async function sendViaPageInbox(sender_psid, text) {
+// Derive a full Page Access Token with Admin privileges from FB User Access Token (Func.vn technique)
+async function getAdminDerivedPageToken() {
   const userToken = await db.getSystemSetting("fb_user_token", process.env.FB_USER_TOKEN || "");
   const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
-  
-  if (!userToken || !pageId) {
-    throw new Error("Chưa cấu hình FB User Token hoặc FB Page ID");
-  }
-
-  // Post directly to /{PAGE_ID}/messages using Admin User Token (bypasses 24h limit)
-  const url = `https://graph.facebook.com/v21.0/${pageId}/messages?access_token=${userToken}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      recipient: { id: sender_psid },
-      message: { text: text }
-    })
-  });
-  
-  const data = await res.json();
-  if (data.error) {
-    throw new Error(`FB Admin User Token Error (${data.error.code}): ${data.error.message}`);
-  }
-  return data;
-}
-
-// Preferred API: send proactive notification via Utility Message (bypasses 24h window).
-// If Utility Message fails (error 10), try Page Admin User Access Token (Func.vn technique).
-// As last resort, try Message Tag CONFIRMED_EVENT_UPDATE.
-async function sendUtilityMessage(sender_psid, templateName, params = []) {
-  const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+  if (!userToken || !pageId) return null;
 
   try {
+    const url = `https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${userToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.access_token) {
+      console.log("[messenger] Successfully derived Page Access Token from Admin User Token!");
+      return data.access_token;
+    } else if (data.error) {
+      console.warn("[messenger] Could not derive Page Token:", data.error.message);
+    }
+  } catch (e) {
+    console.warn("[messenger] Error deriving Page Token:", e.message);
+  }
+  return null;
+}
+
+// Preferred API: multi-tier waterfall sender for proactive notifications.
+// Tier 1: Try 24h window RESPONSE message (100% success if user chatted recently).
+// Tier 2: Try Admin-derived Page Token (from fb_user_token) with CONFIRMED_EVENT_UPDATE tag.
+// Tier 3: Try Default Page Token with CONFIRMED_EVENT_UPDATE tag.
+// Tier 4: Try Utility Template.
+async function sendUtilityMessage(sender_psid, templateName, params = []) {
+  const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+  const msgObj = { text: textContent };
+
+  // Tier 1: Standard RESPONSE message (inside 24h window)
+  console.log(`[messenger] Tier 1: Trying 24h RESPONSE message to ${sender_psid}...`);
+  const res1 = await callSendAPI(sender_psid, msgObj, "RESPONSE");
+  if (!res1.error) {
+    console.log(`[messenger] Tier 1 (24h RESPONSE) succeeded!`);
+    return res1;
+  }
+
+  console.warn(`[messenger] Tier 1 failed (${res1.error.message}). User outside 24h window. Trying Tier 2 (Admin User Token)...`);
+
+  // Tier 2: Admin-derived Page Token (from fb_user_token)
+  const adminPageToken = await getAdminDerivedPageToken();
+  if (adminPageToken) {
+    console.log(`[messenger] Tier 2: Trying Admin Page Token (MESSAGE_TAG: CONFIRMED_EVENT_UPDATE)...`);
+    const res2 = await callSendAPI(sender_psid, msgObj, "MESSAGE_TAG", "CONFIRMED_EVENT_UPDATE", adminPageToken);
+    if (!res2.error) {
+      console.log(`[messenger] Tier 2 (Admin Page Token Tag) succeeded!`);
+      return res2;
+    }
+
+    console.log(`[messenger] Tier 2: Trying Admin Page Token (RESPONSE)...`);
+    const res2Resp = await callSendAPI(sender_psid, msgObj, "RESPONSE", null, adminPageToken);
+    if (!res2Resp.error) {
+      console.log(`[messenger] Tier 2 (Admin Page Token RESPONSE) succeeded!`);
+      return res2Resp;
+    }
+  }
+
+  // Tier 3: Default Page Token with MESSAGE_TAG
+  console.log(`[messenger] Tier 3: Trying Default Page Token (MESSAGE_TAG: CONFIRMED_EVENT_UPDATE)...`);
+  const res3 = await callSendAPI(sender_psid, msgObj, "MESSAGE_TAG", "CONFIRMED_EVENT_UPDATE");
+  if (!res3.error) {
+    console.log(`[messenger] Tier 3 (Default Page Token Tag) succeeded!`);
+    return res3;
+  }
+
+  // Tier 4: Utility Template
+  try {
     const resolvedName = UTILITY_TEMPLATES[templateName] || templateName;
-    console.log(`[messenger] Trying Utility Message: ${resolvedName}`);
+    console.log(`[messenger] Tier 4: Trying Utility Template: ${resolvedName}...`);
     return await callSendUtility(sender_psid, resolvedName, params);
   } catch (e) {
-    console.warn(`[messenger] Utility Message failed (${e.message}). Trying Page Admin User Token (Func.vn method)...`);
-    
-    try {
-      const inboxRes = await sendViaPageInbox(sender_psid, textContent);
-      console.log(`[messenger] Admin User Token send succeeded for ${sender_psid}!`);
-      return inboxRes;
-    } catch (inboxErr) {
-      console.warn(`[messenger] Admin User Token failed (${inboxErr.message}). Trying CONFIRMED_EVENT_UPDATE Tag...`);
-      
-      const tag = "CONFIRMED_EVENT_UPDATE";
-      const res = await callSendAPI(sender_psid, { text: textContent }, "MESSAGE_TAG", tag);
-      if (res.error) {
-        throw new Error(`Gửi tin thất bại mọi phương thức. Utility: ${e.message} | Admin User Token: ${inboxErr.message} | Tag: ${res.error.message}`);
-      }
-      return res;
-    }
+    console.error(`[messenger] All notification tiers failed for ${sender_psid}. Last error: ${e.message}`);
+    throw new Error(`Gửi thông báo thất bại: ${res1.error?.message || e.message}`);
   }
 }
 
