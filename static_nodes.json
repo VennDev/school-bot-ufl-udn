@@ -14,5 +14,9 @@
   {
     "keywords": ["thi cải thiện", "học cải thiện", "thi lại"],
     "response": "🔄 QUY ĐỊNH HỌC VÀ THI CẢI THIỆN (UFLS):\n- Sinh viên đã có điểm học phần đạt (A, B, C, D) đều được đăng ký học lại học phần đó để cải thiện điểm.\n- Điểm chính thức của học phần sẽ được tính điểm ở lần cao nhất (giữ điểm cao nhất).\n- Không cho phép thi lại tự do; phải đăng ký học lại/học cải thiện vào kỳ có mở lớp.\n- Tham chiếu quy chế UFLS dòng 540 - 543."
+  },
+  {
+    "keywords": ["thông tin về dịch vụ", "thông tin dịch vụ", "dịch vụ chatbot", "dịch vụ bot"],
+    "response": "🤖 THÔNG TIN DỊCH VỤ UFLS ASSISTANT CHATBOT:\n- Hỗ trợ tra cứu: Điểm số, GPA, Tiến độ tín chỉ, Lịch học, Lịch thi, Học phí.\n- Nhận thông báo tự động: GPA/Điểm mới, Nhắc lịch thi, Học phí nợ.\n- Tư vấn AI: Giải đáp quy chế đào tạo, rèn luyện, học bổng, học vụ UFLS.\n- Bảo mật: Mọi dữ liệu được mã hóa an toàn, phục vụ hỗ trợ học tập cho sinh viên UFL."
   }
 ]

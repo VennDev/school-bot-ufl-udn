@@ -548,6 +548,10 @@ async function handleMessage(senderPsid, messageText) {
     const node = staticNodes.find(n => n.keywords.includes("thi cải thiện"));
     return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
   }
+  if (normalizedLowerText === "thông tin về dịch vụ" || normalizedLowerText === "thông tin dịch vụ" || normalizedLowerText === "dịch vụ") {
+    const node = staticNodes.find(n => n.keywords.includes("thông tin về dịch vụ"));
+    return messenger.sendTextMessage(senderPsid, node ? node.response : "Không tìm thấy thông tin.");
+  }
 
   // Handle Logout command
   if (normalizedLowerText === "/logout") {
