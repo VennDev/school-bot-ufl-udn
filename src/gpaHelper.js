@@ -201,7 +201,7 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
     warning += `⚠️ Cảnh báo học vụ: GPA học kỳ (${gpaSemester}) dưới 1.0 có nguy cơ bị cảnh báo học tập.`;
   }
 
-  // Lọc các môn điểm F (cần học lại) và các môn điểm thấp (cần cải thiện: D, D+) từ danh sách môn học thực tế
+  // Lọc các môn điểm F (cần học lại) và các môn điểm thấp (cần cải thiện: D) từ danh sách môn học thực tế
   let subjectsToRelearn = [];
   let subjectsToImprove = [];
 
@@ -219,7 +219,7 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
     if (letter === "F") {
       subjectsToRelearn.push(name);
     } else if (letter === "D" || (score10 >= 4.0 && score10 < 5.5)) {
-      // D hoặc D+ (điểm hệ 10 từ 4.0 đến dưới 5.5)
+      // D (điểm hệ 10 từ 4.0 đến dưới 5.5)
       subjectsToImprove.push(name);
     }
   });
