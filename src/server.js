@@ -462,6 +462,12 @@ app.post("/webhook", async (req, res) => {
           }
         } else if (webhook_event.postback) {
           dedupKey = sender_psid + "_" + webhook_event.postback.payload + "_" + (webhook_event.postback.timestamp || Date.now());
+        } else if (webhook_event.delivery && webhook_event.delivery.mids) {
+          // Delivery receipt webhook event - ignore silently
+          continue;
+        } else if (webhook_event.read) {
+          // Read receipt webhook event - ignore silently
+          continue;
         }
 
         if (dedupKey) {

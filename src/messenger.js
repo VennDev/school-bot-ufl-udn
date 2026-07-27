@@ -28,6 +28,7 @@ async function callSendAPI(sender_psid, response, messagingType, tag, customToke
     const data = await res.json();
     if (data.error) {
       console.error("[messenger] API Error:", data.error.message, "| type:", messagingType || "RESPONSE");
+      return { error: data.error };
     }
     return data;
   } catch (e) {
