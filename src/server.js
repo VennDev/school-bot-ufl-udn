@@ -29,6 +29,11 @@ const PORT = process.env.PORT || (pIndex !== -1 ? process.argv[pIndex + 1] : nul
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const MOCK_TOKEN = crypto.encrypt("admin-session");
 
+function requireFbId(value) {
+  const fbId = String(value || "").trim();
+  return /^\d+$/.test(fbId) ? fbId : null;
+}
+
 // Cache to prevent duplicate messages (Facebook retry mitigation)
 const processedMessageIds = new Set();
 const clearCacheInterval = setInterval(() => processedMessageIds.clear(), 60000); // clear every 1 minute
@@ -129,19 +134,17 @@ app.post("/api/admin/sync-all", requireAdmin, (req, res) => {
 });
 
 app.post("/api/admin/sync-user", requireAdmin, async (req, res) => {
-  const { username, fb_id } = req.query;
-  if (!username && !fb_id) return res.status(400).json({ error: "Missing username or fb_id" });
+  const fbId = requireFbId(req.query.fb_id);
+  if (!fbId) return res.status(400).json({ error: "A valid numeric fb_id is required" });
 
   const users = await db.getAllUsers();
-  const targetUsers = fb_id 
-    ? users.filter(u => u.fb_id === fb_id)
-    : users.filter(u => u.username === username);
+  const targetUsers = users.filter(u => u.fb_id === fbId);
   if (!targetUsers.length) return res.status(404).json({ error: "User not found" });
 
   const scraperPath = path.resolve(__dirname, "./scrape.js");
   targetUsers.forEach(user => {
-    exec(`node ${scraperPath} --silent --fb-id=${user.fb_id}`, (err) => {
-      if (err) console.error(`[admin-sync] User ${user.username} (${user.fb_id}) failed:`, err.message);
+    exec(`node ${scraperPath} --silent --fb-id=${fbId}`, (err) => {
+      if (err) console.error(`[admin-sync] User ${user.username} (${fbId}) failed:`, err.message);
     });
   });
   res.json({ success: true, message: `Bắt đầu chạy scraper cho ${targetUsers.length} tài khoản.` });
@@ -150,13 +153,11 @@ app.post("/api/admin/sync-user", requireAdmin, async (req, res) => {
 // Per-user notify test: tweak one grade in DB, re-sync, verify change-log.
 // Admin clicks "Test Notify" → backend tampers old data → scraper detects "change" → notifies.
 app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
-  const { username, fb_id } = req.body;
-  if (!username && !fb_id) return res.status(400).json({ error: "Missing username or fb_id" });
+  const fbId = requireFbId(req.body.fb_id);
+  if (!fbId) return res.status(400).json({ error: "A valid numeric fb_id is required" });
 
   const users = await db.getAllUsers();
-  const targetUsers = fb_id
-    ? users.filter(u => u.fb_id === fb_id)
-    : users.filter(u => u.username === username);
+  const targetUsers = users.filter(u => u.fb_id === fbId);
 
   if (!targetUsers.length) return res.status(404).json({ error: "User not found" });
 
@@ -164,7 +165,7 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
   let sampleDetail = null;
 
   for (const user of targetUsers) {
-    const curFbId = user.fb_id;
+    const curFbId = fbId;
     const data = await db.getScrapedData(curFbId);
     if (!data || !data.ket_qua_hoc_tap) continue;
 
@@ -197,7 +198,6 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
     const testKey = `test_notify_ts_${user.username}_${curFbId}`;
     const beforeTs = Date.now();
     await db.saveSystemSetting(testKey, String(beforeTs));
-    await db.saveSystemSetting(`test_notify_ts_${user.username}`, String(beforeTs));
 
     const scraperPath = path.resolve(__dirname, "./scrape.js");
     exec(`node ${scraperPath} --silent --fb-id=${curFbId}`, { timeout: 120000 }, async (err, stdout) => {
@@ -209,7 +209,6 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
       const newAlert = logs.find(l => l.type === "alert" && new Date(l.createdAt).getTime() > beforeTs);
       const statusStr = newAlert ? `ok_${Date.now()}` : `fail_${Date.now()}`;
       await db.saveSystemSetting(testKey, statusStr);
-      await db.saveSystemSetting(`test_notify_ts_${user.username}`, statusStr);
     });
 
     updatedCount++;
@@ -231,18 +230,15 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
 
 // Check latest test-notify result for a user
 app.get("/api/admin/test-notify-result", requireAdmin, async (req, res) => {
-  const { username, fb_id } = req.query;
-  if (!username && !fb_id) return res.status(400).json({ error: "Missing username or fb_id" });
+  const fbId = requireFbId(req.query.fb_id);
+  if (!fbId) return res.status(400).json({ error: "A valid numeric fb_id is required" });
 
   const users = await db.getAllUsers();
-  const user = fb_id ? users.find(u => u.fb_id === fb_id) : users.find(u => u.username === username);
+  const user = users.find(u => u.fb_id === fbId);
   if (!user) return res.status(404).json({ error: "User not found" });
 
-  const testKey = `test_notify_ts_${user.username}_${user.fb_id}`;
-  let testState = await db.getSystemSetting(testKey, "");
-  if (!testState) {
-    testState = await db.getSystemSetting(`test_notify_ts_${user.username}`, "");
-  }
+  const testKey = `test_notify_ts_${user.username}_${fbId}`;
+  const testState = await db.getSystemSetting(testKey, "");
 
   if (!testState) {
     return res.json({ success: true, status: "not_started", lastAlert: null });
@@ -269,8 +265,9 @@ app.get("/api/admin/test-notify-result", requireAdmin, async (req, res) => {
 // Simulate test: clear one page from a user's scraped data, then re-sync.
 // Used to verify change-detection + notification pipeline from admin UI.
 app.post("/api/admin/clear-page", requireAdmin, async (req, res) => {
-  const { username, fb_id, page } = req.body;
-  if ((!username && !fb_id) || !page) return res.status(400).json({ error: "Missing username/fb_id or page" });
+  const fbId = requireFbId(req.body.fb_id);
+  const { page } = req.body;
+  if (!fbId || !page) return res.status(400).json({ error: "A valid numeric fb_id and page are required" });
 
   // Map page key to DB column name (same as /testpage in botRouter)
   const keyMap = {
@@ -289,9 +286,7 @@ app.post("/api/admin/clear-page", requireAdmin, async (req, res) => {
   }
 
   const users = await db.getAllUsers();
-  const targetUsers = fb_id
-    ? users.filter(u => u.fb_id === fb_id)
-    : users.filter(u => u.username === username);
+  const targetUsers = users.filter(u => u.fb_id === fbId);
   if (!targetUsers.length) return res.status(404).json({ error: "User not found" });
 
   const scraperPath = path.resolve(__dirname, "./scrape.js");

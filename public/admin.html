@@ -78,8 +78,9 @@
           <p class="text-xs text-gray-500">Xóa một trang dữ liệu → đồng bộ lần 1 (điền dữ liệu, không báo) → đồng bộ lần 2 (so sánh baseline, có báo nếu web đổi).</p>
           <div class="space-y-3">
             <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">Mã sinh viên</label>
-              <input type="text" id="test-username" placeholder="VD: 411230510" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+              <label class="block text-xs font-medium text-gray-600 mb-1">FB ID</label>
+              <input type="text" id="test-fb-id" placeholder="FB ID của user trong bảng bên phải" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+              <input type="hidden" id="test-username">
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-1">Trang cần xóa & đồng bộ lại</label>
@@ -591,7 +592,7 @@
     }
 
     async function syncSingleUser(username, fbId = '') {
-      const res = await fetch(`/api/admin/sync-user?username=${username}&fb_id=${fbId}`, {
+      const res = await fetch(`/api/admin/sync-user?fb_id=${encodeURIComponent(fbId)}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -600,7 +601,7 @@
     }
 
     async function testNotifyUser(username, btnEl, fbId = '') {
-      if (!confirm(`Test thông báo cho ${username} (fb_id: ${fbId || 'tất cả'})?\n\nBot sẽ sửa nhẹ 1 điểm trong DB, sync từ web, và kiểm tra xem change-detector có gửi alert không.`)) return;
+      if (!confirm(`Test thông báo cho ${username} (fb_id: ${fbId})?\n\nBot sẽ sửa nhẹ 1 điểm trong DB, sync từ web, và kiểm tra xem change-detector có gửi alert không.`)) return;
 
       const originalText = btnEl.innerText;
       btnEl.innerText = '...';
@@ -614,7 +615,7 @@
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ username, fb_id: fbId })
+          body: JSON.stringify({ fb_id: fbId })
         });
         const data1 = await res1.json();
         if (!data1.success) {
@@ -630,7 +631,7 @@
         let result = null;
         for (let i = 0; i < 10; i++) {
           await new Promise(r => setTimeout(r, 5000));
-          const res2 = await fetch(`/api/admin/test-notify-result?username=${encodeURIComponent(username)}&fb_id=${fbId}`, {
+          const res2 = await fetch(`/api/admin/test-notify-result?fb_id=${encodeURIComponent(fbId)}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const data2 = await res2.json();
@@ -682,14 +683,14 @@
     }
 
     async function testClearAndSync() {
-      const username = document.getElementById('test-username').value.trim();
+      const fbId = document.getElementById('test-fb-id').value.trim();
       const page = document.getElementById('test-page').value;
       const resultEl = document.getElementById('test-result');
 
-      if (!username) {
+      if (!fbId) {
         resultEl.className = 'text-xs text-red-600';
         resultEl.classList.remove('hidden');
-        resultEl.innerText = 'Vui lòng nhập mã sinh viên.';
+        resultEl.innerText = 'Vui lòng nhập FB ID.';
         return;
       }
 
@@ -704,7 +705,7 @@
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ username, page })
+          body: JSON.stringify({ fb_id: document.getElementById('test-fb-id')?.value || '', page })
         });
         const data = await res.json();
         if (data.success) {
@@ -721,13 +722,13 @@
     }
 
     async function testSyncOnly() {
-      const username = document.getElementById('test-username').value.trim();
+      const fbId = document.getElementById('test-fb-id').value.trim();
       const resultEl = document.getElementById('test-result');
 
-      if (!username) {
+      if (!fbId) {
         resultEl.className = 'text-xs text-red-600';
         resultEl.classList.remove('hidden');
-        resultEl.innerText = 'Vui lòng nhập mã sinh viên.';
+        resultEl.innerText = 'Vui lòng nhập FB ID.';
         return;
       }
 
@@ -736,7 +737,7 @@
       resultEl.innerText = '[Bước 2] Đang đồng bộ lần 2 (so sánh baseline vs dữ liệu mới từ web)...';
 
       try {
-        const res = await fetch(`/api/admin/sync-user?username=${encodeURIComponent(username)}`, {
+        const res = await fetch(`/api/admin/sync-user?fb_id=${encodeURIComponent(document.getElementById('test-fb-id')?.value || '')}`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
         });

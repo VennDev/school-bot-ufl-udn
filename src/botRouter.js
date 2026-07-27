@@ -297,7 +297,7 @@ function filterAcademicYearTables(data, request) {
   const serialized = (item) => JSON.stringify(item);
   const pattern = request.value
     ? new RegExp(`${request.value.split("-")[0]}\\s*[-–]\\s*${request.value.split("-")[1]}`, "i")
-    : new RegExp(`năm\\s*(?:học\\s*)?(?:thứ\\s*)?${request.ordinal}\\b`, "i");
+    : new RegExp(`năm\\s*(?:học\\s*)?(?:đào tạo\\s*)?(?:thứ\\s*)?${request.ordinal}\\b`, "i");
   return data.filter((item) => pattern.test(serialized(item)));
 }
 
@@ -911,8 +911,21 @@ async function handleMessage(senderPsid, messageText) {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const matchingTables = filterAcademicYearTables(raw, requestedScheduleYear);
     if (matchingTables.length) return messenger.sendTextMessage(senderPsid, formatLichHoc(matchingTables));
-    const label = requestedScheduleYear.value ? requestedScheduleYear.label : `năm ${requestedScheduleYear.ordinal}`;
-    return messenger.sendTextMessage(senderPsid, `Không có dữ liệu lịch học cho ${label} trong dữ liệu đã đồng bộ.`);
+
+    const scheduleForAI = raw && raw.length ? raw : null;
+    const gradesForAI = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : [];
+    const academicTables = gradesForAI.filter((table) => {
+      const headers = (table.headers || []).join(" ").toLowerCase();
+      return headers.includes("kỳ thứ") || headers.includes("học kỳ") || headers.includes("tên học phần");
+    });
+    if (!scheduleForAI && !academicTables.length) {
+      const label = requestedScheduleYear.value ? requestedScheduleYear.label : `năm ${requestedScheduleYear.ordinal}`;
+      return messenger.sendTextMessage(senderPsid, `Không có dữ liệu lịch học cho ${label} trong dữ liệu đã đồng bộ.`);
+    }
+
+    const schedulePrompt = `${systemPrompt}\n\nDỮ LIỆU HỌC VỤ GỐC CỦA SINH VIÊN:\n${JSON.stringify({ lịch_học: scheduleForAI, bảng_học_phần: academicTables }, null, 2)}\n\nQuy tắc truy vấn năm học:\n- Chỉ trả lời năm được hỏi nếu dữ liệu có nhãn năm tương ứng hoặc có cột Kỳ thứ/Học kỳ để xác định rõ.\n- Với chương trình 4 năm, năm N chỉ gồm kỳ thứ ${requestedScheduleYear.ordinal ? `${requestedScheduleYear.ordinal * 2 - 1} và ${requestedScheduleYear.ordinal * 2}` : "được ghi rõ trong dữ liệu"}; không dùng lịch của kỳ khác.\n- Nếu dữ liệu chỉ có lịch hiện tại và không xác định được năm, nói rõ không có dữ liệu cho năm đó. Tuyệt đối không suy đoán hoặc lấy lịch hiện tại gán cho năm cũ.\n`;
+    await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang kiểm tra lịch học...");
+    return messenger.sendTextMessage(senderPsid, await askAI(schedulePrompt, text));
   }
 
   if (normalizedLowerText === "lịch học" || normalizedLowerText === "lich hoc") {
