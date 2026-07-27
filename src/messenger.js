@@ -38,19 +38,34 @@ async function callSendAPI(sender_psid, response, messagingType, tag, customToke
 }
 
 // ---- Utility Message sender (replaces Message Tags) ----
-// Sends a proactive message outside 24h window using Pages Utility Messaging.
-// If approved by Meta, messaging_type: "UTILITY" with message.text works.
+// Sends a proactive message outside 24h window using Pages Utility Messaging template.
 async function callSendUtility(sender_psid, templateName, params = []) {
   const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
-  const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
+  const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
+  
+  // Graph API v21.0 messages endpoint with template payload (page ID is required instead of /me/ for v21+)
+  const url = `https://graph.facebook.com/v21.0/${pageId}/messages?access_token=${pageToken}`;
 
-  const textContent = Array.isArray(params) ? params.join("\n") : String(params);
+  const paramArray = Array.isArray(params) ? params : [String(params)];
+  const parameters = paramArray.map(val => ({
+    type: "text",
+    text: String(val)
+  }));
 
   const body = {
     recipient: { id: sender_psid },
     messaging_type: "UTILITY",
     message: {
-      text: textContent || "[UFL Bot] Thông báo tiện ích"
+      template: {
+        name: templateName,
+        language: { code: "vi" },
+        components: [
+          {
+            type: "body",
+            parameters: parameters
+          }
+        ]
+      }
     }
   };
 
