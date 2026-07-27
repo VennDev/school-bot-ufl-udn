@@ -511,8 +511,8 @@
             </span>
           </td>
           <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-            <button onclick="testNotifyUser('${u.username}', this)" class="text-orange-500 hover:text-orange-700 mr-3" title="Sửa nhẹ điểm, sync, kiểm tra có alert không">Test Notify</button>
-            <button onclick="syncSingleUser('${u.username}')" class="text-blue-600 hover:text-blue-900 mr-3">Sync</button>
+            <button onclick="testNotifyUser('${u.username}', this, '${u.fb_id}')" class="text-orange-500 hover:text-orange-700 mr-3" title="Sửa nhẹ điểm, sync, kiểm tra có alert không">Test Notify</button>
+            <button onclick="syncSingleUser('${u.username}', '${u.fb_id}')" class="text-blue-600 hover:text-blue-900 mr-3">Sync</button>
             <button onclick="deleteUser('${u.fb_id}')" class="text-red-600 hover:text-red-900">Xóa</button>
           </td>
         `;
@@ -590,8 +590,8 @@
       alert(data.message);
     }
 
-    async function syncSingleUser(username) {
-      const res = await fetch(`/api/admin/sync-user?username=${username}`, {
+    async function syncSingleUser(username, fbId = '') {
+      const res = await fetch(`/api/admin/sync-user?username=${username}&fb_id=${fbId}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -599,8 +599,8 @@
       alert(data.message);
     }
 
-    async function testNotifyUser(username, btnEl) {
-      if (!confirm(`Test thông báo cho ${username}?\n\nBot sẽ sửa nhẹ 1 điểm trong DB, sync từ web, và kiểm tra xem change-detector có gửi alert không.`)) return;
+    async function testNotifyUser(username, btnEl, fbId = '') {
+      if (!confirm(`Test thông báo cho ${username} (fb_id: ${fbId || 'tất cả'})?\n\nBot sẽ sửa nhẹ 1 điểm trong DB, sync từ web, và kiểm tra xem change-detector có gửi alert không.`)) return;
 
       const originalText = btnEl.innerText;
       btnEl.innerText = '...';
@@ -614,7 +614,7 @@
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ username })
+          body: JSON.stringify({ username, fb_id: fbId })
         });
         const data1 = await res1.json();
         if (!data1.success) {
@@ -630,7 +630,7 @@
         let result = null;
         for (let i = 0; i < 10; i++) {
           await new Promise(r => setTimeout(r, 5000));
-          const res2 = await fetch(`/api/admin/test-notify-result?username=${encodeURIComponent(username)}`, {
+          const res2 = await fetch(`/api/admin/test-notify-result?username=${encodeURIComponent(username)}&fb_id=${fbId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const data2 = await res2.json();

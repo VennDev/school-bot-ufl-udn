@@ -129,119 +129,120 @@ app.post("/api/admin/sync-all", requireAdmin, (req, res) => {
 });
 
 app.post("/api/admin/sync-user", requireAdmin, async (req, res) => {
-  const { username } = req.query;
-  if (!username) return res.status(400).json({ error: "Missing username" });
+  const { username, fb_id } = req.query;
+  if (!username && !fb_id) return res.status(400).json({ error: "Missing username or fb_id" });
 
   const users = await db.getAllUsers();
-  const user = users.find(u => u.username === username);
-  if (!user) return res.status(404).json({ error: "User not found" });
+  const targetUsers = fb_id 
+    ? users.filter(u => u.fb_id === fb_id)
+    : users.filter(u => u.username === username);
+  if (!targetUsers.length) return res.status(404).json({ error: "User not found" });
 
   const scraperPath = path.resolve(__dirname, "./scrape.js");
-  exec(`node ${scraperPath} --silent --fb-id=${user.fb_id}`, (err) => {
-    if (err) console.error(`[admin-sync] User ${username} failed:`, err.message);
+  targetUsers.forEach(user => {
+    exec(`node ${scraperPath} --silent --fb-id=${user.fb_id}`, (err) => {
+      if (err) console.error(`[admin-sync] User ${user.username} (${user.fb_id}) failed:`, err.message);
+    });
   });
-  res.json({ success: true, message: `Bắt đầu chạy scraper cho tài khoản ${username}.` });
+  res.json({ success: true, message: `Bắt đầu chạy scraper cho ${targetUsers.length} tài khoản.` });
 });
 
 // Per-user notify test: tweak one grade in DB, re-sync, verify change-log.
 // Admin clicks "Test Notify" → backend tampers old data → scraper detects "change" → notifies.
 app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
-  const { username } = req.body;
-  if (!username) return res.status(400).json({ error: "Missing username" });
+  const { username, fb_id } = req.body;
+  if (!username && !fb_id) return res.status(400).json({ error: "Missing username or fb_id" });
 
   const users = await db.getAllUsers();
-  const user = users.find(u => u.username === username);
-  if (!user) return res.status(404).json({ error: "User not found" });
+  const targetUsers = fb_id
+    ? users.filter(u => u.fb_id === fb_id)
+    : users.filter(u => u.username === username);
 
-  const fbId = user.fb_id;
-  const data = await db.getScrapedData(fbId);
-  if (!data || !data.ket_qua_hoc_tap) {
-    return res.status(400).json({ error: "User chưa có dữ liệu điểm. Hãy sync lần đầu trước." });
-  }
+  if (!targetUsers.length) return res.status(404).json({ error: "User not found" });
 
-  // Parse current grades, tweak one score to simulate "old data"
-  let grades;
-  try {
-    grades = JSON.parse(data.ket_qua_hoc_tap);
-  } catch {
-    return res.status(400).json({ error: "Dữ liệu điểm bị hỏng, không parse được JSON." });
-  }
+  let updatedCount = 0;
+  let sampleDetail = null;
 
-  const targetTable = grades.find(t => t.headers?.some(h => h.includes("Tên học phần")));
-  if (!targetTable || !targetTable.rows || !targetTable.rows.length) {
-    return res.status(400).json({ error: "Không tìm thấy bảng điểm có cột 'Tên học phần'." });
-  }
+  for (const user of targetUsers) {
+    const curFbId = user.fb_id;
+    const data = await db.getScrapedData(curFbId);
+    if (!data || !data.ket_qua_hoc_tap) continue;
 
-  // Tweak: flip the first course's score so change-detector fires
-  const row = targetTable.rows[0];
-  const originalScore = row[6];
-  const tweakedScore = (parseFloat(originalScore) || 5) >= 9 ? "1.0" : "9.9";
-  row[6] = tweakedScore;
-
-  // Save tampered data as the new DB baseline (parse first to prevent double-stringification)
-  await db.saveScrapedData(fbId, {
-    canh_bao: data.canh_bao ? JSON.parse(data.canh_bao) : null,
-    thong_tin_sv: data.thong_tin_sv ? JSON.parse(data.thong_tin_sv) : null,
-    ket_qua_hoc_tap: grades,
-    diem_ren_luyen: data.diem_ren_luyen ? JSON.parse(data.diem_ren_luyen) : null,
-    lich_thi: data.lich_thi ? JSON.parse(data.lich_thi) : null,
-    hoc_bong_ktkl: data.hoc_bong_ktkl ? JSON.parse(data.hoc_bong_ktkl) : null,
-    lich_hoc: data.lich_hoc ? JSON.parse(data.lich_hoc) : null,
-    hoc_phi: data.hoc_phi ? JSON.parse(data.hoc_phi) : null,
-  });
-
-  // Record test timestamp so result endpoint knows which alert is ours
-  const testKey = `test_notify_ts_${username}`;
-  const beforeTs = Date.now();
-  await db.saveSystemSetting(testKey, String(beforeTs));
-
-  // Trigger scraper — it will compare tampered baseline vs real web data → detects "change"
-  const scraperPath = path.resolve(__dirname, "./scrape.js");
-
-  const child = exec(`node ${scraperPath} --silent --fb-id=${fbId}`, { timeout: 120000 }, async (err, stdout, stderr) => {
-    if (err) {
-      console.error(`[admin-test-notify] Scraper failed for ${username}:`, err.message);
-      console.error(`[admin-test-notify] stderr:`, stderr?.slice(-500));
-      await db.saveSystemSetting(testKey, `fail_${Date.now()}`);
-      return;
+    let grades;
+    try {
+      grades = JSON.parse(data.ket_qua_hoc_tap);
+    } catch {
+      continue;
     }
 
-    console.log(`[admin-test-notify] Scraper stdout (last 300 chars):`, stdout?.slice(-300));
+    const targetTable = grades.find(t => t.headers?.some(h => h.includes("Tên học phần")));
+    if (!targetTable || !targetTable.rows || !targetTable.rows.length) continue;
 
-    // Check ChangeLog for a new alert after the sync
-    const logs = await db.getChangeLogs(fbId, 5);
-    const newAlert = logs.find(l => l.type === "alert" && new Date(l.createdAt).getTime() > beforeTs);
+    const row = targetTable.rows[0];
+    const originalScore = row[6];
+    const tweakedScore = (parseFloat(originalScore) || 5) >= 9 ? "1.0" : "9.9";
+    row[6] = tweakedScore;
 
-    if (newAlert) {
-      console.log(`[admin-test-notify] SUCCESS for ${username}: alert logged: ${newAlert.content?.substring(0, 100)}`);
-      await db.saveSystemSetting(testKey, `ok_${Date.now()}`);
-    } else {
-      console.log(`[admin-test-notify] WARNING for ${username}: no alert found after sync.`);
-      await db.saveSystemSetting(testKey, `fail_${Date.now()}`);
+    await db.saveScrapedData(curFbId, {
+      canh_bao: data.canh_bao ? JSON.parse(data.canh_bao) : null,
+      thong_tin_sv: data.thong_tin_sv ? JSON.parse(data.thong_tin_sv) : null,
+      ket_qua_hoc_tap: grades,
+      diem_ren_luyen: data.diem_ren_luyen ? JSON.parse(data.diem_ren_luyen) : null,
+      lich_thi: data.lich_thi ? JSON.parse(data.lich_thi) : null,
+      hoc_bong_ktkl: data.hoc_bong_ktkl ? JSON.parse(data.hoc_bong_ktkl) : null,
+      lich_hoc: data.lich_hoc ? JSON.parse(data.lich_hoc) : null,
+      hoc_phi: data.hoc_phi ? JSON.parse(data.hoc_phi) : null,
+    });
+
+    const testKey = `test_notify_ts_${user.username}_${curFbId}`;
+    const beforeTs = Date.now();
+    await db.saveSystemSetting(testKey, String(beforeTs));
+    await db.saveSystemSetting(`test_notify_ts_${user.username}`, String(beforeTs));
+
+    const scraperPath = path.resolve(__dirname, "./scrape.js");
+    exec(`node ${scraperPath} --silent --fb-id=${curFbId}`, { timeout: 120000 }, async (err, stdout) => {
+      if (err) {
+        await db.saveSystemSetting(testKey, `fail_${Date.now()}`);
+        return;
+      }
+      const logs = await db.getChangeLogs(curFbId, 5);
+      const newAlert = logs.find(l => l.type === "alert" && new Date(l.createdAt).getTime() > beforeTs);
+      const statusStr = newAlert ? `ok_${Date.now()}` : `fail_${Date.now()}`;
+      await db.saveSystemSetting(testKey, statusStr);
+      await db.saveSystemSetting(`test_notify_ts_${user.username}`, statusStr);
+    });
+
+    updatedCount++;
+    if (!sampleDetail) {
+      sampleDetail = { course: row[2], original: originalScore, tweaked: tweakedScore };
     }
-  });
+  }
 
-  child.stdout.on('data', (d) => process.stdout.write(`[scraper-test] ${d}`));
-  child.stderr.on('data', (d) => process.stderr.write(`[scraper-test-err] ${d}`));
+  if (updatedCount === 0) {
+    return res.status(400).json({ error: "Không thể giả lập điểm (thiếu dữ liệu điểm học tập)." });
+  }
 
   res.json({
     success: true,
-    message: `Đã sửa điểm môn "${row[2]}" từ ${originalScore} → ${tweakedScore}. Đang chạy sync... Kiểm tra ChangeLog sau ~30s.`,
-    detail: { course: row[2], original: originalScore, tweaked: tweakedScore },
+    message: `Đã sửa điểm cho ${updatedCount} nick Meta. Đang chạy sync... Kiểm tra ChangeLog sau ~30s.`,
+    detail: sampleDetail,
   });
 });
 
 // Check latest test-notify result for a user
 app.get("/api/admin/test-notify-result", requireAdmin, async (req, res) => {
-  const { username } = req.query;
-  if (!username) return res.status(400).json({ error: "Missing username" });
+  const { username, fb_id } = req.query;
+  if (!username && !fb_id) return res.status(400).json({ error: "Missing username or fb_id" });
 
   const users = await db.getAllUsers();
-  const user = users.find(u => u.username === username);
+  const user = fb_id ? users.find(u => u.fb_id === fb_id) : users.find(u => u.username === username);
   if (!user) return res.status(404).json({ error: "User not found" });
 
-  const testKey = `test_notify_ts_${username}`;
-  const testState = await db.getSystemSetting(testKey, "");
+  const testKey = `test_notify_ts_${user.username}_${user.fb_id}`;
+  let testState = await db.getSystemSetting(testKey, "");
+  if (!testState) {
+    testState = await db.getSystemSetting(`test_notify_ts_${user.username}`, "");
+  }
 
   if (!testState) {
     return res.json({ success: true, status: "not_started", lastAlert: null });
@@ -268,8 +269,8 @@ app.get("/api/admin/test-notify-result", requireAdmin, async (req, res) => {
 // Simulate test: clear one page from a user's scraped data, then re-sync.
 // Used to verify change-detection + notification pipeline from admin UI.
 app.post("/api/admin/clear-page", requireAdmin, async (req, res) => {
-  const { username, page } = req.body;
-  if (!username || !page) return res.status(400).json({ error: "Missing username or page" });
+  const { username, fb_id, page } = req.body;
+  if ((!username && !fb_id) || !page) return res.status(400).json({ error: "Missing username/fb_id or page" });
 
   // Map page key to DB column name (same as /testpage in botRouter)
   const keyMap = {
@@ -287,24 +288,23 @@ app.post("/api/admin/clear-page", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: `Unknown page: ${page}. Valid: diem, lichthi, canhbao, lichhoc, hocphi, thongtinsv, diemrenluyen, hocbong` });
   }
 
-  // Find user by username
   const users = await db.getAllUsers();
-  const user = users.find(u => u.username === username);
-  if (!user) return res.status(404).json({ error: "User not found" });
+  const targetUsers = fb_id
+    ? users.filter(u => u.fb_id === fb_id)
+    : users.filter(u => u.username === username);
+  if (!targetUsers.length) return res.status(404).json({ error: "User not found" });
 
-  // Clear the page
-  await db.clearScrapedPage(user.fb_id, dbKey);
-  console.log(`[admin] Cleared page "${page}" (${dbKey}) for user ${username}`);
-
-  // Trigger re-sync
   const scraperPath = path.resolve(__dirname, "./scrape.js");
-  exec(`node ${scraperPath} --silent --fb-id=${user.fb_id}`, (err) => {
-    if (err) console.error(`[admin-clear-page] Re-sync for ${username} failed:`, err.message);
-  });
+  for (const user of targetUsers) {
+    await db.clearScrapedPage(user.fb_id, dbKey);
+    exec(`node ${scraperPath} --silent --fb-id=${user.fb_id}`, (err) => {
+      if (err) console.error(`[admin-clear-page] Re-sync for ${user.username} (${user.fb_id}) failed:`, err.message);
+    });
+  }
 
   res.json({
     success: true,
-    message: `Đã xóa dữ liệu mục "${page}" (${dbKey}) của ${username}. Đang chạy đồng bộ lại...`,
+    message: `Đã xóa dữ liệu mục "${page}" (${dbKey}) của ${targetUsers.length} tài khoản. Đang đồng bộ lại...`,
   });
 });
 
