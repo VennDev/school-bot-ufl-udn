@@ -958,8 +958,9 @@ async function handleMessage(senderPsid, messageText) {
     }));
   }
 
-  // Filter cleanData sent to AI based on current year to prevent AI from seeing old schedule/exams/announcements by default
+  // Filter cleanData sent to AI based on current date to prevent AI from seeing past announcements/exams
   const today = new Date();
+  const todayReset = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const currentYear = today.getFullYear().toString();
   const isRequestingAll = normalizedLowerText.includes("tất cả") || normalizedLowerText.includes("tat ca") || normalizedLowerText.includes("toàn bộ") || normalizedLowerText.includes("toan bo");
 
@@ -967,14 +968,31 @@ async function handleMessage(senderPsid, messageText) {
   const filteredExams = data.lich_thi ? JSON.parse(data.lich_thi) : [];
   const filteredSchedule = data.lich_hoc ? JSON.parse(data.lich_hoc) : [];
 
-  // Parse exam date to check if it's in the future
-  const parseExamDate = (dateStr) => {
+  // Parse DD/MM/YYYY dates
+  const parseDate = (dateStr) => {
     if (!dateStr) return null;
     const parts = dateStr.split("/");
     if (parts.length === 3) {
-      return new Date(parts[2], parts[1] - 1, parts[0]);
+      const year = parts[2].length === 2 ? 2000 + parseInt(parts[2], 10) : parseInt(parts[2], 10);
+      return new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
     }
     return null;
+  };
+
+  // Helper to extract future or recent dates (up to 7 days ago) from announcement content strings
+  const oneWeekAgo = new Date(todayReset);
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+  const isRecentOrFutureAnnouncement = (item) => {
+    const content = typeof item === "string" ? item : (item.content || JSON.stringify(item));
+    const dates = content.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g);
+    if (dates && dates.length > 0) {
+      const parsedDates = dates.map(parseDate).filter(Boolean);
+      if (parsedDates.length > 0) {
+        return parsedDates.some(d => d >= oneWeekAgo);
+      }
+    }
+    return content.includes(currentYear) || content.includes("/" + currentYear.slice(2));
   };
 
   const cleanData = {
@@ -982,19 +1000,14 @@ async function handleMessage(senderPsid, messageText) {
     current_time: today.toISOString().split("T")[0] + " (Today is " + today.toLocaleDateString("vi-VN") + ")",
     announcements: isRequestingAll 
       ? filteredAnnouncements.slice(0, 5) 
-      : filteredAnnouncements.filter(item => {
-          const content = item.content || JSON.stringify(item);
-          return content.includes(currentYear) || content.includes("/" + currentYear.slice(2));
-        }).slice(0, 3),
+      : filteredAnnouncements.filter(isRecentOrFutureAnnouncement).slice(0, 3),
     gpa_summary: gpaSummary,
     recent_grades: recentGradesFiltered,
     exams: isRequestingAll 
       ? filteredExams.slice(0, 5)
       : filteredExams.slice(1).filter(r => {
-          const examDate = parseExamDate(r[3]);
-          // Only show upcoming exams (examDate >= today or date string analysis fallback)
+          const examDate = parseDate(r[3]);
           if (examDate) {
-            const todayReset = new Date(today.getFullYear(), today.getMonth(), today.getDate());
             return examDate >= todayReset;
           }
           const dateStr = r[3] || "";
