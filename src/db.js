@@ -105,6 +105,13 @@ const otnTokenSchema = new mongoose.Schema({
   topic: { type: String, required: true },
 }, { timestamps: true });
 
+const conversationSchema = new mongoose.Schema({
+  fb_id: { type: String, required: true, index: true },
+  role: { type: String, enum: ["user", "assistant"], required: true },
+  content: { type: String, required: true },
+}, { timestamps: true });
+conversationSchema.index({ fb_id: 1, createdAt: -1 });
+
 const regNodeSchema = new mongoose.Schema({
   title: String,
   category: { type: String, index: true },
@@ -119,7 +126,7 @@ regNodeSchema.index({ content: "text", title: "text" });
 
 // ---------- Models ----------
 
-let User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode, OtnToken;
+let User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode, OtnToken, Conversation;
 
 function initModels() {
   User = mongoose.model("User", userSchema);
@@ -132,6 +139,7 @@ function initModels() {
   Interaction = mongoose.model("Interaction", interactionSchema);
   RegNode = mongoose.model("RegNode", regNodeSchema);
   OtnToken = mongoose.model("OtnToken", otnTokenSchema);
+  Conversation = mongoose.model("Conversation", conversationSchema);
 }
 
 // ---------- Lazy init ----------
@@ -418,5 +426,30 @@ module.exports = {
   async getOtnTokenCount(fbId) {
     await ensureInit();
     return OtnToken.countDocuments({ fb_id: fbId });
-  }
+  },
+
+  // ---------- Conversation History ----------
+  async saveConversation(fbId, role, content) {
+    await ensureInit();
+    await Conversation.create({ fb_id: fbId, role, content });
+    // Keep only last 10 entries (5 pairs) per user
+    const count = await Conversation.countDocuments({ fb_id: fbId });
+    if (count > 10) {
+      const oldest = await Conversation.find({ fb_id: fbId })
+        .sort({ createdAt: 1 })
+        .limit(count - 10)
+        .select("_id")
+        .lean();
+      await Conversation.deleteMany({ _id: { $in: oldest.map((d) => d._id) } });
+    }
+  },
+
+  async getConversationHistory(fbId, limit = 6) {
+    await ensureInit();
+    return Conversation.find({ fb_id: fbId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .select("role content -_id")
+      .lean();
+  },
 };

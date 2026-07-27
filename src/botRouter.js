@@ -925,7 +925,10 @@ async function handleMessage(senderPsid, messageText) {
 
     const schedulePrompt = `${systemPrompt}\n\nDỮ LIỆU HỌC VỤ GỐC CỦA SINH VIÊN:\n${JSON.stringify({ lịch_học: scheduleForAI, bảng_học_phần: academicTables }, null, 2)}\n\nQuy tắc truy vấn năm học:\n- Chỉ trả lời năm được hỏi nếu dữ liệu có nhãn năm tương ứng hoặc có cột Kỳ thứ/Học kỳ để xác định rõ.\n- Với chương trình 4 năm, năm N chỉ gồm kỳ thứ ${requestedScheduleYear.ordinal ? `${requestedScheduleYear.ordinal * 2 - 1} và ${requestedScheduleYear.ordinal * 2}` : "được ghi rõ trong dữ liệu"}; không dùng lịch của kỳ khác.\n- Nếu dữ liệu chỉ có lịch hiện tại và không xác định được năm, nói rõ không có dữ liệu cho năm đó. Tuyệt đối không suy đoán hoặc lấy lịch hiện tại gán cho năm cũ.\n`;
     await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang kiểm tra lịch học...");
-    return messenger.sendTextMessage(senderPsid, await askAI(schedulePrompt, text));
+    const reply = await askAI(schedulePrompt, text);
+    await db.saveConversation(senderPsid, "user", text);
+    await db.saveConversation(senderPsid, "assistant", reply);
+    return messenger.sendTextMessage(senderPsid, reply);
   }
 
   if (normalizedLowerText === "lịch học" || normalizedLowerText === "lich hoc") {
@@ -1006,6 +1009,8 @@ async function handleMessage(senderPsid, messageText) {
 
     await messenger.sendTextMessage(senderPsid, "AI đang phân tích dữ liệu học tập của bạn...");
     const statsResult = await askAI(statsPrompt, "Hãy thống kê và phân tích tiến độ học tập của tôi.");
+    await db.saveConversation(senderPsid, "user", messageText);
+    await db.saveConversation(senderPsid, "assistant", statsResult);
     return messenger.sendTextMessage(senderPsid, statsResult);
   }
 
@@ -1023,6 +1028,8 @@ async function handleMessage(senderPsid, messageText) {
 
     await messenger.sendTextMessage(senderPsid, "AI đang tổng hợp và tóm tắt tuần của bạn...");
     const summaryResult = await askAI(summaryPrompt, "Hãy tóm tắt tuần học tập của tôi.");
+    await db.saveConversation(senderPsid, "user", messageText);
+    await db.saveConversation(senderPsid, "assistant", summaryResult);
     return messenger.sendTextMessage(senderPsid, summaryResult);
   }
 
@@ -1157,8 +1164,20 @@ async function handleMessage(senderPsid, messageText) {
   // Append student context data to existing system prompt
   systemPrompt += `\n\n===== DỮ LIỆU HỌC VỤ THỰC TẾ CỦA SINH VIÊN (NGUỒN DUY NHẤT) =====\nQUAN TRỌNG: Đây là dữ liệu THỰC TẾ của sinh viên. Bạn CHỈ được sử dụng thông tin trong này để trả lời. Nếu thông tin không có trong này, hãy nói "Thông tin này không có trong dữ liệu của bạn" thay vì bịa ra. Tuyệt đối không tự ý thêm URL, số điện thoại, địa chỉ, quy trình hay bất kỳ chi tiết nào không có trong dữ liệu dưới đây. Khi dữ liệu không có năm học được hỏi, không được suy ra từ năm học khác; phải nói rõ không có dữ liệu cho năm đó.\n${JSON.stringify(cleanData, null, 2)}\n${regContextText}`;
 
+  // Append conversation history (last 3-5 exchanges) so AI can continue the chat
+  const history = await db.getConversationHistory(senderPsid, 6);
+  if (history && history.length > 0) {
+    const formatted = history.reverse().map((h) => `${h.role === "user" ? "Sinh viên" : "Trợ lý"}: ${h.content}`).join("\n");
+    systemPrompt += `\n\n===== LỊCH SỬ HỘI THOẠI GẦN ĐÂY =====\n${formatted}`;
+  }
+
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);
+
+  // Persist conversation turn
+  await db.saveConversation(senderPsid, "user", messageText);
+  await db.saveConversation(senderPsid, "assistant", reply);
+
   return messenger.sendTextMessage(senderPsid, reply);
 }
 
