@@ -18,6 +18,6 @@ const currentSchedule = [{
   headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"],
   rows: [["1", "Biên dịch 2", "3", "Biên dịch 2-15"]]
 }];
-assert.strictEqual(filterAcademicYearTables(currentSchedule, { ordinal: 2 }).length, 1);
+assert.strictEqual(filterAcademicYearTables(currentSchedule, { ordinal: 2 }).length, 0);
 
 console.log("Academic-year query test passed OK!");

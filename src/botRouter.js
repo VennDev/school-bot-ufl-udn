@@ -298,15 +298,7 @@ function filterAcademicYearTables(data, request) {
   const pattern = request.value
     ? new RegExp(`${request.value.split("-")[0]}\\s*[-–]\\s*${request.value.split("-")[1]}`, "i")
     : new RegExp(`năm\\s*(?:học\\s*)?(?:thứ\\s*)?${request.ordinal}\\b`, "i");
-  const matches = data.filter((item) => pattern.test(serialized(item)));
-  if (matches.length || request.value) return matches;
-
-  // Portal often returns only selected semester schedule, without a year label.
-  // Do not discard that data merely because query uses ordinal form: keep only schedule tables.
-  return data.filter((item) => {
-    const headers = (item?.headers || []).map(normalizeScheduleHeader);
-    return headers.includes("ten hoc phan") || headers.includes("mon hoc") || headers.includes("hoc phan");
-  });
+  return data.filter((item) => pattern.test(serialized(item)));
 }
 
 function isStudentProfileQuery(text) {
@@ -918,10 +910,9 @@ async function handleMessage(senderPsid, messageText) {
   if (requestedScheduleYear && (normalizedLowerText.startsWith("lịch học") || normalizedLowerText.startsWith("lich hoc"))) {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const matchingTables = filterAcademicYearTables(raw, requestedScheduleYear);
-    if (!matchingTables.length) {
-      return messenger.sendTextMessage(senderPsid, `Không có dữ liệu lịch học cho ${requestedScheduleYear.label} trong dữ liệu đã đồng bộ. Bot không thể suy đoán lịch học từ năm khác.`);
-    }
-    return messenger.sendTextMessage(senderPsid, formatLichHoc(matchingTables));
+    if (matchingTables.length) return messenger.sendTextMessage(senderPsid, formatLichHoc(matchingTables));
+    const label = requestedScheduleYear.value ? requestedScheduleYear.label : `năm ${requestedScheduleYear.ordinal}`;
+    return messenger.sendTextMessage(senderPsid, `Không có dữ liệu lịch học cho ${label} trong dữ liệu đã đồng bộ.`);
   }
 
   if (normalizedLowerText === "lịch học" || normalizedLowerText === "lich hoc") {
