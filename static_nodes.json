@@ -13,6 +13,6 @@
   },
   {
     "keywords": ["thi cải thiện", "học cải thiện", "thi lại"],
-    "response": "🔄 QUY ĐỊNH HỌC VÀ THI CẢI THIỆN (UFLS):\n- Sinh viên được quyền đăng ký học cải thiện đối với các môn học đạt điểm D, D+, C hoặc C+.\n- Điểm học cải thiện sẽ thay thế điểm cũ trong việc tính GPA tích lũy (không giữ điểm cao nhất mà lấy điểm mới nhất).\n- Không cho phép thi lại tự do; phải đăng ký học lại/học cải thiện vào kỳ có mở lớp.\n- Tham chiếu quy chế UFLS dòng 280 - 295."
+    "response": "🔄 QUY ĐỊNH HỌC VÀ THI CẢI THIỆN (UFLS):\n- Sinh viên đã có điểm học phần đạt (D, D+, C, C+, B, B+, A, A+) đều được đăng ký học lại học phần đó để cải thiện điểm.\n- Điểm chính thức của học phần sẽ được tính điểm ở lần cao nhất (giữ điểm cao nhất).\n- Không cho phép thi lại tự do; phải đăng ký học lại/học cải thiện vào kỳ có mở lớp.\n- Tham chiếu quy chế UFLS dòng 540 - 543."
   }
 ]
