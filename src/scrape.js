@@ -317,9 +317,13 @@ async function main() {
   const silent = args.includes("--silent");
   const accountFilter = args.find((a) => a.startsWith("--account="));
   const filterUser = accountFilter ? accountFilter.split("=")[1] : null;
+  const fbIdFilter = args.find((a) => a.startsWith("--fb-id="));
+  const filterFbId = fbIdFilter ? fbIdFilter.split("=")[1] : null;
 
   let rawAccounts = await db.getAllUsers();
-  if (filterUser) {
+  if (filterFbId) {
+    rawAccounts = rawAccounts.filter((a) => a.fb_id === filterFbId);
+  } else if (filterUser) {
     rawAccounts = rawAccounts.filter((a) => a.username === filterUser);
   }
 

@@ -128,12 +128,16 @@ app.post("/api/admin/sync-all", requireAdmin, (req, res) => {
   res.json({ success: true, message: "Bắt đầu chạy scraper ngầm cho toàn bộ users qua Tor." });
 });
 
-app.post("/api/admin/sync-user", requireAdmin, (req, res) => {
+app.post("/api/admin/sync-user", requireAdmin, async (req, res) => {
   const { username } = req.query;
   if (!username) return res.status(400).json({ error: "Missing username" });
 
+  const users = await db.getAllUsers();
+  const user = users.find(u => u.username === username);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
   const scraperPath = path.resolve(__dirname, "./scrape.js");
-  exec(`node ${scraperPath} --silent --account=${username}`, (err) => {
+  exec(`node ${scraperPath} --silent --fb-id=${user.fb_id}`, (err) => {
     if (err) console.error(`[admin-sync] User ${username} failed:`, err.message);
   });
   res.json({ success: true, message: `Bắt đầu chạy scraper cho tài khoản ${username}.` });
@@ -194,7 +198,7 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
   // Trigger scraper — it will compare tampered baseline vs real web data → detects "change"
   const scraperPath = path.resolve(__dirname, "./scrape.js");
 
-  const child = exec(`node ${scraperPath} --silent --account=${username}`, { timeout: 120000 }, async (err, stdout, stderr) => {
+  const child = exec(`node ${scraperPath} --silent --fb-id=${fbId}`, { timeout: 120000 }, async (err, stdout, stderr) => {
     if (err) {
       console.error(`[admin-test-notify] Scraper failed for ${username}:`, err.message);
       console.error(`[admin-test-notify] stderr:`, stderr?.slice(-500));
@@ -294,7 +298,7 @@ app.post("/api/admin/clear-page", requireAdmin, async (req, res) => {
 
   // Trigger re-sync
   const scraperPath = path.resolve(__dirname, "./scrape.js");
-  exec(`node ${scraperPath} --silent --account=${username}`, (err) => {
+  exec(`node ${scraperPath} --silent --fb-id=${user.fb_id}`, (err) => {
     if (err) console.error(`[admin-clear-page] Re-sync for ${username} failed:`, err.message);
   });
 
