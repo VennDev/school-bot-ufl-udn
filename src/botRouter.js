@@ -194,35 +194,114 @@ function formatThongTinSV(data) {
   return txt;
 }
 
-function formatLichHoc(data, dayFilter) {
-  if (!data || !data.length) return "Không có lịch học nào sắp tới.";
-  const targetTable = data.find((t) => t.headers && t.headers.includes("Tên học phần"));
-  if (!targetTable) return "Chưa cập nhật bảng lịch học chính thức.";
+function normalizeScheduleHeader(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  const rows = targetTable.rows || [];
-  let filtered = rows;
-  if (dayFilter) {
-    const dayMap = {
-      "2": "thứ 2", "3": "thứ 3", "4": "thứ 4", "5": "thứ 5", "6": "thứ 6", "7": "thứ 7", "cn": "chủ nhật",
-      "thu2": "thứ 2", "thu3": "thứ 3", "thu4": "thứ 4", "thu5": "thứ 5", "thu6": "thứ 6", "thu7": "thứ 7",
-    };
-    const targetDay = dayMap[dayFilter] || dayFilter;
-    filtered = rows.filter((r) => {
-      const thu = (r[0] || "").toLowerCase();
-      return thu.includes(targetDay) || thu === targetDay;
-    });
-  }
+function scheduleColumn(headers, aliases) {
+  const normalized = headers.map(normalizeScheduleHeader);
+  return aliases
+    .map((alias) => normalized.indexOf(normalizeScheduleHeader(alias)))
+    .find((index) => index !== -1);
+}
+
+function getScheduleEntries(data) {
+  if (!Array.isArray(data)) return [];
+  const isPeriod = (value) => /^\d+(?:\s*[-–]\s*\d+)?$/.test(String(value || "").trim());
+  const isDay = (value) => /^(?:thứ\s*)?[2-7]$|^chủ nhật$/i.test(String(value || "").trim());
+  const isLegacyRow = (row) => isPeriod(row?.[0]) && isDay(row?.[2]) && String(row?.[1] || "").trim();
+  const table = data.find((t) => {
+    const headers = (t.headers || []).map(normalizeScheduleHeader);
+    return headers.includes("ten hoc phan") || headers.includes("mon hoc") || headers.includes("hoc phan") || (t.rows || []).some(isLegacyRow);
+  });
+  if (!table) return [];
+
+  const headers = table.headers || [];
+  const columns = {
+    day: scheduleColumn(headers, ["Thứ", "Ngày"]),
+    period: scheduleColumn(headers, ["Tiết", "Tiết học"]),
+    name: scheduleColumn(headers, ["Tên học phần", "Tên môn học", "Môn học", "Học phần"]),
+    room: scheduleColumn(headers, ["Phòng", "Phòng học"]),
+    className: scheduleColumn(headers, ["Lớp học phần", "Lớp"]),
+  };
+
+  // Portal layout uses: Tiết | Môn học | Thứ | Lớp học phần | Phòng.
+  const legacy = (table.rows || []).some(isLegacyRow);
+  const fallback = { day: 2, period: 0, name: 1, room: 4, className: 3 };
+  const col = legacy
+    ? fallback
+    : Object.fromEntries(Object.entries(columns).map(([key, value]) => [key, value ?? fallback[key]]));
+  const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+  const name = (row) => clean(row[col.name]).replace(/^tiết\s+/i, "");
+
+  return (table.rows || []).map((row) => ({
+    day: clean(row[col.day]),
+    period: clean(row[col.period]),
+    name: name(row),
+    room: clean(row[col.room]),
+    className: clean(row[col.className]),
+  })).filter((entry) => entry.name && (isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ")) &&
+    !["môn học", "tên học phần", "học phần"].includes(entry.name.toLowerCase()));
+}
+
+function formatScheduleDay(day) {
+  const value = String(day || "").trim();
+  if (!value) return "";
+  return /^thứ\s|^chủ nhật/i.test(value) ? value : `Thứ ${value}`;
+}
+
+function formatLichHoc(data, dayFilter) {
+  const entries = getScheduleEntries(data);
+  if (!entries.length) return "Không có lịch học nào sắp tới.";
+
+  const dayMap = {
+    "2": "thứ 2", "3": "thứ 3", "4": "thứ 4", "5": "thứ 5", "6": "thứ 6", "7": "thứ 7", "cn": "chủ nhật",
+    "thu2": "thứ 2", "thu3": "thứ 3", "thu4": "thứ 4", "thu5": "thứ 5", "thu6": "thứ 6", "thu7": "thứ 7",
+  };
+  const targetDay = dayFilter ? (dayMap[dayFilter] || dayFilter).toLowerCase() : null;
+  const filtered = targetDay
+    ? entries.filter((entry) => entry.day.toLowerCase().includes(targetDay))
+    : entries;
 
   let txt = dayFilter
     ? `[~] LỊCH HỌC ${dayFilter.toUpperCase()}:\n`
     : "[~] LỊCH HỌC TUẦN NÀY:\n";
-
   if (!filtered.length) return txt + "Không có tiết học nào.";
 
-  filtered.slice(0, 7).forEach((r) => {
-    txt += `\n- ${r[0] || ""} | Tiết ${r[1]} | ${r[2] || "Môn học"} | Phòng ${r[3]} | ${r[4] || ""}`;
+  filtered.slice(0, 7).forEach((entry) => {
+    const details = [entry.day && `Thứ ${entry.day.replace(/^thứ\s*/i, "")}`, entry.period && `Tiết ${entry.period}`];
+    if (entry.room) details.push(`Phòng ${entry.room}`);
+    if (entry.className) details.push(`Lớp ${entry.className}`);
+    txt += `\n- ${entry.name} | ${details.filter(Boolean).join(" | ")}`;
   });
   return txt;
+}
+
+function extractAcademicYearRequest(text) {
+  const explicit = text.match(/\b(?:năm\s*học\s*)?(\d{4})\s*[-–]\s*(\d{4})\b/i);
+  if (explicit) {
+    return { label: `năm học ${explicit[1]}-${explicit[2]}`, value: `${explicit[1]}-${explicit[2]}` };
+  }
+
+  const ordinal = text.match(/\bnăm(?:\s+học)?\s+(?:thứ\s+)?(\d+)\b/i);
+  return ordinal ? { label: `năm ${ordinal[1]}`, ordinal: Number(ordinal[1]) } : null;
+}
+
+function filterAcademicYearTables(data, request) {
+  if (!Array.isArray(data) || !request) return [];
+  const pattern = request.value
+    ? new RegExp(`${request.value.split("-")[0]}\\s*[-–]\\s*${request.value.split("-")[1]}`, "i")
+    : new RegExp(`năm\\s*(?:học\\s*)?(?:thứ\\s*)?${request.ordinal}\\b`, "i");
+  return data.filter((item) => pattern.test(JSON.stringify(item)));
+}
+
+function isStudentProfileQuery(text) {
+  return /\b(?:thông tin\s+(?:cá nhân|sinh viên)|hồ sơ(?:\s+sinh viên|\s+cá nhân)?|lý lịch|profile)\b/i.test(text);
 }
 
 function formatTienDo(scrapedData) {
@@ -826,16 +905,26 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
 
+  const requestedScheduleYear = extractAcademicYearRequest(text);
+  if (requestedScheduleYear && (normalizedLowerText.startsWith("lịch học") || normalizedLowerText.startsWith("lich hoc"))) {
+    const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
+    const matchingTables = filterAcademicYearTables(raw, requestedScheduleYear);
+    if (!matchingTables.length) {
+      return messenger.sendTextMessage(senderPsid, `Không có dữ liệu lịch học cho ${requestedScheduleYear.label} trong dữ liệu đã đồng bộ. Bot không thể suy đoán lịch học từ năm khác.`);
+    }
+    return messenger.sendTextMessage(senderPsid, formatLichHoc(matchingTables));
+  }
+
   if (normalizedLowerText === "lịch học" || normalizedLowerText === "lich hoc") {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
-    const targetTable = raw ? raw.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
-    const rows = targetTable ? targetTable.rows || [] : [];
-    if (!rows.length) {
+    const entries = getScheduleEntries(raw);
+    if (!entries.length) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch học nào sắp tới.");
     }
-    const elements = rows.slice(0, 5).map((r) => ({
-      title: `${r[2] || "Môn học"}`,
-      subtitle: `${r[0] || ""} | Tiết ${r[1]} | Phòng ${r[3]} | ${r[4] || ""}`,
+    const elements = entries.slice(0, 5).map((entry) => ({
+      title: entry.name,
+      subtitle: [formatScheduleDay(entry.day), entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+        .filter(Boolean).join(" | "),
     }));
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
@@ -843,26 +932,22 @@ async function handleMessage(senderPsid, messageText) {
   if (normalizedLowerText.startsWith("lịch học thứ") || normalizedLowerText.startsWith("lịch học t") || normalizedLowerText.startsWith("lịch học cn") || normalizedLowerText.startsWith("lịch học chủ nhật") || normalizedLowerText.startsWith("lich hoc thu") || normalizedLowerText.startsWith("lich hoc t") || normalizedLowerText.startsWith("lich hoc cn") || normalizedLowerText.startsWith("lich hoc chu nhat")) {
     const dayPart = text.replace(/lịch học /i, "").replace(/lich hoc /i, "").trim();
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
-    const targetTable = raw ? raw.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
-    const rows = targetTable ? targetTable.rows || [] : [];
-    
+    const entries = getScheduleEntries(raw);
     const dayMap = {
       "2": "thứ 2", "3": "thứ 3", "4": "thứ 4", "5": "thứ 5", "6": "thứ 6", "7": "thứ 7", "cn": "chủ nhật",
       "thu2": "thứ 2", "thu3": "thứ 3", "thu4": "thứ 4", "thu5": "thứ 5", "thu6": "thứ 6", "thu7": "thứ 7",
     };
-    const targetDay = dayMap[dayPart.toLowerCase()] || dayPart.toLowerCase();
-    const filtered = rows.filter((r) => {
-      const thu = (r[0] || "").toLowerCase();
-      return thu.includes(targetDay) || thu === targetDay;
-    });
+    const targetDay = (dayMap[dayPart.toLowerCase()] || dayPart).toLowerCase();
+    const filtered = entries.filter((entry) => entry.day.toLowerCase().includes(targetDay));
 
     if (!filtered.length) {
       return messenger.sendTextMessage(senderPsid, `Không có lịch học nào vào ${dayPart}.`);
     }
 
-    const elements = filtered.slice(0, 5).map((r) => ({
-      title: `${r[2] || "Môn học"}`,
-      subtitle: `Tiết ${r[1]} | Phòng ${r[3]} | ${r[4] || ""}`,
+    const elements = filtered.slice(0, 5).map((entry) => ({
+      title: entry.name,
+      subtitle: [entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+        .filter(Boolean).join(" | "),
     }));
     return messenger.sendGenericTemplate(senderPsid, elements);
   }
@@ -890,7 +975,7 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendTextMessage(senderPsid, formatHocPhi(raw));
   }
 
-  if (normalizedLowerText === "hồ sơ" || normalizedLowerText === "hồ sơ sinh viên" || normalizedLowerText === "ho so" || normalizedLowerText === "lý lịch" || normalizedLowerText === "ly lich") {
+  if (normalizedLowerText === "hồ sơ" || normalizedLowerText === "hồ sơ sinh viên" || normalizedLowerText === "ho so" || normalizedLowerText === "lý lịch" || normalizedLowerText === "ly lich" || isStudentProfileQuery(text)) {
     const raw = data.thong_tin_sv ? JSON.parse(data.thong_tin_sv) : null;
     return messenger.sendTextMessage(senderPsid, formatThongTinSV(raw));
   }
@@ -999,8 +1084,14 @@ async function handleMessage(senderPsid, messageText) {
     return content.includes(currentYear) || content.includes("/" + currentYear.slice(2));
   };
 
+  const requestedAcademicYear = extractAcademicYearRequest(messageText);
+  const requestedSchedule = requestedAcademicYear
+    ? filterAcademicYearTables(filteredSchedule, requestedAcademicYear)
+    : filteredSchedule.slice(0, 4);
+
   const cleanData = {
     user: { username: user.username },
+    student_profile: data.thong_tin_sv ? JSON.parse(data.thong_tin_sv) : null,
     current_time: today.toISOString().split("T")[0] + " (Today is " + today.toLocaleDateString("vi-VN") + ")",
     announcements: isRequestingAll 
       ? filteredAnnouncements.slice(0, 5) 
@@ -1018,7 +1109,7 @@ async function handleMessage(senderPsid, messageText) {
           return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
         }).slice(0, 3),
     tuition: data.hoc_phi ? JSON.parse(data.hoc_phi) : [],
-    schedule: filteredSchedule.slice(0, 4) // schedule usually represents current semester, but we pass it as is
+    schedule: requestedSchedule
   };
 
   // Classify query intent to scope RAG search to correct category in hdsd site content
@@ -1051,11 +1142,11 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   // Append student context data to existing system prompt
-  systemPrompt += `\n\n===== DỮ LIỆU HỌC VỤ THỰC TẾ CỦA SINH VIÊN (NGUỒN DUY NHẤT) =====\nQUAN TRỌNG: Đây là dữ liệu THỰC TẾ của sinh viên. Bạn CHỈ được sử dụng thông tin trong này để trả lời. Nếu thông tin không có trong này, hãy nói "Thông tin này không có trong dữ liệu của bạn" thay vì bịa ra. Tuyệt đối không tự ý thêm URL, số điện thoại, địa chỉ, quy trình hay bất kỳ chi tiết nào không có trong dữ liệu dưới đây.\n${JSON.stringify(cleanData, null, 2)}\n${regContextText}`;
+  systemPrompt += `\n\n===== DỮ LIỆU HỌC VỤ THỰC TẾ CỦA SINH VIÊN (NGUỒN DUY NHẤT) =====\nQUAN TRỌNG: Đây là dữ liệu THỰC TẾ của sinh viên. Bạn CHỈ được sử dụng thông tin trong này để trả lời. Nếu thông tin không có trong này, hãy nói "Thông tin này không có trong dữ liệu của bạn" thay vì bịa ra. Tuyệt đối không tự ý thêm URL, số điện thoại, địa chỉ, quy trình hay bất kỳ chi tiết nào không có trong dữ liệu dưới đây. Khi dữ liệu không có năm học được hỏi, không được suy ra từ năm học khác; phải nói rõ không có dữ liệu cho năm đó.\n${JSON.stringify(cleanData, null, 2)}\n${regContextText}`;
 
   await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
   const reply = await askAI(systemPrompt, messageText);
   return messenger.sendTextMessage(senderPsid, reply);
 }
 
-module.exports = { handleMessage, setBaseUrl };
+module.exports = { handleMessage, setBaseUrl, extractAcademicYearRequest, filterAcademicYearTables, getScheduleEntries };
