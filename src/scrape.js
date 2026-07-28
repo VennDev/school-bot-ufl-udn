@@ -167,12 +167,17 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
         await fastPage.goto(p.url, { waitUntil: "domcontentloaded", timeout: 30000 });
         await fastPage.waitForLoadState("networkidle").catch(() => {});
 
-        // Run page-specific setup (e.g. select semester/year dropdowns) before extracting
+        // Run page-specific setup (e.g. iterate semester/year dropdowns) before extracting
         if (typeof p.setup === "function") {
           await p.setup(fastPage);
         }
 
-        scraped[p.key] = await fastPage.evaluate(p.extract);
+        if (fastPage._collectedData) {
+          scraped[p.key] = fastPage._collectedData;
+          delete fastPage._collectedData;
+        } else {
+          scraped[p.key] = await fastPage.evaluate(p.extract);
+        }
         console.log(`  [${account.username}] ${p.key}: OK`);
         if (!silent) {
           await messenger.sendTextMessage(account.fb_id, `[+] Tải thành công danh mục: ${p.key === "canhBao" ? "Cảnh báo học vụ" : 

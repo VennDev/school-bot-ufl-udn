@@ -1,45 +1,47 @@
 const BASE = "https://sinhvien.ufl.udn.vn";
 
-// Shared helper: determine current academic year + semester for dropdown selection.
-// Returns { namHoc, hocKy } where namHoc is the cmbNamHoc value (e.g. "2025" for "2025-2026").
-// ponytail: if school changes semester calendar, adjust month ranges here.
-function _currentSemester() {
-  const now = new Date();
-  const month = now.getMonth() + 1; // 1-12
-  const year = now.getFullYear();
-  // Kỳ 1: Aug-Dec, Kỳ 2: Jan-May, Kỳ 3 (hè): Jun-Jul
-  if (month >= 8) return { namHoc: String(year), hocKy: "1" };
-  if (month >= 1 && month <= 5) return { namHoc: String(year - 1), hocKy: "2" };
-  return { namHoc: String(year - 1), hocKy: "3" };
-}
-
-// Shared setup: select học kỳ + năm học + chuyên ngành chính on pages that have these dropdowns.
-// Waits for page reload after each selection (portal uses JS onChange submit).
-async function _setupSemester(page) {
-  const { namHoc, hocKy } = _currentSemester();
-
+// Helper to iterate relevant year x semester dropdown options (lichHoc, lichThi).
+// Aggregates full multi-semester data across available semesters.
+async function _collectMultiSemester(page, extractInBrowserFn) {
   const namHocSelect = await page.$("#cmbNamHoc");
-  if (namHocSelect) {
-    const opts = await namHocSelect.$$eval("option", els => els.map(e => e.value));
-    if (opts.includes(namHoc)) {
-      await page.selectOption("#cmbNamHoc", namHoc);
-      await page.waitForTimeout(2000);
-      await page.waitForLoadState("networkidle").catch(() => {});
+  if (!namHocSelect) return;
+
+  const namHocOpts = await namHocSelect.$$eval("option", els =>
+    els.map(e => ({ value: e.value, text: e.textContent.trim() }))
+       .filter(o => o.value !== "-1")
+  );
+  const hocKyOpts = ["1", "2", "3"];
+
+  const currentYear = new Date().getFullYear();
+  const relevantNamHocOpts = namHocOpts.filter(o => {
+    const val = parseInt(o.value, 10);
+    return val >= currentYear - 3 && val <= currentYear + 2;
+  });
+
+  const optsToIterate = relevantNamHocOpts.length > 0 ? relevantNamHocOpts : namHocOpts.slice(-5);
+  const collectedTables = [];
+
+  for (const nh of optsToIterate) {
+    for (const hk of hocKyOpts) {
+      try {
+        await page.selectOption("#cmbNamHoc", nh.value);
+        await page.waitForTimeout(400);
+        await page.selectOption("#cmbHocKy", hk);
+        await page.waitForTimeout(400);
+        await page.waitForLoadState("networkidle").catch(() => {});
+
+        const tables = await page.evaluate(extractInBrowserFn, { yearText: nh.text, hkValue: hk });
+        if (tables && tables.length > 0) {
+          collectedTables.push(...tables);
+        }
+      } catch (e) {
+        // ignore option errors
+      }
     }
   }
 
-  const hocKySelect = await page.$("#cmbHocKy");
-  if (hocKySelect) {
-    await page.selectOption("#cmbHocKy", hocKy);
-    await page.waitForTimeout(2000);
-    await page.waitForLoadState("networkidle").catch(() => {});
-  }
-
-  const cnSelect = await page.$("#cmbChuyenNganh");
-  if (cnSelect) {
-    await page.selectOption("#cmbChuyenNganh", "0");
-    await page.waitForTimeout(1500);
-    await page.waitForLoadState("networkidle").catch(() => {});
+  if (collectedTables.length > 0) {
+    page._collectedData = collectedTables;
   }
 }
 
@@ -100,9 +102,7 @@ const PAGES = [
     key: "ketQuaHocTap",
     url: `${BASE}/TraCuuDiemSV/Index`,
     label: "Kết quả học tập",
-    // Portal has cmbHocKy, cmbNamHoc, cmbChuyenNganh — default unselected shows all semesters.
-    // Select current semester to get consistent, focused data for change detection.
-    setup: _setupSemester,
+    // Unselected default view returns full history of grades across all semesters.
     extract: () => {
       const tables = [];
       document.querySelectorAll("table").forEach((table) => {
@@ -121,8 +121,7 @@ const PAGES = [
     key: "diemRenLuyen",
     url: `${BASE}/TraCuuDiemSV/DiemRenLuyen`,
     label: "Điểm rèn luyện",
-    // Portal has cmbHocKy, cmbNamHoc — default unselected shows all semesters.
-    setup: _setupSemester,
+    // Unselected default view returns full history of training points across all semesters.
     extract: () => {
       const rows = [];
       document.querySelectorAll("table tr").forEach((tr) => {
@@ -167,10 +166,29 @@ const PAGES = [
     key: "lichHoc",
     url: `${BASE}/TraCuuLichHoc/Index`,
     label: "Lịch học",
-    // Select correct học kỳ + năm học before extracting.
-    // Portal has dropdowns: cmbHocKy (1/2/3), cmbNamHoc (2018..2026), cmbChuyenNganh (0/1).
-    // Default loads with "--- Chọn ... ---" which may show stale or no data.
-    setup: _setupSemester,
+    // Iterate all year x semester options to collect full historical + current schedules
+    setup: async (page) => {
+      await _collectMultiSemester(page, ({ yearText, hkValue }) => {
+        const res = [];
+        document.querySelectorAll("table").forEach((table) => {
+          const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map((th) => th.innerText.trim());
+          const rows = [];
+          table.querySelectorAll("tbody tr, tr:not(:first-child)").forEach((tr) => {
+            const cells = [...tr.querySelectorAll("td")].map((td) => td.innerText.trim());
+            if (cells.length) rows.push(cells);
+          });
+          const isSchedule = headers.some(h => h.includes("học phần") || h.includes("môn"));
+          const hasData = rows.some(r => r.length >= 4 && r.some(c => c.length > 2 && !c.includes("STT")));
+          if (isSchedule && hasData) {
+            res.push({
+              headers: [...headers, "Năm học", "Học kỳ"],
+              rows: rows.map(r => [...r, yearText, `Kỳ ${hkValue}`])
+            });
+          }
+        });
+        return res;
+      });
+    },
     extract: () => {
       const tables = [];
       document.querySelectorAll("table").forEach((table) => {
