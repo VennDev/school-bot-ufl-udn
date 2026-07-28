@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard - UFL Bot</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"></script>
 </head>
 <body class="bg-gray-100 text-gray-900 font-sans min-h-screen flex flex-col">
   <!-- Auth Screen -->
@@ -305,14 +306,14 @@
         <div class="bg-blue-700 text-white p-4 flex justify-between items-center">
           <div>
             <h2 class="text-lg font-bold flex items-center gap-2">
-              <span>🎓 Dữ Liệu Sinh Viên:</span>
+              <span class="inline-flex items-center gap-2"><i data-lucide="graduation-cap" class="h-5 w-5" aria-hidden="true"></i>Dữ Liệu Sinh Viên:</span>
               <span id="modal-username" class="text-yellow-300"></span>
             </h2>
             <p class="text-xs text-blue-200">FB ID: <span id="modal-fbid"></span> | Cập nhật: <span id="modal-updated"></span></p>
             <span class="inline-flex mt-2 items-center rounded-full bg-blue-900/60 px-2.5 py-1 text-[11px] font-semibold text-blue-100">SNAPSHOT DB · không phải dữ liệu live</span>
           </div>
           <div class="flex items-center gap-2">
-            <button onclick="syncModalUser()" class="rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/25">🔄 Đồng bộ lại</button>
+            <button onclick="syncModalUser()" class="inline-flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/25"><i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i>Đồng bộ lại</button>
             <button onclick="closeUserModal()" aria-label="Đóng" class="text-white hover:text-red-300 text-2xl font-bold px-2">&times;</button>
           </div>
         </div>
@@ -485,7 +486,7 @@
 
     async function deleteAllRecords() {
       const model = document.getElementById('data-model-select').value;
-      if (!confirm(`⚠️ CẢNH BÁO: Bạn có chắc chắn muốn XÓA TẤT CẢ bản ghi trong bảng ${model}?\nHành động này không thể hoàn tác!`)) return;
+      if (!confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA TẤT CẢ bản ghi trong bảng ${model}?\nHành động này không thể hoàn tác!`)) return;
       const res = await fetch('/api/admin/delete-all', {
         method: 'POST',
         headers: {
@@ -714,7 +715,7 @@
         } else {
           btnEl.innerText = '⏱ Timeout';
           btnEl.className = 'text-yellow-600 hover:text-yellow-800 mr-3';
-          alert(`[⚠️] Timeout sau 50s. Scraper có thể đang bị kẹt hoặc web trường không phản hồi.`);
+          alert(`Timeout sau 50s. Scraper có thể đang bị kẹt hoặc web trường không phản hồi.`);
         }
       } catch (e) {
         btnEl.innerText = originalText;
@@ -818,19 +819,29 @@
       catch { throw new Error(`API trả về phản hồi không hợp lệ (${response.status})`); }
     }
 
+    function uiIcon(name, className = 'h-4 w-4 shrink-0') {
+      return `<i data-lucide="${name}" class="${className}" aria-hidden="true"></i>`;
+    }
+
+    function refreshIcons() {
+      if (window.lucide) window.lucide.createIcons();
+    }
+
     const MODAL_TABS = [
-      ['diem', '📊 Điểm số'], ['lichhoc', '📅 Lịch học'], ['lichthi', '📝 Lịch thi'],
-      ['hocphi', '💰 Học phí'], ['hoso', '👤 Hồ sơ SV'], ['drl', '🏆 DRL & Học bổng'],
-      ['canhbao', '⚠️ Cảnh báo']
+      ['diem', 'bar-chart-3', 'Điểm số'], ['lichhoc', 'calendar-days', 'Lịch học'],
+      ['lichthi', 'file-pen-line', 'Lịch thi'], ['hocphi', 'circle-dollar-sign', 'Học phí'],
+      ['hoso', 'user-round', 'Hồ sơ SV'], ['drl', 'trophy', 'DRL & Học bổng'],
+      ['canhbao', 'triangle-alert', 'Cảnh báo']
     ];
 
     function renderModalTabs() {
       const nav = document.getElementById('modal-tabs');
       if (!nav) return;
       nav.style.display = 'flex';
-      nav.innerHTML = MODAL_TABS.map(([key, label]) =>
-        `<button type="button" role="tab" id="mtab-${key}" onclick="switchModalTab('${key}')" class="shrink-0 whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-gray-600 hover:bg-white hover:text-blue-600">${label}</button>`
+      nav.innerHTML = MODAL_TABS.map(([key, iconName, label]) =>
+        `<button type="button" role="tab" id="mtab-${key}" onclick="switchModalTab('${key}')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-gray-600 hover:bg-white hover:text-blue-600">${uiIcon(iconName)}${label}</button>`
       ).join('');
+      refreshIcons();
     }
 
     let currentModalData = null;
@@ -839,7 +850,7 @@
       const modal = document.getElementById('user-detail-modal');
       renderModalTabs();
       modal.classList.remove('hidden');
-      document.getElementById('modal-tab-content').innerHTML = '<div class="text-center py-10 text-gray-500 font-medium">⏳ Đang tải dữ liệu từ cơ sở dữ liệu...</div>';
+      document.getElementById('modal-tab-content').innerHTML = `<div class="flex items-center justify-center gap-2 py-10 text-gray-500 font-medium">${uiIcon('loader-circle', 'h-5 w-5 animate-spin')}Đang tải dữ liệu từ cơ sở dữ liệu...</div>`;
       document.getElementById('modal-coverage').innerHTML = '';
 
       try {
@@ -855,8 +866,9 @@
           lichThi: 'Lịch thi', hocBongKTKL: 'HB/KT/KL', lichHoc: 'Lịch học', hocPhi: 'Học phí'
         };
         document.getElementById('modal-coverage').innerHTML = Object.entries(result.coverage || {}).map(([key, ok]) =>
-          `<span class="rounded-full px-2.5 py-1 font-semibold ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">${ok ? '✓' : '×'} ${coverageLabels[key] || key}</span>`
+          `<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">${uiIcon(ok ? 'circle-check' : 'circle-x', 'h-3.5 w-3.5')} ${coverageLabels[key] || key}</span>`
         ).join('');
+        refreshIcons();
         document.getElementById('modal-username').innerText = result.username;
         document.getElementById('modal-fbid').innerText = result.fb_id;
         document.getElementById('modal-updated').innerText = result.data.updatedAt ? new Date(result.data.updatedAt).toLocaleString('vi-VN') : 'Chưa đồng bộ';
@@ -890,11 +902,10 @@
       tabs.forEach(t => {
         const btn = document.getElementById(`mtab-${t}`);
         if (!btn) return;
-        if (t === tab) {
-          btn.className = 'px-4 py-3 text-blue-600 border-b-2 border-blue-600 bg-white font-bold shadow-sm';
-        } else {
-          btn.className = 'px-4 py-3 text-gray-600 hover:text-blue-600 font-medium';
-        }
+        const base = 'inline-flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3';
+        btn.className = t === tab
+          ? `${base} text-blue-600 border-b-2 border-blue-600 bg-white font-bold shadow-sm`
+          : `${base} text-gray-600 hover:text-blue-600 font-medium`;
       });
 
       const content = document.getElementById('modal-tab-content');
@@ -907,6 +918,7 @@
       else if (tab === 'hoso') renderHoSoTab(content, currentModalData.thongTinSV);
       else if (tab === 'drl') renderDrlTab(content, currentModalData.diemRenLuyen, currentModalData.hocBongKTKL);
       else if (tab === 'canhbao') renderCanhBaoTab(content, currentModalData.canhBao);
+      refreshIcons();
     }
 
     function escapeHTML(value) {
@@ -941,14 +953,18 @@
         if (!t.headers || !t.headers.length) return;
         const normHeader = t.headers.join(" ").toLowerCase();
         let title = `Bảng dữ liệu ${i + 1}`;
+        let titleIcon = 'table-2';
         if (normHeader.includes('diem thi') || normHeader.includes('tbchp')) {
-          title = '📊 Bảng Điểm Chi Tiết (Kết quả học tập)';
+          title = 'Bảng Điểm Chi Tiết (Kết quả học tập)';
+          titleIcon = 'bar-chart-3';
         } else if (normHeader.includes('khoi kien thuc') || normHeader.includes('ky thu')) {
-          title = '📚 Khung Chương Trình Đào Tạo (Tiến độ)';
+          title = 'Khung Chương Trình Đào Tạo (Tiến độ)';
+          titleIcon = 'book-open';
         } else if (normHeader.includes('ten chung chi') || normHeader.includes('chung chi')) {
-          title = '📜 Chứng Chỉ / Chuẩn Đầu Ra';
+          title = 'Chứng Chỉ / Chuẩn Đầu Ra';
+          titleIcon = 'scroll-text';
         }
-        html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">${escapeHTML(title)}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
+        html += `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon(titleIcon, 'h-4 w-4')}${escapeHTML(title)}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
       });
       html += '</div>';
       container.innerHTML = html;
@@ -961,8 +977,10 @@
       }
       let html = '<div class="space-y-6">';
       raw.forEach((t, i) => {
-        const title = t.year && t.semester ? `📅 Lịch Học ${t.year} - ${t.semester}` : `📅 Bảng Lịch Học ${i + 1}`;
-        html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">${escapeHTML(title)}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
+        const title = t.year && t.semester
+          ? `Lịch Học ${t.year} - ${t.semester}`
+          : `Bảng Lịch Học ${i + 1}`;
+        html += `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon('calendar-days', 'h-4 w-4')}${escapeHTML(title)}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
       });
       html += '</div>';
       container.innerHTML = html;
@@ -975,7 +993,8 @@
       }
       const headers = raw[0];
       const rows = raw.slice(1);
-      container.innerHTML = `<div><h4 class="text-sm font-bold text-blue-700 mb-2">📝 Danh Sách Lịch Thi</h4>${renderTableHTML(headers, rows)}</div>`;
+      container.innerHTML = `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon('file-pen-line', 'h-4 w-4')}Danh Sách Lịch Thi</h4>${renderTableHTML(headers, rows)}</div>`;
+      refreshIcons();
     }
 
     function renderHocPhiTab(container, raw) {
@@ -985,11 +1004,13 @@
       }
       let html = '<div class="space-y-6">';
       raw.forEach((t, i) => {
-        const title = i === 0 ? '💰 Học Phí Theo Kỳ' : (i === 1 ? '💸 Khoản Thu Khác' : '💳 Chi Tiết Nộp Tiền');
-        html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">${escapeHTML(title)}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
+        const title = i === 0 ? 'Học Phí Theo Kỳ' : (i === 1 ? 'Khoản Thu Khác' : 'Chi Tiết Nộp Tiền');
+        const icon = i === 0 ? 'circle-dollar-sign' : (i === 1 ? 'receipt-text' : 'credit-card');
+        html += `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon(icon, 'h-4 w-4')}${escapeHTML(title)}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
       });
       html += '</div>';
       container.innerHTML = html;
+      refreshIcons();
     }
 
     function renderHoSoTab(container, raw) {
@@ -1009,12 +1030,12 @@
     function renderDrlTab(container, drlRaw, hbRaw) {
       let html = '<div class="space-y-6">';
       if (drlRaw && drlRaw.length) {
-        html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">🏆 Điểm Rèn Luyện</h4>${renderTableHTML(drlRaw[0], drlRaw.slice(1))}</div>`;
+        html += `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon('trophy', 'h-4 w-4')}Điểm Rèn Luyện</h4>${renderTableHTML(drlRaw[0], drlRaw.slice(1))}</div>`;
       }
       if (hbRaw && typeof hbRaw === 'object') {
         for (const [k, v] of Object.entries(hbRaw)) {
           if (Array.isArray(v) && v.length) {
-            html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">🎁 ${escapeHTML(k)}</h4>${renderTableHTML(v[0], v.slice(1))}</div>`;
+            html += `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon('gift', 'h-4 w-4')}${escapeHTML(k)}</h4>${renderTableHTML(v[0], v.slice(1))}</div>`;
           }
         }
       }
@@ -1042,6 +1063,8 @@
       token = '';
       showAuth();
     }
+
+    refreshIcons();
 
     if (token) {
       showDashboard();
