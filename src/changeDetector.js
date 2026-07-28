@@ -4,10 +4,19 @@ const mailer = require("./mailer");
 
 function detectGrades(oldData, newData) {
   if (!newData) return [];
-  const oldTable = oldData?.find((t) => t.headers?.includes("Tên học phần"));
-  const newTable = newData.find((t) => t.headers?.includes("Tên học phần"));
-  if (!newTable || !newTable.rows) return [];
-  if (!oldTable || !oldTable.rows || oldTable.rows.length === 0) return []; // Ignore first sync / empty snapshot notify to avoid spam
+  const oldTables = Array.isArray(oldData) ? oldData.filter(t => t.headers?.includes("Tên học phần")) : [];
+  const newTables = newData.filter(t => t.headers?.includes("Tên học phần"));
+  if (!newTables.length) return [];
+  if (!oldTables.length || !oldTables.some(t => t.rows?.length)) return []; // Ignore first sync / empty snapshot notify
+
+  const oldTable = {
+    headers: oldTables.find(t => t.headers?.length)?.headers || [],
+    rows: oldTables.flatMap(t => t.rows || [])
+  };
+  const newTable = {
+    headers: newTables.find(t => t.headers?.length)?.headers || [],
+    rows: newTables.flatMap(t => t.rows || [])
+  };
 
   const headers = newTable.headers || [];
   const keyIdx = headers.indexOf("Mã học phần") !== -1 ? headers.indexOf("Mã học phần") : (headers.indexOf("Mã lớp học phần") !== -1 ? headers.indexOf("Mã lớp học phần") : 1);
@@ -84,10 +93,20 @@ function detectSchedule(oldData, newData) {
     return headers.some(h => h.includes("ten hoc phan") || h.includes("ten mon") || h === "mon hoc" || h === "hoc phan");
   };
 
-  const oldTable = oldData?.find(isScheduleTable);
-  const newTable = newData.find(isScheduleTable);
-  if (!newTable) return [];
-  if (!oldTable) return []; // Ignore first sync notify to avoid spam
+  const oldTables = Array.isArray(oldData) ? oldData.filter(isScheduleTable) : [];
+  const newTables = newData.filter(isScheduleTable);
+  if (!newTables.length) return [];
+  if (!oldTables.length) return []; // Ignore first sync notify to avoid spam
+
+  // Multi-semester snapshots contain one table per year/semester. Compare merged rows.
+  const newTable = {
+    headers: newTables.find(table => table.headers?.length)?.headers || [],
+    rows: newTables.flatMap(table => table.rows || [])
+  };
+  const oldTable = {
+    headers: oldTables.find(table => table.headers?.length)?.headers || [],
+    rows: oldTables.flatMap(table => table.rows || [])
+  };
 
   // Dynamically find header indices to prevent column shift bugs
   const headers = (newTable.headers || []).map(norm);

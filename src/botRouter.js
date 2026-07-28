@@ -60,11 +60,12 @@ function formatKetQuaHocTap(scrapedData) {
   if (!rawKq || !rawKq.length) return "Chưa có dữ liệu điểm học tập.";
 
   let gpa = extractGPA(rawKq);
-  const targetTable = rawKq.find((t) => t.headers && t.headers.includes("Tên học phần"));
+  const gradeTables = rawKq.filter((t) => t.headers && t.headers.includes("Tên học phần"));
+  const targetTable = gradeTables[0];
 
   let courses = [];
-  if (targetTable && targetTable.rows) {
-    courses = targetTable.rows.map((r) => ({
+  if (gradeTables.length) {
+    courses = gradeTables.flatMap(table => table.rows || []).map((r) => ({
       name: r[2],
       credits: r[3],
       score10: r[6]
@@ -114,9 +115,9 @@ function formatKetQuaHocTap(scrapedData) {
     txt += `\n💡 TƯ VẤN & KHUYẾN NGHỊ (Quy chế UFLS):\n${advice}`;
   }
 
-  if (targetTable && targetTable.rows) {
+  if (gradeTables.length) {
     txt += `\n📝 Chi tiết điểm môn gần đây:`;
-    targetTable.rows.slice(0, 5).forEach((r) => {
+    gradeTables.flatMap(table => table.rows || []).slice(0, 5).forEach((r) => {
       txt += `\n- ${r[2]}: ${r[6]} (${r[8]})`;
     });
   }
@@ -219,11 +220,17 @@ function getScheduleEntries(data) {
     const n = normalizeScheduleHeader(h);
     return n.includes("ten hoc phan") || n.includes("ten mon") || n === "mon hoc" || n === "hoc phan";
   };
-  const table = data.find((t) => {
+  const tables = data.filter((t) => {
     const headers = (t.headers || []).map(normalizeScheduleHeader);
     return headers.some(isScheduleHeader) || (t.rows || []).some(isLegacyRow);
   });
-  if (!table) return [];
+  if (!tables.length) return [];
+
+  // Multi-semester scraper stores one table per year/semester. Merge all rows.
+  const table = {
+    headers: tables.find(t => t.headers?.length)?.headers || [],
+    rows: tables.flatMap(t => t.rows || [])
+  };
 
   const headers = table.headers || [];
   const columns = {
@@ -345,11 +352,12 @@ function formatTienDo(scrapedData) {
   if (!rawKq || !rawKq.length) return "Chưa có dữ liệu điểm để tính tiến độ.";
 
   let gpa = extractGPA(rawKq);
-  const targetTable = rawKq.find((t) => t.headers && t.headers.includes("Tên học phần"));
+  const gradeTables = rawKq.filter((t) => t.headers && t.headers.includes("Tên học phần"));
+  const targetTable = gradeTables[0];
 
   let courses = [];
-  if (targetTable && targetTable.rows) {
-    courses = targetTable.rows.map((r) => ({
+  if (gradeTables.length) {
+    courses = gradeTables.flatMap(table => table.rows || []).map((r) => ({
       name: r[2],
       credits: r[3],
       score10: r[6]
@@ -366,7 +374,7 @@ function formatTienDo(scrapedData) {
   const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester, courses);
   const advice = getScholarshipAndActivityAdvice(gpa.gpaSemester10 || null, gpa.gpaAccumulated, drl ? drl.score : null, gpa.creditsAccumulated);
 
-  const rows = targetTable ? targetTable.rows || [] : [];
+  const rows = gradeTables.flatMap(table => table.rows || []);
   const earned = rows.filter((r) => {
     const grade = (r[8] || "").toLowerCase();
     return grade && !["f", "chưa đạt"].includes(grade) && r[6] !== "0";

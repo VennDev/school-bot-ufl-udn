@@ -10,7 +10,7 @@ const crypto = require("./crypto");
 const botRouter = require("./botRouter");
 const messenger = require("./messenger");
 const { startScheduler } = require("./cron");
-const { PAGES } = require("./pages");
+const { PAGES, hasUsableData } = require("./pages");
 
 const app = express();
 app.use(express.json());
@@ -80,24 +80,29 @@ app.post("/api/admin/toggle-bot", requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/user-detail", requireAdmin, async (req, res) => {
-  const { fb_id } = req.query;
-  if (!fb_id) return res.status(400).json({ error: "Missing fb_id" });
+  const fb_id = requireFbId(req.query.fb_id);
+  if (!fb_id) return res.status(400).json({ error: "A valid numeric fb_id is required" });
   try {
     const user = await db.getUser(fb_id);
     if (!user) return res.status(404).json({ error: "User not found" });
     const rawData = await db.getScrapedData(fb_id) || {};
+    const parse = (value) => {
+      if (!value) return null;
+      try { return JSON.parse(value); } catch { return null; }
+    };
     const parsedData = {
-      canhBao: rawData.canh_bao ? JSON.parse(rawData.canh_bao) : null,
-      thongTinSV: rawData.thong_tin_sv ? JSON.parse(rawData.thong_tin_sv) : null,
-      ketQuaHocTap: rawData.ket_qua_hoc_tap ? JSON.parse(rawData.ket_qua_hoc_tap) : null,
-      diemRenLuyen: rawData.diem_ren_luyen ? JSON.parse(rawData.diem_ren_luyen) : null,
-      lichThi: rawData.lich_thi ? JSON.parse(rawData.lich_thi) : null,
-      hocBongKTKL: rawData.hoc_bong_ktkl ? JSON.parse(rawData.hoc_bong_ktkl) : null,
-      lichHoc: rawData.lich_hoc ? JSON.parse(rawData.lich_hoc) : null,
-      hocPhi: rawData.hoc_phi ? JSON.parse(rawData.hoc_phi) : null,
+      canhBao: parse(rawData.canh_bao),
+      thongTinSV: parse(rawData.thong_tin_sv),
+      ketQuaHocTap: parse(rawData.ket_qua_hoc_tap),
+      diemRenLuyen: parse(rawData.diem_ren_luyen),
+      lichThi: parse(rawData.lich_thi),
+      hocBongKTKL: parse(rawData.hoc_bong_ktkl),
+      lichHoc: parse(rawData.lich_hoc),
+      hocPhi: parse(rawData.hoc_phi),
       updatedAt: rawData.updated_at
     };
-    res.json({ username: user.username, fb_id, data: parsedData });
+    const coverage = Object.fromEntries(PAGES.map(page => [page.key, hasUsableData(page.key, parsedData[page.key])]));
+    res.json({ username: user.username, fb_id, coverage, data: parsedData });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -107,24 +112,21 @@ app.get("/api/admin/stats", requireAdmin, async (req, res) => {
   const users = await db.getAllUsers();
   const detailedUsers = await Promise.all(users.map(async (u) => {
     const data = await db.getScrapedData(u.fb_id) || {};
-    // Check complete: check if all 8 keys in PAGES are parsed
     const completedCount = PAGES.filter((p) => {
-      try {
-        const val = data[p.key === "canhBao" ? "canh_bao" : 
-                         p.key === "thongTinSV" ? "thong_tin_sv" : 
-                         p.key === "ketQuaHocTap" ? "ket_qua_hoc_tap" : 
-                         p.key === "diemRenLuyen" ? "diem_ren_luyen" : 
-                         p.key === "lichThi" ? "lich_thi" : 
-                         p.key === "hocBongKTKL" ? "hoc_bong_ktkl" : 
-                         p.key === "lichHoc" ? "lich_hoc" : "hoc_phi"];
-        return !!val;
-      } catch { return false; }
+      const dbKey = {
+        canhBao: "canh_bao", thongTinSV: "thong_tin_sv", ketQuaHocTap: "ket_qua_hoc_tap",
+        diemRenLuyen: "diem_ren_luyen", lichThi: "lich_thi", hocBongKTKL: "hoc_bong_ktkl",
+        lichHoc: "lich_hoc", hocPhi: "hoc_phi"
+      }[p.key];
+      try { return hasUsableData(p.key, data[dbKey] ? JSON.parse(data[dbKey]) : null); } catch { return false; }
     }).length;
 
     return {
       username: u.username,
       fb_id: u.fb_id,
-      complete: completedCount === PAGES.length
+      complete: completedCount === PAGES.length,
+      completedCount,
+      totalPages: PAGES.length
     };
   }));
 

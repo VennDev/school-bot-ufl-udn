@@ -1,48 +1,154 @@
 const BASE = "https://sinhvien.ufl.udn.vn";
 
-// Helper to iterate relevant year x semester dropdown options (lichHoc, lichThi).
-// Aggregates full multi-semester data across available semesters.
-async function _collectMultiSemester(page, extractInBrowserFn) {
-  const namHocSelect = await page.$("#cmbNamHoc");
-  if (!namHocSelect) return;
+// Read every real year/semester option. Keep only combinations whose page returns rows.
+async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") {
+  const hasYearSelect = await page.$("#cmbNamHoc");
+  if (!hasYearSelect) return false;
 
-  const namHocOpts = await namHocSelect.$$eval("option", els =>
-    els.map(e => ({ value: e.value, text: e.textContent.trim() }))
-       .filter(o => o.value !== "-1")
-  );
-  const hocKyOpts = ["1", "2", "3"];
+  const readOptions = (selector) => page.$eval(selector, select =>
+    [...select.options]
+      .map(option => ({
+        value: option.value,
+        text: option.textContent.trim(),
+        disabled: option.disabled,
+      }))
+      .filter(option => !option.disabled && option.value !== "" && option.value !== "-1" && !/(?:chọn|select)/i.test(option.text))
+  ).catch(() => []);
 
-  const currentYear = new Date().getFullYear();
-  const relevantNamHocOpts = namHocOpts.filter(o => {
-    const val = parseInt(o.value, 10);
-    return val >= currentYear - 3 && val <= currentYear + 2;
-  });
+  const settleSelection = async (selector, value) => {
+    try {
+      await page.selectOption(selector, value);
+      await page.waitForLoadState("networkidle").catch(() => {});
+      await page.waitForTimeout(700);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
-  const optsToIterate = relevantNamHocOpts.length > 0 ? relevantNamHocOpts : namHocOpts.slice(-5);
+  const years = await readOptions("#cmbNamHoc");
   const collectedTables = [];
+  const collectedRows = [];
+  const isPlaceholderRow = (row) => /không\s+có\s+(?:dữ\s+liệu|lịch)|chưa\s+có\s+dữ\s+liệu|no\s+data/i.test(row.join(" "));
 
-  for (const nh of optsToIterate) {
-    for (const hk of hocKyOpts) {
+  for (const year of years) {
+    if (!await settleSelection("#cmbNamHoc", year.value)) continue;
+    // Year change may replace dropdown DOM; read current options each iteration.
+
+    // Semester options can be repopulated after year changes; never hardcode them.
+    const semesterSelect = await page.$("#cmbHocKy");
+    const semesters = semesterSelect ? await readOptions("#cmbHocKy") : [{ value: "", text: "" }];
+    for (const semester of semesters) {
+      if (semester.value && !await settleSelection("#cmbHocKy", semester.value)) continue;
+
       try {
-        await page.selectOption("#cmbNamHoc", nh.value);
-        await page.waitForTimeout(400);
-        await page.selectOption("#cmbHocKy", hk);
-        await page.waitForTimeout(400);
-        await page.waitForLoadState("networkidle").catch(() => {});
+        const extracted = await page.evaluate(extractInBrowserFn, {
+          yearText: year.text,
+          yearValue: year.value,
+          semesterText: semester.text,
+          semesterValue: semester.value,
+        });
 
-        const tables = await page.evaluate(extractInBrowserFn, { yearText: nh.text, hkValue: hk });
-        if (tables && tables.length > 0) {
-          collectedTables.push(...tables);
+        if (mode === "rows") {
+          const rows = Array.isArray(extracted) ? extracted : extracted?.rows || [];
+          const headers = extracted?.headers || rows[0] || [];
+          const dataRows = extracted?.rows || rows.slice(1);
+          const usableRows = dataRows.filter(row => !isPlaceholderRow(row) && row.some(cell => String(cell ?? "").trim()));
+          if (!headers.length || !usableRows.length) continue;
+          if (!collectedRows.length) collectedRows.push([...headers, "Năm học", "Học kỳ"]);
+          collectedRows.push(...usableRows.map(row => [...row, year.text, semester.text]));
+          continue;
         }
-      } catch (e) {
-        // ignore option errors
+
+        for (const table of Array.isArray(extracted) ? extracted : []) {
+          const rows = (table?.rows || []).filter(row => !isPlaceholderRow(row));
+          if (!rows.some(row => row.some(cell => String(cell ?? "").trim()))) continue;
+          collectedTables.push({
+            ...table,
+            year: year.text,
+            yearValue: year.value,
+            semester: semester.text,
+            semesterValue: semester.value,
+            headers: [...(table.headers || []), "Năm học", "Học kỳ"],
+            rows: rows.map(row => [...row, year.text, semester.text]),
+          });
+        }
+      } catch {
+        // One unavailable year/semester must not abort remaining combinations.
       }
     }
   }
 
-  if (collectedTables.length > 0) {
-    page._collectedData = collectedTables;
+  // Mark setup as handled even when no combination has data. Scraper must retry,
+  // not fall back to whichever stale dropdown state the portal left selected.
+  page._collectedData = mode === "rows" ? collectedRows : collectedTables;
+  return true;
+}
+
+function _extractTables() {
+  const tables = [];
+  document.querySelectorAll("table").forEach(table => {
+    const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
+    const rows = [];
+    table.querySelectorAll("tbody tr, tr:not(:first-child)").forEach(tr => {
+      const cells = [...tr.querySelectorAll("td")].map(td => td.innerText.trim());
+      if (cells.length) rows.push(cells);
+    });
+    if (headers.length || rows.length) tables.push({ headers, rows });
+  });
+  return tables;
+}
+
+function _extractRows() {
+  const rows = [];
+  document.querySelectorAll("table tr").forEach(tr => {
+    const cells = [...tr.querySelectorAll("td, th")].map(cell => cell.innerText.trim());
+    if (cells.length) rows.push(cells);
+  });
+  return rows;
+}
+
+function _extractScheduleTables() {
+  const tables = [];
+  document.querySelectorAll("table").forEach(table => {
+    const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
+    const rows = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")]
+      .map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.trim()))
+      .filter(row => row.length);
+    if (headers.some(h => /học phần|môn/i.test(h)) && rows.some(row => row.some(cell => cell.length > 2 && !/STT/i.test(cell)))) {
+      tables.push({ headers, rows });
+    }
+  });
+  return tables;
+}
+
+function hasUsableData(key, value) {
+  if (value == null) return false;
+  if (key === "thongTinSV") return typeof value === "object" && Object.entries(value).some(([field, fieldValue]) =>
+    !field.startsWith("_") && String(fieldValue ?? "").trim()
+  );
+  if (key === "canhBao") return Array.isArray(value) && value.length > 0;
+  if (key === "lichThi" || key === "diemRenLuyen") {
+    return Array.isArray(value) && value.length > 1 && value.slice(1).some(row =>
+      Array.isArray(row) && row.some(cell => String(cell ?? "").trim())
+    );
   }
+  if (key === "hocBongKTKL") {
+    return value && typeof value === "object" && Object.values(value).some(rows =>
+      Array.isArray(rows) && rows.length > 1
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.some(item => {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        return Array.isArray(item.rows) && item.rows.some(row =>
+          Array.isArray(row) && row.some(cell => String(cell ?? "").trim())
+        ) || Boolean(String(item.content ?? "").trim());
+      }
+      return Array.isArray(item) ? item.some(cell => String(cell ?? "").trim()) : Boolean(String(item ?? "").trim());
+    });
+  }
+  return typeof value === "object" && Object.keys(value).length > 0;
 }
 
 const PAGES = [
@@ -67,9 +173,7 @@ const PAGES = [
       if (!items.length) {
         const main = document.querySelector("#divDataContent, .news-listing, .col-md-9");
         if (main) {
-          items.push({ content: main.innerText.trim().substring(0, 3000) });
-        } else {
-          items.push({ content: document.body.innerText.substring(0, 3000) });
+          items.push({ content: main.innerText.trim() });
         }
       }
       return items;
@@ -94,7 +198,6 @@ const PAGES = [
         const input = g.querySelector("input, select, span, p");
         if (label && input) info[label.innerText.trim()] = (input.value || input.innerText || "").trim();
       });
-      if (!Object.keys(info).length) info._raw = document.body.innerText.substring(0, 3000);
       return info;
     },
   },
@@ -102,7 +205,8 @@ const PAGES = [
     key: "ketQuaHocTap",
     url: `${BASE}/TraCuuDiemSV/Index`,
     label: "Kết quả học tập",
-    // Unselected default view returns full history of grades across all semesters.
+    // Enumerate every available year/semester; portal default is not relied on.
+    setup: async (page) => _collectMultiSemester(page, _extractTables),
     extract: () => {
       const tables = [];
       document.querySelectorAll("table").forEach((table) => {
@@ -121,7 +225,8 @@ const PAGES = [
     key: "diemRenLuyen",
     url: `${BASE}/TraCuuDiemSV/DiemRenLuyen`,
     label: "Điểm rèn luyện",
-    // Unselected default view returns full history of training points across all semesters.
+    // Enumerate every available year/semester; portal default is not relied on.
+    setup: async (page) => _collectMultiSemester(page, _extractRows, "rows"),
     extract: () => {
       const rows = [];
       document.querySelectorAll("table tr").forEach((tr) => {
@@ -135,6 +240,15 @@ const PAGES = [
     key: "lichThi",
     url: `${BASE}/TraCuuLichThi/Index`,
     label: "Lịch thi",
+    // Exam schedules use same year/semester selectors on portal.
+    setup: async (page) => _collectMultiSemester(page, () => {
+      const rows = [];
+      document.querySelectorAll("table tr").forEach(tr => {
+        const cells = [...tr.querySelectorAll("td, th")].map(cell => cell.innerText.trim());
+        if (cells.length) rows.push(cells);
+      });
+      return rows;
+    }, "rows"),
     extract: () => {
       const rows = [];
       document.querySelectorAll("table tr").forEach((tr) => {
@@ -167,28 +281,7 @@ const PAGES = [
     url: `${BASE}/TraCuuLichHoc/Index`,
     label: "Lịch học",
     // Iterate all year x semester options to collect full historical + current schedules
-    setup: async (page) => {
-      await _collectMultiSemester(page, ({ yearText, hkValue }) => {
-        const res = [];
-        document.querySelectorAll("table").forEach((table) => {
-          const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map((th) => th.innerText.trim());
-          const rows = [];
-          table.querySelectorAll("tbody tr, tr:not(:first-child)").forEach((tr) => {
-            const cells = [...tr.querySelectorAll("td")].map((td) => td.innerText.trim());
-            if (cells.length) rows.push(cells);
-          });
-          const isSchedule = headers.some(h => h.includes("học phần") || h.includes("môn"));
-          const hasData = rows.some(r => r.length >= 4 && r.some(c => c.length > 2 && !c.includes("STT")));
-          if (isSchedule && hasData) {
-            res.push({
-              headers: [...headers, "Năm học", "Học kỳ"],
-              rows: rows.map(r => [...r, yearText, `Kỳ ${hkValue}`])
-            });
-          }
-        });
-        return res;
-      });
-    },
+    setup: async (page) => _collectMultiSemester(page, _extractScheduleTables),
     extract: () => {
       const tables = [];
       document.querySelectorAll("table").forEach((table) => {
@@ -202,7 +295,7 @@ const PAGES = [
       });
       if (!tables.length) {
         const scheduler = document.querySelector(".scheduler, #scheduler, .calendar");
-        if (scheduler) return [{ content: scheduler.innerText.substring(0, 3000) }];
+        if (scheduler?.innerText.trim()) return [{ content: scheduler.innerText.trim() }];
       }
       return tables;
     },
@@ -227,4 +320,4 @@ const PAGES = [
   },
 ];
 
-module.exports = { BASE, PAGES };
+module.exports = { BASE, PAGES, hasUsableData };

@@ -4,7 +4,7 @@ if (!global.crypto) {
 }
 const fs = require("fs");
 const path = require("path");
-const { BASE, PAGES } = require("./pages");
+const { BASE, PAGES, hasUsableData } = require("./pages");
 const { socksUrl, rotateIP, startMultipleTor, stopAllTor } = require("./tor");
 const db = require("./db");
 const crypto = require("./crypto");
@@ -172,12 +172,14 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
           await p.setup(fastPage);
         }
 
-        if (fastPage._collectedData) {
-          scraped[p.key] = fastPage._collectedData;
-          delete fastPage._collectedData;
-        } else {
-          scraped[p.key] = await fastPage.evaluate(p.extract);
+        const pageData = fastPage._collectedData !== undefined
+          ? fastPage._collectedData
+          : await fastPage.evaluate(p.extract);
+        delete fastPage._collectedData;
+        if (!hasUsableData(p.key, pageData)) {
+          throw new Error("EMPTY_DATA");
         }
+        scraped[p.key] = pageData;
         console.log(`  [${account.username}] ${p.key}: OK`);
         if (!silent) {
           await messenger.sendTextMessage(account.fb_id, `[+] Tải thành công danh mục: ${p.key === "canhBao" ? "Cảnh báo học vụ" : 
@@ -225,16 +227,15 @@ async function scrapeAccount(account, torIdx, useTor, silent = false) {
   // so multi-batch retries don't suppress notifications via
   // intermediate null fields ("first sync" guard false-positive).
   const baselineOldData = await loadResult(account);
-  let pending = PAGES.filter((p) => !result[p.key]);
-
   // Always re-scrape all pages so change-detection works on every cron run.
   // Previously skipped when pending.length === 0, meaning completed accounts
   // never got grade/exam/tuition updates after initial sync.
-  pending = PAGES;
+  let pending = PAGES;
 
   console.log(`[${account.username}] Refreshing all ${pending.length} pages (tor-${torIdx})`);
   let attempt = 0;
   let consecutiveFails = 0;
+  const syncedThisRun = new Set();
   const proxy = useTor ? socksUrl(torIdx) : null;
 
   while (pending.length > 0 && attempt < MAX_RETRIES) {
@@ -253,10 +254,12 @@ async function scrapeAccount(account, torIdx, useTor, silent = false) {
 
     const gotNew = Object.keys(scraped).length > 0;
     Object.assign(result, scraped);
+    Object.keys(scraped).forEach(key => syncedThisRun.add(key));
     await saveResult(account, result, baselineOldData, false);
 
-    pending = PAGES.filter((p) => !result[p.key]);
-    console.log(`  [${account.username}] Progress: ${Object.keys(result).length}/${PAGES.length}`);
+    // Old DB values do not count as a successful scrape this run.
+    pending = PAGES.filter((p) => !syncedThisRun.has(p.key));
+    console.log(`  [${account.username}] Progress: ${syncedThisRun.size}/${PAGES.length}`);
 
     if (!pending.length) break;
 
