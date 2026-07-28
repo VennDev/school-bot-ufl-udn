@@ -636,10 +636,10 @@
           });
           const data2 = await res2.json();
           if (data2.status === 'ok') {
-            result = { success: true, alert: data2.lastAlert };
+            result = { success: true, alert: data2.lastAlert, log: data2.log || '' };
             break;
           } else if (data2.status === 'fail') {
-            result = { success: false };
+            result = { success: false, log: data2.log || '' };
             break;
           }
           // status === 'running' → keep polling
@@ -653,7 +653,7 @@
         } else if (result && !result.success) {
           btnEl.innerText = '✗ Fail';
           btnEl.className = 'text-red-600 hover:text-red-800 mr-3 font-bold';
-          alert(`[X] THẤT BẠI: Scraper chạy xong nhưng không có alert nào được tạo.\n\nPipeline thông báo có thể đang bị lỗi (changeDetector, messenger, hoặc first-sync guard).`);
+          alert(`[X] THẤT BẠI: Scraper chạy xong nhưng không có alert nào được tạo.\n\nLog scraper:\n${result?.log || '(chưa có log)'}`);
         } else {
           btnEl.innerText = '⏱ Timeout';
           btnEl.className = 'text-yellow-600 hover:text-yellow-800 mr-3';

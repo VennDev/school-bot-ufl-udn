@@ -196,11 +196,24 @@ app.post("/api/admin/test-notify", requireAdmin, async (req, res) => {
     });
 
     const testKey = `test_notify_ts_${user.username}_${curFbId}`;
+    const logKey = `test_notify_log_${user.username}_${curFbId}`;
     const beforeTs = Date.now();
     await db.saveSystemSetting(testKey, String(beforeTs));
+    await db.saveSystemSetting(logKey, "[process] scraper đang khởi động...\n");
 
     const scraperPath = path.resolve(__dirname, "./scrape.js");
-    exec(`node ${scraperPath} --silent --fb-id=${curFbId}`, { timeout: 120000 }, async (err, stdout) => {
+    exec(`node ${scraperPath} --silent --fb-id=${curFbId}`, {
+      timeout: 120000,
+      maxBuffer: 2 * 1024 * 1024,
+    }, async (err, stdout, stderr) => {
+      const scraperLog = [
+        err ? `[process error] ${err.message}` : "[process] exited successfully",
+        stdout ? `[stdout]\n${stdout}` : "",
+        stderr ? `[stderr]\n${stderr}` : "",
+      ].filter(Boolean).join("\n").slice(-12000);
+      console.error(`[admin-test-notify][${curFbId}] scraper log:\n${scraperLog}`);
+      await db.saveSystemSetting(logKey, scraperLog);
+
       if (err) {
         await db.saveSystemSetting(testKey, `fail_${Date.now()}`);
         return;
@@ -238,10 +251,12 @@ app.get("/api/admin/test-notify-result", requireAdmin, async (req, res) => {
   if (!user) return res.status(404).json({ error: "User not found" });
 
   const testKey = `test_notify_ts_${user.username}_${fbId}`;
+  const logKey = `test_notify_log_${user.username}_${fbId}`;
   const testState = await db.getSystemSetting(testKey, "");
+  const scraperLog = await db.getSystemSetting(logKey, "");
 
   if (!testState) {
-    return res.json({ success: true, status: "not_started", lastAlert: null });
+    return res.json({ success: true, status: "not_started", lastAlert: null, log: scraperLog });
   }
 
   if (testState.startsWith("ok_") || testState.startsWith("fail_")) {
@@ -254,12 +269,13 @@ app.get("/api/admin/test-notify-result", requireAdmin, async (req, res) => {
         content: lastAlert.content,
         time: lastAlert.createdAt,
       } : null,
+      log: scraperLog,
     });
   }
 
   // testState is a numeric timestamp → test still running
   const elapsed = Math.round((Date.now() - parseInt(testState)) / 1000);
-  res.json({ success: true, status: "running", elapsed });
+  res.json({ success: true, status: "running", elapsed, log: scraperLog });
 });
 
 // Simulate test: clear one page from a user's scraped data, then re-sync.

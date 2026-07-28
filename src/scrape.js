@@ -133,7 +133,8 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
     );
   } catch (e) {
     raceSettled = true;
-    console.error(`  [${account.username}] Both connections failed to login:`, e.message);
+    const loginDetails = e.errors?.map((error) => error.message).join(" | ") || e.message;
+    console.error(`  [${account.username}] Both connections failed to login:`, loginDetails);
     // Close any remaining browser instances on total failure
     await Promise.all(activeBrowsers.map((b) => b.close().catch(() => {})));
     
@@ -183,7 +184,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
           console.log(`  [${account.username}] ${p.key}: BLOCKED`);
           break;
         }
-        console.log(`  [${account.username}] ${p.key}: FAIL`);
+        console.error(`  [${account.username}] ${p.key}: FAIL: ${msg.split("\n")[0] || e.name || "Unknown error"}`);
       }
     }
 
