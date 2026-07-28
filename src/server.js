@@ -338,6 +338,17 @@ app.post("/api/admin/delete-record", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/admin/delete-all", requireAdmin, async (req, res) => {
+  const { model } = req.body;
+  if (!model) return res.status(400).json({ error: "Missing model" });
+  try {
+    await db.deleteAllRecords(model);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/admin/data-view", requireAdmin, async (req, res) => {
   const { model, page, limit } = req.query;
   if (!model) return res.status(400).json({ error: "Missing model name" });

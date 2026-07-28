@@ -399,6 +399,14 @@ module.exports = {
     await Model.findByIdAndDelete(id);
   },
 
+  async deleteAllRecords(modelName) {
+    await ensureInit();
+    const models = { User, Settings, ScrapedData, ChangeLog, StudyGoal, StudySession, SystemSetting, Interaction, RegNode, OtnToken };
+    const Model = models[modelName];
+    if (!Model) throw new Error("Model not found");
+    await Model.deleteMany({});
+  },
+
   // ---------- OTN Token Helpers ----------
   async saveOtnToken(fbId, token, topic) {
     await ensureInit();

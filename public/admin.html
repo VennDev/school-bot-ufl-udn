@@ -146,9 +146,14 @@
               <option value="SystemSetting">SystemSetting (Cấu hình hệ thống)</option>
             </select>
           </div>
-          <button onclick="exportCSV()" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded transition shadow">
-            Xuất file CSV
-          </button>
+          <div class="flex space-x-2">
+            <button onclick="exportCSV()" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded transition shadow">
+              Xuất file CSV
+            </button>
+            <button onclick="deleteAllRecords()" class="bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded transition shadow">
+              Xóa tất cả
+            </button>
+          </div>
         </div>
 
         <div class="overflow-x-auto flex-1 border rounded-lg">
@@ -444,6 +449,26 @@
         loadDataView();
       } else {
         alert(result.error || "Không thể xóa bản ghi");
+      }
+    }
+
+    async function deleteAllRecords() {
+      const model = document.getElementById('data-model-select').value;
+      if (!confirm(`⚠️ CẢNH BÁO: Bạn có chắc chắn muốn XÓA TẤT CẢ bản ghi trong bảng ${model}?\nHành động này không thể hoàn tác!`)) return;
+      const res = await fetch('/api/admin/delete-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ model })
+      });
+      const result = await res.json();
+      if (result.success) {
+        currentDataPage = 1;
+        loadDataView();
+      } else {
+        alert(result.error || "Không thể xóa tất cả bản ghi");
       }
     }
 
