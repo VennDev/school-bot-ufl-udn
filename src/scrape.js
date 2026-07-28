@@ -166,6 +166,12 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
       try {
         await fastPage.goto(p.url, { waitUntil: "domcontentloaded", timeout: 30000 });
         await fastPage.waitForLoadState("networkidle").catch(() => {});
+
+        // Run page-specific setup (e.g. select semester/year dropdowns) before extracting
+        if (typeof p.setup === "function") {
+          await p.setup(fastPage);
+        }
+
         scraped[p.key] = await fastPage.evaluate(p.extract);
         console.log(`  [${account.username}] ${p.key}: OK`);
         if (!silent) {

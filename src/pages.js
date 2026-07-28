@@ -105,6 +105,55 @@ const PAGES = [
     key: "lichHoc",
     url: `${BASE}/TraCuuLichHoc/Index`,
     label: "Lịch học",
+    // Select correct học kỳ + năm học before extracting.
+    // Portal has dropdowns: cmbHocKy (1/2/3), cmbNamHoc (2018..2026), cmbChuyenNganh (0/1).
+    // Default loads with "--- Chọn ... ---" which may show stale or no data.
+    setup: async (page) => {
+      const now = new Date();
+      const month = now.getMonth() + 1; // 1-12
+      const year = now.getFullYear();
+
+      // Determine academic year and semester
+      // Kỳ 1: Aug-Dec, Kỳ 2: Jan-May, Kỳ 3 (hè): Jun-Jul
+      let namHoc, hocKy;
+      if (month >= 8) {
+        namHoc = String(year);        // e.g. 2025 -> "2025-2026"
+        hocKy = "1";
+      } else if (month >= 1 && month <= 5) {
+        namHoc = String(year - 1);    // e.g. 2025 -> "2024-2025"
+        hocKy = "2";
+      } else {
+        namHoc = String(year - 1);    // Jun-Jul: hè của năm học trước
+        hocKy = "3";
+      }
+
+      // Select năm học first (triggers page reload via JS)
+      const namHocSelect = await page.$("#cmbNamHoc");
+      if (namHocSelect) {
+        const opts = await namHocSelect.$$eval("option", els => els.map(e => e.value));
+        if (opts.includes(namHoc)) {
+          await page.selectOption("#cmbNamHoc", namHoc);
+          await page.waitForTimeout(2000);
+          await page.waitForLoadState("networkidle").catch(() => {});
+        }
+      }
+
+      // Select học kỳ
+      const hocKySelect = await page.$("#cmbHocKy");
+      if (hocKySelect) {
+        await page.selectOption("#cmbHocKy", hocKy);
+        await page.waitForTimeout(2000);
+        await page.waitForLoadState("networkidle").catch(() => {});
+      }
+
+      // Select chuyên ngành chính (0)
+      const cnSelect = await page.$("#cmbChuyenNganh");
+      if (cnSelect) {
+        await page.selectOption("#cmbChuyenNganh", "0");
+        await page.waitForTimeout(1500);
+        await page.waitForLoadState("networkidle").catch(() => {});
+      }
+    },
     extract: () => {
       const tables = [];
       document.querySelectorAll("table").forEach((table) => {

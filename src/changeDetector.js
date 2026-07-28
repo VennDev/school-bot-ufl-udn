@@ -72,17 +72,26 @@ function detectAnnouncements(oldData, newData) {
 
 function detectSchedule(oldData, newData) {
   if (!newData || !newData.length) return [];
-  const oldTable = oldData?.find((t) => t.headers?.includes("Tên học phần"));
-  const newTable = newData.find((t) => t.headers?.includes("Tên học phần"));
+
+  // Match schedule table by header — same logic as getScheduleEntries in botRouter.js.
+  // Portal may use "Tên học phần", "Tên môn", or "Học phần".
+  const norm = (h) => String(h || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const isScheduleTable = (t) => {
+    const headers = (t.headers || []).map(norm);
+    return headers.some(h => h.includes("ten hoc phan") || h.includes("ten mon") || h === "mon hoc" || h === "hoc phan");
+  };
+
+  const oldTable = oldData?.find(isScheduleTable);
+  const newTable = newData.find(isScheduleTable);
   if (!newTable) return [];
   if (!oldTable) return []; // Ignore first sync notify to avoid spam
 
   // Dynamically find header indices to prevent column shift bugs
-  const headers = newTable.headers || [];
-  const nameIdx = headers.indexOf("Tên học phần");
-  const thuIdx = headers.indexOf("Thứ");
-  const tietIdx = headers.indexOf("Tiết");
-  const phongIdx = headers.indexOf("Phòng");
+  const headers = (newTable.headers || []).map(norm);
+  const nameIdx = headers.findIndex(h => h.includes("ten hoc phan") || h.includes("ten mon") || h === "mon hoc" || h === "hoc phan");
+  const thuIdx = headers.findIndex(h => h === "thu" || h.includes("thu"));
+  const tietIdx = headers.findIndex(h => h === "tiet" || h.includes("tiet"));
+  const phongIdx = headers.findIndex(h => h === "phong" || h.includes("phong"));
 
   const nameK = nameIdx !== -1 ? nameIdx : 2;
   const thuK = thuIdx !== -1 ? thuIdx : 0;
@@ -92,11 +101,15 @@ function detectSchedule(oldData, newData) {
   const alerts = [];
   const oldRows = new Map((oldTable.rows || []).map((r) => [r[nameK], r]));
   (newTable.rows || []).forEach((r) => {
-    const oldRow = oldRows.get(r[nameK]);
+    const name = r[nameK];
+    // Skip section-header rows (single cell spanning columns, no course name)
+    if (!name || String(name).length < 2) return;
+
+    const oldRow = oldRows.get(name);
     if (!oldRow) {
-      alerts.push(`[~] Lịch học mới: ${r[nameK]} - Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
+      alerts.push(`[~] Lịch học mới: ${name} - Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
     } else if (oldRow[thuK] !== r[thuK] || oldRow[tietK] !== r[tietK] || oldRow[phongK] !== r[phongK]) {
-      alerts.push(`(->) Thay đổi lịch học môn: ${r[nameK]} -> Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
+      alerts.push(`(->) Thay đổi lịch học môn: ${name} -> Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
     }
   });
   return alerts;

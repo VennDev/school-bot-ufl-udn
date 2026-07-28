@@ -215,9 +215,13 @@ function getScheduleEntries(data) {
   const isPeriod = (value) => /^\d+(?:\s*[-–]\s*\d+)?$/.test(String(value || "").trim());
   const isDay = (value) => /^(?:thứ\s*)?[2-7]$|^chủ nhật$/i.test(String(value || "").trim());
   const isLegacyRow = (row) => isPeriod(row?.[0]) && isDay(row?.[2]) && String(row?.[1] || "").trim();
+  const isScheduleHeader = (h) => {
+    const n = normalizeScheduleHeader(h);
+    return n.includes("ten hoc phan") || n.includes("ten mon") || n === "mon hoc" || n === "hoc phan";
+  };
   const table = data.find((t) => {
     const headers = (t.headers || []).map(normalizeScheduleHeader);
-    return headers.includes("ten hoc phan") || headers.includes("mon hoc") || headers.includes("hoc phan") || (t.rows || []).some(isLegacyRow);
+    return headers.some(isScheduleHeader) || (t.rows || []).some(isLegacyRow);
   });
   if (!table) return [];
 
@@ -225,7 +229,7 @@ function getScheduleEntries(data) {
   const columns = {
     day: scheduleColumn(headers, ["Thứ", "Ngày"]),
     period: scheduleColumn(headers, ["Tiết", "Tiết học"]),
-    name: scheduleColumn(headers, ["Tên học phần", "Tên môn học", "Môn học", "Học phần"]),
+    name: scheduleColumn(headers, ["Tên học phần", "Tên môn học", "Môn học", "Học phần", "Tên môn"]),
     room: scheduleColumn(headers, ["Phòng", "Phòng học"]),
     className: scheduleColumn(headers, ["Lớp học phần", "Lớp"]),
   };
