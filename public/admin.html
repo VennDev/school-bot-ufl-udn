@@ -869,15 +869,15 @@
 
     function renderTableHTML(headers, rows) {
       if (!headers || !headers.length) return '';
-      let html = '<div class="overflow-x-auto border rounded-lg shadow-sm mb-4"><table class="min-w-full divide-y divide-gray-200 text-sm"><thead class="bg-blue-50 text-blue-900 font-semibold text-xs uppercase"><tr>';
+      let html = '<div class="overflow-x-auto border border-gray-200 rounded-lg shadow-sm mb-4"><table class="w-max min-w-full divide-y divide-gray-200 text-sm"><thead class="bg-blue-50 text-blue-900 font-semibold text-xs uppercase"><tr>';
       headers.forEach(h => {
-        html += `<th class="px-4 py-2.5 text-left">${h}</th>`;
+        html += `<th class="px-4 py-2.5 text-left whitespace-nowrap border-b border-gray-200">${h}</th>`;
       });
       html += '</tr></thead><tbody class="divide-y divide-gray-100 bg-white">';
       (rows || []).forEach(r => {
         html += '<tr class="hover:bg-gray-50">';
         (r || []).forEach(c => {
-          html += `<td class="px-4 py-2 whitespace-nowrap">${c ?? ''}</td>`;
+          html += `<td class="px-4 py-2 whitespace-nowrap text-gray-700 border-b border-gray-100">${c ?? ''}</td>`;
         });
         html += '</tr>';
       });
@@ -893,7 +893,15 @@
       let html = '<div class="space-y-6">';
       raw.forEach((t, i) => {
         if (!t.headers || !t.headers.length) return;
-        const title = t.headers.includes('Tên học phần') ? '📊 Bảng Điểm Môn Học' : (t.headers.includes('Tên chứng chỉ') ? '📜 Chứng Chỉ' : `Bảng ${i + 1}`);
+        const normHeader = t.headers.join(" ").toLowerCase();
+        let title = `Bảng dữ liệu ${i + 1}`;
+        if (normHeader.includes('diem thi') || normHeader.includes('tbchp')) {
+          title = '📊 Bảng Điểm Chi Tiết (Kết quả học tập)';
+        } else if (normHeader.includes('khoi kien thuc') || normHeader.includes('ky thu')) {
+          title = '📚 Khung Chương Trình Đào Tạo (Tiến độ)';
+        } else if (normHeader.includes('ten chung chi') || normHeader.includes('chung chi')) {
+          title = '📜 Chứng Chỉ / Chuẩn Đầu Ra';
+        }
         html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">${title}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
       });
       html += '</div>';
