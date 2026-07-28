@@ -20,4 +20,11 @@ const multiSemesterEntries = getScheduleEntries([
 ]);
 assert.strictEqual(multiSemesterEntries.length, 2);
 assert.ok(multiSemesterEntries.some(entry => entry.name === "Môn mới"));
+
+const latestEntries = getScheduleEntries([
+  { yearValue: "2025", semesterValue: "2", headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["1", "Môn cũ", "2", "L01"]] },
+  { yearValue: "2026", semesterValue: "1", headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["7-8", "Môn hiện tại", "6", "L02"]] }
+], { latest: true });
+assert.deepStrictEqual(latestEntries.map(entry => entry.name), ["Môn hiện tại"]);
+
 console.log("Schedule format test passed OK!");

@@ -237,7 +237,7 @@ function scheduleColumn(headers, aliases) {
     .find((index) => index !== -1);
 }
 
-function getScheduleEntries(data) {
+function getScheduleEntries(data, options = {}) {
   if (!Array.isArray(data)) return [];
   const isPeriod = (value) => /^\d+(?:\s*[-–]\s*\d+)?$/.test(String(value || "").trim());
   const isDay = (value) => /^(?:thứ\s*)?[2-7]$|^chủ nhật$/i.test(String(value || "").trim());
@@ -252,7 +252,18 @@ function getScheduleEntries(data) {
   });
   if (!tables.length) return [];
 
-  // Multi-semester scraper stores one table per year/semester. Merge all rows.
+  if (options.latest && tables.length > 1) {
+    const scheduleValue = table => {
+      const year = Number(table.yearValue || String(table.year || "").match(/\d{4}/)?.[0] || 0);
+      const semester = Number(table.semesterValue || String(table.semester || "").match(/\d+/)?.[0] || 0);
+      return year * 10 + semester;
+    };
+    const latestValue = Math.max(...tables.map(scheduleValue));
+    const latest = tables.filter(table => scheduleValue(table) === latestValue);
+    tables.splice(0, tables.length, latest[latest.length - 1] || tables[tables.length - 1]);
+  }
+
+  // Multi-semester scraper stores one table per year/semester. Merge selected rows.
   const table = {
     headers: tables.find(t => t.headers?.length)?.headers || [],
     rows: tables.flatMap(t => t.rows || [])
@@ -321,8 +332,8 @@ function formatScheduleDay(day) {
   return /^thứ\s|^chủ nhật/i.test(value) ? value : `Thứ ${value}`;
 }
 
-function formatLichHoc(data, dayFilter) {
-  const entries = getScheduleEntries(data);
+function formatLichHoc(data, dayFilter, options = {}) {
+  const entries = getScheduleEntries(data, options);
   if (!entries.length) return "Không có lịch học nào sắp tới.";
 
   const dayMap = {
@@ -1011,18 +1022,13 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendTextMessage(senderPsid, reply);
   }
 
-  if (normalizedLowerText === "lịch học" || normalizedLowerText === "lich hoc") {
+  if (/^(?:lịch học|lich hoc|thời khóa biểu)(?:\s+(?:tuần này|tuần hiện tại|tuan nay|tuan hien tai))?$/i.test(normalizedLowerText)) {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
-    const entries = getScheduleEntries(raw);
+    const entries = getScheduleEntries(raw, { latest: true });
     if (!entries.length) {
-      return messenger.sendTextMessage(senderPsid, "Không có lịch học nào sắp tới.");
+      return messenger.sendTextMessage(senderPsid, "Không có lịch học trong kỳ hiện tại.");
     }
-    const elements = entries.slice(0, 5).map((entry) => ({
-      title: entry.name,
-      subtitle: [formatScheduleDay(entry.day), entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
-        .filter(Boolean).join(" | "),
-    }));
-    return messenger.sendGenericTemplate(senderPsid, elements);
+    return messenger.sendTextMessage(senderPsid, formatLichHoc(raw, null, { latest: true }));
   }
 
   if (normalizedLowerText.startsWith("lịch học thứ") || normalizedLowerText.startsWith("lịch học t") || normalizedLowerText.startsWith("lịch học cn") || normalizedLowerText.startsWith("lịch học chủ nhật") || normalizedLowerText.startsWith("lich hoc thu") || normalizedLowerText.startsWith("lich hoc t") || normalizedLowerText.startsWith("lich hoc cn") || normalizedLowerText.startsWith("lich hoc chu nhat")) {
