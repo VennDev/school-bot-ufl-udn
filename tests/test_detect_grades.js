@@ -82,8 +82,16 @@ try {
   console.log("Test Case D (Sai Header):", alertsD);
   assert.strictEqual(alertsD.length, 0, "Sai header trả về 0 alert (Lỗi silent fail)");
 
+  // Test Case E: Multi-semester snapshot must not alert during format migration.
+  const migratedOld = [mockOldData[0]];
+  const migratedNew = [{
+    headers: [...mockOldData[0].headers, "Năm học", "Học kỳ"],
+    rows: mockOldData[0].rows.map(row => [...row, "2024-2025", "Kỳ 1"])
+  }];
+  assert.strictEqual(detectGrades(migratedOld, migratedNew).length, 0, "Migration không được spam alert");
+
   console.log("\n=> KẾT LUẬN: Code logic detectGrades chạy tốt cho trường hợp chuẩn.");
-  console.log("=> LƯU Ý: Nếu Web trường thay đổi chữ 'Tên học phần' thành chữ khác, hệ thống sẽ silent-fail và không gửi tin báo điểm (Test Case D).");
+  console.log("=> LƯU Ý: Bảng chương trình đào tạo không được xem như bảng điểm.");
   
 } catch (error) {
   console.error("Test thất bại:", error);

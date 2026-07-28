@@ -298,33 +298,13 @@ async function scrapeAccount(account, torIdx, useTor, silent = false) {
     if (!silent) {
       await messenger.sendTextMessage(account.fb_id, "[!] Quá trình đồng bộ dữ liệu chưa hoàn tất. Một số mục có thể đã thất bại do lỗi kết nối mạng. Bạn có thể gõ /login để thử đồng bộ lại phần còn thiếu.");
     }
-  } else {
-    if (!silent) {
-      // When successfully synced, show a welcome message with a chat list (Quick Replies) as in the image, containing a logout option.
-      const successMsg = `Chúc mừng ${account.username} đã kết nối tài khoản sinh viên thành công! Tôi có thể giúp gì cho bạn?`;
-      await messenger.sendQuickReplies(account.fb_id, successMsg, [
-        { title: "Lịch học", payload: "LICH_HOC" },
-        { title: "Lịch thi", payload: "LICH_THI" },
-        { title: "Điểm số", payload: "DIEM_SO" },
-        { title: "Học phí", payload: "HOC_PHI" },
-        { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
-        { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
-      ]);
-
-      // Prompt user to grant first OTN Token for 24h bypass
-      setTimeout(async () => {
-        try {
-          await messenger.sendOtnRequest(account.fb_id, "Đăng ký nhận thông báo GPA & Điểm mới tự động", "ACCOUNT_UPDATE");
-        } catch (e) {
-          console.error("[scrape] Failed to send OTN request:", e.message);
-        }
-      }, 2000);
-    }
   }
 
-  // Trigger change detection and notify EXACTLY ONCE at the end of the scraper session.
-  // Prevents duplicate spamming when scraper saves multiple batches.
-  await saveResult(account, result, baselineOldData, true);
+  // Trigger change detection only after complete sync. Incomplete snapshots
+  // must not produce false alerts from partial semester data.
+  if (!pending.length) {
+    await saveResult(account, result, baselineOldData, true);
+  }
 
   return result;
 }
@@ -417,6 +397,7 @@ async function main() {
 
   if (!allComplete) {
     console.log("\nRe-run to continue incomplete accounts. Progress is saved.");
+    process.exitCode = 2;
   }
 }
 

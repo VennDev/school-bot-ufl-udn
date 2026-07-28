@@ -3,7 +3,7 @@ const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { askAI } = require("./ai");
 const { calculateGPA, extractGPA, extractDRL, getAcademicEvaluation, getScholarshipAndActivityAdvice } = require("./gpaHelper");
-const { PAGES } = require("./pages");
+const { PAGES, hasUsableData } = require("./pages");
 const { exec } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -22,7 +22,33 @@ const loginSessions = new Map();
 // Mutex to prevent concurrent scrape spawns per user
 const scrapingInProgress = new Set();
 
-// Get base URL for Webview from request
+const SCRAPED_DB_KEYS = {
+  canhBao: "canh_bao", thongTinSV: "thong_tin_sv", ketQuaHocTap: "ket_qua_hoc_tap",
+  diemRenLuyen: "diem_ren_luyen", lichThi: "lich_thi", hocBongKTKL: "hoc_bong_ktkl",
+  lichHoc: "lich_hoc", hocPhi: "hoc_phi"
+};
+
+async function isSyncComplete(fbId) {
+  const raw = await db.getScrapedData(fbId);
+  if (!raw) return false;
+  return PAGES.every(page => {
+    const value = raw[SCRAPED_DB_KEYS[page.key]];
+    try { return hasUsableData(page.key, value ? JSON.parse(value) : null); } catch { return false; }
+  });
+}
+
+async function sendSyncConfirmation(fbId, username) {
+  return messenger.sendQuickReplies(fbId, `[✓] Đồng bộ dữ liệu hoàn tất cho ${username}. Lịch học, lịch thi, điểm số và học vụ đã được cập nhật.`, [
+    { title: "Lịch học", payload: "LICH_HOC" },
+    { title: "Lịch thi", payload: "LICH_THI" },
+    { title: "Điểm số", payload: "DIEM_SO" },
+    { title: "Học phí", payload: "HOC_PHI" },
+    { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
+    { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
+  ]);
+}
+
+// Get base URL for Webview
 let appBaseUrl = "http://localhost:3000";
 
 function setBaseUrl(url) {
@@ -538,13 +564,15 @@ async function handleMessage(senderPsid, messageText) {
     scrapingInProgress.add(senderPsid);
     const scraperPath = path.resolve(__dirname, "./scrape.js");
     const execCmd = `node "${scraperPath}" --fb-id="${user.fb_id.replace(/"/g, '\\"')}" --silent`;
-    exec(execCmd, (err) => {
+    exec(execCmd, async (err) => {
       scrapingInProgress.delete(senderPsid);
       if (err) {
-        messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ thất bại.");
-      } else {
-        messenger.sendTextMessage(senderPsid, `[✓] Đã đồng bộ xong mục "${arg}". Gõ /pages để kiểm tra.`);
+        return messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ thất bại.");
       }
+      const complete = await isSyncComplete(senderPsid);
+      return messenger.sendTextMessage(senderPsid, complete
+        ? `[✓] Đã đồng bộ xong mục "${arg}". Gõ /pages để kiểm tra.`
+        : "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
     });
     return;
   }
@@ -587,13 +615,19 @@ async function handleMessage(senderPsid, messageText) {
     await messenger.sendTextMessage(senderPsid, "Đang khởi động đồng bộ dữ liệu tức thời từ cổng sinh viên. Quá trình có thể mất 1-2 phút...");
     const scraperPath = path.resolve(__dirname, "./scrape.js");
     const execCmd = `node "${scraperPath}" --fb-id="${user.fb_id.replace(/"/g, '\\"')}" --silent`;
-    exec(execCmd, (err) => {
+    exec(execCmd, async (err) => {
       scrapingInProgress.delete(senderPsid);
       if (err) {
-        messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ dữ liệu tức thời thất bại hoặc bị nghẽn mạng.");
-      } else {
-        messenger.sendTextMessage(senderPsid, "[✓] Đã đồng bộ dữ liệu hoàn tất! Thông tin lịch học, điểm số và học vụ của bạn đã được cập nhật mới nhất.");
+        const complete = await isSyncComplete(senderPsid);
+        return messenger.sendTextMessage(senderPsid, complete
+          ? "[X] Quá trình đồng bộ dữ liệu tức thời thất bại hoặc bị nghẽn mạng."
+          : "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
       }
+      const complete = await isSyncComplete(senderPsid);
+      if (!complete) {
+        return messenger.sendTextMessage(senderPsid, "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
+      }
+      return sendSyncConfirmation(senderPsid, user.username);
     });
     return;
   }
@@ -827,11 +861,7 @@ async function handleMessage(senderPsid, messageText) {
 
         await messenger.sendTextMessage(senderPsid, "Đang kết nối & tiến hành đồng bộ dữ liệu lần đầu. Quá trình này có thể mất 1-2 phút, vui lòng đợi...");
 
-        // Prompt student to register for OTN notification right after entering credentials
-        setTimeout(() => {
-          messenger.sendOtnRequest(senderPsid, "Đăng ký nhận thông báo GPA & Điểm mới tự động (Ngoài 24h)", "ACCOUNT_UPDATE").catch(() => {});
-        }, 1200);
-
+        // OTN request goes out only after complete sync succeeds.
         // Trigger async scrape immediately for this user
         if (scrapingInProgress.has(senderPsid)) {
           return messenger.sendTextMessage(senderPsid, "Đang có quá trình đồng bộ khác chạy. Vui lòng đợi...");
@@ -847,8 +877,10 @@ async function handleMessage(senderPsid, messageText) {
             // Check if user still exists — scraper deletes user on login failure
             const stillExists = await db.getUser(senderPsid);
             if (stillExists) {
-              // Process crashed but user wasn't deleted — scraper may not have sent error message
-              await messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ gặp lỗi. Vui lòng thử /login lại sau.");
+              const complete = await isSyncComplete(senderPsid);
+              await messenger.sendTextMessage(senderPsid, complete
+                ? "[X] Quá trình đồng bộ gặp lỗi sau khi lấy dữ liệu. Vui lòng thử /sync lại sau."
+                : "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
             }
             // If user was deleted, scraper already sent the failure message — do nothing
           } else {
@@ -859,15 +891,11 @@ async function handleMessage(senderPsid, messageText) {
               // Login failed, scraper already sent "[X] Đăng nhập thất bại..." — do not send conflicting success message
               return;
             }
-            // Send welcome message and menu on complete sync
-            await messenger.sendQuickReplies(senderPsid, `[✓] Chúc mừng bạn đã kết nối tài khoản sinh viên ${username} và đồng bộ dữ liệu thành công! Tôi có thể giúp gì cho bạn?`, [
-              { title: "Lịch học", payload: "LICH_HOC" },
-              { title: "Lịch thi", payload: "LICH_THI" },
-              { title: "Điểm số", payload: "DIEM_SO" },
-              { title: "Học phí", payload: "HOC_PHI" },
-              { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
-              { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
-            ]);
+            if (!await isSyncComplete(senderPsid)) {
+              await messenger.sendTextMessage(senderPsid, "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
+              return;
+            }
+            await sendSyncConfirmation(senderPsid, username);
             setTimeout(() => {
               messenger.sendOtnRequest(senderPsid, "Đăng ký nhận thông báo GPA & Điểm mới tự động", "ACCOUNT_UPDATE").catch(() => {});
             }, 1500);

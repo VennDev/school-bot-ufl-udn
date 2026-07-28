@@ -3,38 +3,67 @@ const db = require("./db");
 const mailer = require("./mailer");
 
 function detectGrades(oldData, newData) {
-  if (!newData) return [];
-  const oldTables = Array.isArray(oldData) ? oldData.filter(t => t.headers?.includes("Tên học phần")) : [];
-  const newTables = newData.filter(t => t.headers?.includes("Tên học phần"));
-  if (!newTables.length) return [];
-  if (!oldTables.length || !oldTables.some(t => t.rows?.length)) return []; // Ignore first sync / empty snapshot notify
-
-  const oldTable = {
-    headers: oldTables.find(t => t.headers?.length)?.headers || [],
-    rows: oldTables.flatMap(t => t.rows || [])
-  };
-  const newTable = {
-    headers: newTables.find(t => t.headers?.length)?.headers || [],
-    rows: newTables.flatMap(t => t.rows || [])
+  if (!Array.isArray(newData)) return [];
+  const norm = value => String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d")
+    .toLowerCase().replace(/\s+/g, " ").trim();
+  const isGradeTable = table => {
+    const headers = (table?.headers || []).map(norm);
+    const hasCourse = headers.some(h => h.includes("ten hoc phan"));
+    // Curriculum table also has "Tên học phần". Require grade-specific columns.
+    const hasGradeColumns = headers.some(h => /tbchp|diem tk|diem tong ket|diem chu|diem thi/.test(h));
+    return hasCourse && hasGradeColumns;
   };
 
-  const headers = newTable.headers || [];
-  const keyIdx = headers.indexOf("Mã học phần") !== -1 ? headers.indexOf("Mã học phần") : (headers.indexOf("Mã lớp học phần") !== -1 ? headers.indexOf("Mã lớp học phần") : 1);
-  const nameIdx = headers.indexOf("Tên học phần") !== -1 ? headers.indexOf("Tên học phần") : 2;
-  const scoreIdx = headers.indexOf("Điểm TBCHP") !== -1 ? headers.indexOf("Điểm TBCHP") : (headers.indexOf("Điểm tổng kết (10)") !== -1 ? headers.indexOf("Điểm tổng kết (10)") : 6);
-  const charIdx = headers.indexOf("Điểm chữ") !== -1 ? headers.indexOf("Điểm chữ") : 8;
+  const oldTables = Array.isArray(oldData) ? oldData.filter(isGradeTable) : [];
+  const newTables = newData.filter(isGradeTable);
+  if (!newTables.length || !oldTables.length || !oldTables.some(t => t.rows?.length)) return [];
 
+  const hasSemesterMetadata = tables => tables.some(table => {
+    const headers = (table.headers || []).map(norm);
+    return headers.some(header => header.includes("nam hoc") || header.includes("hoc ky"));
+  });
+  // First run after multi-semester format migration: old snapshot has one
+  // unlabelled table, new snapshot has every year/semester. Do not spam old rows.
+  const hasComparableSemesterMetadata = hasSemesterMetadata(newTables) && hasSemesterMetadata(oldTables);
+  if (hasSemesterMetadata(newTables) && !hasSemesterMetadata(oldTables)) return [];
+
+  const headers = newTables.find(t => t.headers?.length)?.headers || [];
+  const normalizedHeaders = headers.map(norm);
+  const findHeader = pattern => normalizedHeaders.findIndex(h => pattern.test(h));
+  const keyIdx = findHeader(/ma hoc phan|ma lop hoc phan|ky hieu|ma hp/) !== -1
+    ? findHeader(/ma hoc phan|ma lop hoc phan|ky hieu|ma hp/) : 1;
+  const nameIdx = findHeader(/ten hoc phan/) !== -1 ? findHeader(/ten hoc phan/) : 2;
+  const scoreIdx = findHeader(/tbchp|diem tk|diem tong ket/) !== -1 ? findHeader(/tbchp|diem tk|diem tong ket/) : 6;
+  const charIdx = findHeader(/diem chu|diem tk \(ch\)/) !== -1 ? findHeader(/diem chu|diem tk \(ch\)/) : 8;
+  const yearIdx = findHeader(/nam hoc/);
+  const semesterIdx = findHeader(/hoc ky/);
+  const rowKey = row => [row[keyIdx], row[nameIdx], yearIdx >= 0 ? row[yearIdx] : "", semesterIdx >= 0 ? row[semesterIdx] : ""].join("|");
+
+  const oldRows = new Map();
+  const oldBaseRows = new Map();
+  const baseKey = row => [row[keyIdx], row[nameIdx]].join("|");
+  oldTables.flatMap(t => t.rows || []).forEach(row => {
+    oldRows.set(rowKey(row), row);
+    oldBaseRows.set(baseKey(row), row);
+  });
   const alerts = [];
-  const oldRows = new Map(oldTable.rows.map((r) => [r[keyIdx], r])); // Ky hieu làm key
-  newTable.rows.forEach((r) => {
-    const oldRow = oldRows.get(r[keyIdx]);
+  const seenAlerts = new Set();
+  newTables.flatMap(t => t.rows || []).forEach(row => {
+    const name = String(row[nameIdx] || "").trim();
+    if (!name || /^tên học phần$/i.test(name)) return;
+    // Fallback base key prevents one-time migration spam when year/semester
+    // metadata was added to existing DB rows.
+    const oldRow = oldRows.get(rowKey(row)) || (!hasComparableSemesterMetadata ? oldBaseRows.get(baseKey(row)) : null);
+    let alert = null;
     if (!oldRow) {
-      // Only treat as single new grade alert if old table was not a partial snapshot (expansion across semesters)
-      if (oldTable.rows.length >= newTable.rows.length - 3) {
-        alerts.push(`[=] Điểm mới môn: ${r[nameIdx]} - TBCHP: ${r[scoreIdx]} (${r[charIdx] || "?"})`);
-      }
-    } else if (oldRow[scoreIdx] !== r[scoreIdx]) {
-      alerts.push(`(->) Thay đổi điểm môn: ${r[nameIdx]} -> TBCHP mới: ${r[scoreIdx]} (${r[charIdx] || "?"})`);
+      alert = `[=] Điểm mới môn: ${name} - TBCHP: ${row[scoreIdx]} (${row[charIdx] || "?"})`;
+    } else if (oldRow[scoreIdx] !== row[scoreIdx]) {
+      alert = `(->) Thay đổi điểm môn: ${name} -> TBCHP mới: ${row[scoreIdx]} (${row[charIdx] || "?"})`;
+    }
+    if (alert && !seenAlerts.has(alert)) {
+      seenAlerts.add(alert);
+      alerts.push(alert);
     }
   });
   return alerts;
@@ -43,18 +72,24 @@ function detectGrades(oldData, newData) {
 function detectExams(oldData, newData) {
   if (!newData || newData.length < 2) return [];
   if (!oldData || oldData.length < 2) return []; // Ignore first sync notify to avoid spam
+  const hasMeta = rows => rows[0]?.some(cell => /năm học|học kỳ/i.test(String(cell)));
+  if (hasMeta(newData) && !hasMeta(oldData)) return []; // Ignore format migration
 
   const alerts = [];
-  const oldExams = new Map(oldData.slice(1).map((r) => [r[1], r])); // Ma hoc phan
+  const examHeaders = newData[0] || [];
+  const yearIdx = examHeaders.findIndex(cell => /năm học/i.test(String(cell)));
+  const semesterIdx = examHeaders.findIndex(cell => /học kỳ/i.test(String(cell)));
+  const examKey = row => [row[1], yearIdx >= 0 ? row[yearIdx] : "", semesterIdx >= 0 ? row[semesterIdx] : ""].join("|");
+  const oldExams = new Map(oldData.slice(1).map((r) => [examKey(r), r]));
   newData.slice(1).forEach((r) => {
-    const oldExam = oldExams.get(r[1]);
+    const oldExam = oldExams.get(examKey(r));
     if (!oldExam) {
       alerts.push(`[~] Lịch thi mới môn: ${r[2]} ngày ${r[3]} phòng ${r[9]}`);
     } else if (oldExam[3] !== r[3] || oldExam[9] !== r[9]) {
       alerts.push(`(->) Thay đổi lịch thi môn: ${r[2]} -> Ngày: ${r[3]} phòng: ${r[9]}`);
     }
   });
-  return alerts;
+  return [...new Set(alerts)];
 }
 
 // Normalize an announcement item to a stable string for comparison.
@@ -70,12 +105,16 @@ function _annItemKey(item) {
 function detectAnnouncements(oldData, newData) {
   if (!newData || !newData.length) return [];
   if (!oldData || !oldData.length) return []; // Ignore first sync notify to avoid spam
+  // Previous extractor stored whole page as one truncated item. Do not treat
+  // parser migration as dozens of new announcements.
+  if (oldData.length === 1 && _annItemKey(oldData[0]).length >= 2000 && newData.length > 1) return [];
 
   const alerts = [];
-  const oldTexts = new Set(oldData.map(_annItemKey));
+  const oldTexts = [...new Set(oldData.map(_annItemKey))];
   newData.forEach((item) => {
     const key = _annItemKey(item);
-    if (!oldTexts.has(key)) {
+    const known = oldTexts.some(old => old === key || old.includes(key) || (key.length > 20 && key.includes(old)));
+    if (!known) {
       alerts.push(`[!] Báo nghỉ/Học vụ mới: ${key.substring(0, 150)}...`);
     }
   });
@@ -97,6 +136,8 @@ function detectSchedule(oldData, newData) {
   const newTables = newData.filter(isScheduleTable);
   if (!newTables.length) return [];
   if (!oldTables.length) return []; // Ignore first sync notify to avoid spam
+  const hasMeta = tables => tables.some(table => (table.headers || []).some(header => /năm học|học kỳ/i.test(String(header))));
+  if (hasMeta(newTables) && !hasMeta(oldTables)) return []; // Ignore format migration
 
   // Multi-semester snapshots contain one table per year/semester. Compare merged rows.
   const newTable = {
@@ -119,22 +160,25 @@ function detectSchedule(oldData, newData) {
   const thuK = thuIdx !== -1 ? thuIdx : 0;
   const tietK = tietIdx !== -1 ? tietIdx : 1;
   const phongK = phongIdx !== -1 ? phongIdx : 3;
+  const yearK = headers.findIndex(h => h.includes("nam hoc"));
+  const semesterK = headers.findIndex(h => h.includes("hoc ky"));
+  const rowKey = row => [row[nameK], yearK >= 0 ? row[yearK] : "", semesterK >= 0 ? row[semesterK] : ""].join("|");
 
   const alerts = [];
-  const oldRows = new Map((oldTable.rows || []).map((r) => [r[nameK], r]));
+  const oldRows = new Map((oldTable.rows || []).map((r) => [rowKey(r), r]));
   (newTable.rows || []).forEach((r) => {
     const name = r[nameK];
     // Skip section-header rows (single cell spanning columns, no course name)
     if (!name || String(name).length < 2) return;
 
-    const oldRow = oldRows.get(name);
+    const oldRow = oldRows.get(rowKey(r));
     if (!oldRow) {
       alerts.push(`[~] Lịch học mới: ${name} - Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
     } else if (oldRow[thuK] !== r[thuK] || oldRow[tietK] !== r[tietK] || oldRow[phongK] !== r[phongK]) {
       alerts.push(`(->) Thay đổi lịch học môn: ${name} -> Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
     }
   });
-  return alerts;
+  return [...new Set(alerts)];
 }
 
 function detectTuition(oldData, newData) {
@@ -182,13 +226,35 @@ async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
     }
   }
 
+  // One sync can produce many row-level changes. Send one message per channel,
+  // not one Messenger message per row.
+  const grouped = new Map();
   for (const [alert, templateKey] of items) {
-    console.log(`[notifier] Sending to ${fbId} [${templateKey}]: ${alert}`);
-    await messenger.sendUtilityMessage(fbId, templateKey, [alert]);
-    db.logChange(fbId, "alert", alert);
+    if (!grouped.has(templateKey)) grouped.set(templateKey, []);
+    grouped.get(templateKey).push(alert);
+  }
+  for (const [templateKey, alerts] of grouped) {
+    const uniqueAlerts = [...new Set(alerts)];
+    grouped.set(templateKey, uniqueAlerts);
+    uniqueAlerts.forEach(alert => db.logChange(fbId, "alert", alert));
+  }
+
+  for (const [templateKey, alerts] of grouped) {
+    const maxAlerts = 8;
+    const visible = alerts.slice(0, maxAlerts);
+    if (alerts.length > maxAlerts) {
+      visible.push(`... và ${alerts.length - maxAlerts} thay đổi khác. Mở mục tra cứu để xem đầy đủ.`);
+    }
+    const content = visible.join("\n");
+    console.log(`[notifier] Sending ${alerts.length} alert(s) to ${fbId} [${templateKey}]`);
+    try {
+      await messenger.sendUtilityMessage(fbId, templateKey, [content]);
+    } catch (error) {
+      console.error(`[notifier] Failed ${templateKey} for ${fbId}:`, error.message);
+    }
 
     if (settings.email) {
-      await mailer.sendEmail(settings.email, "[UFL Bot] Cập nhật học vụ", alert);
+      await mailer.sendEmail(settings.email, "[UFL Bot] Cập nhật học vụ", content);
     }
   }
 }
