@@ -9,6 +9,19 @@ let schedulerInterval = null;
 let reminderInterval = null;
 let scraperRunning = false; // prevent overlapping scheduled runs
 
+// Dedup: track sent reminders so hourly checkExamReminders doesn't spam.
+// Keys: "exam:${fbId}:${subject}:${dateStr}:${daysUntil}" and "tuition:${fbId}:${todayStr}"
+const sentReminders = new Set();
+// Purge stale keys every 24h to prevent unbounded growth
+setInterval(() => {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  for (const key of sentReminders) {
+    // Keep only keys containing today's date
+    if (!key.includes(todayStr)) sentReminders.delete(key);
+  }
+}, 24 * 60 * 60 * 1000);
+
 function parseDate(str) {
   if (!str) return null;
   const parts = str.split(/[\/\-]/);
@@ -43,7 +56,12 @@ async function checkExamReminders() {
 
             const daysUntil = Math.ceil((examDate - now) / (1000 * 60 * 60 * 24));
 
-            if (daysUntil === 0) {
+            if (daysUntil === 0 || daysUntil === 1) {
+              const reminderKey = `exam:${u.fb_id}:${exam[2]}:${exam[3]}:${daysUntil}`;
+              if (sentReminders.has(reminderKey)) continue;
+              sentReminders.add(reminderKey);
+
+              const label = daysUntil === 0 ? "HÔM NAY THI" : "NGÀY MAI THI";
               // Utility Template: ufl_exam_reminder (5 params: subject, date, time, room, format)
               messenger.sendUtilityMessage(u.fb_id, "EVENT_REMINDER", [
                 exam[2] || "?",
@@ -52,20 +70,10 @@ async function checkExamReminders() {
                 exam[9] || "?",
                 exam[10] || "?"
               ]);
-              const msg = `(!) HÔM NAY THI môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
+              const msg = `(!) ${label} môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
               db.logChange(u.fb_id, "exam_reminder", msg);
-              if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Nhắc nhở thi hôm nay", msg);
-            } else if (daysUntil === 1) {
-              messenger.sendUtilityMessage(u.fb_id, "EVENT_REMINDER", [
-                exam[2] || "?",
-                exam[3] || "?",
-                exam[5] || "?",
-                exam[9] || "?",
-                exam[10] || "?"
-              ]);
-              const msg = `[@] NGÀY MAI THI môn: ${exam[2]}\n[@] Giờ: ${exam[5]} | [#] Phòng: ${exam[9]}\n[?] Hình thức: ${exam[10] || "?"}`;
-              db.logChange(u.fb_id, "exam_reminder", msg);
-              if (settings.email) mailer.sendEmail(settings.email, "[UFL Bot] Nhắc nhở thi ngày mai", msg);
+              const emailSubject = daysUntil === 0 ? "[UFL Bot] Nhắc nhở thi hôm nay" : "[UFL Bot] Nhắc nhở thi ngày mai";
+              if (settings.email) mailer.sendEmail(settings.email, emailSubject, msg);
             }
           }
         }
@@ -114,6 +122,11 @@ async function checkExamReminders() {
             }
 
             if (upcomingExams.length > 0) {
+              const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+              const tuitionKey = `tuition:${u.fb_id}:${todayStr}`;
+              if (sentReminders.has(tuitionKey)) continue;
+              sentReminders.add(tuitionKey);
+
               const alertMsg = `⚠️ CẢNH BÁO HỌC PHÍ TRƯỚC KÌ THI!\n\nBạn có lịch thi sắp tới trong vòng 7 ngày:\n- ${upcomingExams.join("\n- ")}\n\nTuy nhiên, hệ thống ghi nhận bạn vẫn chưa hoàn thành học phí:\n- ${debtDetails.slice(0, 3).join("\n- ")}\n\nVui lòng hoàn thành học phí sớm để tránh bị cấm thi hoặc ảnh hưởng kết quả thi.`;
               // Utility Template: ufl_tuition_alert (1 param: full alert text)
               messenger.sendUtilityMessage(u.fb_id, "TUITION_ALERT", [alertMsg]);

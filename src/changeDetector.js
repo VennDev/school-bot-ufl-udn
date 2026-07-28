@@ -45,16 +45,26 @@ function detectExams(oldData, newData) {
   return alerts;
 }
 
+// Normalize an announcement item to a stable string for comparison.
+// Arrays (table rows) get cells joined; objects use .content; strings used as-is.
+function _annItemKey(item) {
+  if (Array.isArray(item)) {
+    return item.map(c => String(c || "").trim().replace(/\s+/g, " ")).join(" | ");
+  }
+  if (item && typeof item.content === "string") return item.content.trim().replace(/\s+/g, " ");
+  return JSON.stringify(item);
+}
+
 function detectAnnouncements(oldData, newData) {
   if (!newData || !newData.length) return [];
   if (!oldData || !oldData.length) return []; // Ignore first sync notify to avoid spam
 
   const alerts = [];
-  const oldTexts = new Set(oldData.map((item) => item.content || JSON.stringify(item)));
+  const oldTexts = new Set(oldData.map(_annItemKey));
   newData.forEach((item) => {
-    const txt = item.content || JSON.stringify(item);
-    if (!oldTexts.has(txt)) {
-      alerts.push(`[!] Báo nghỉ/Học vụ mới: ${txt.substring(0, 150)}...`);
+    const key = _annItemKey(item);
+    if (!oldTexts.has(key)) {
+      alerts.push(`[!] Báo nghỉ/Học vụ mới: ${key.substring(0, 150)}...`);
     }
   });
   return alerts;
