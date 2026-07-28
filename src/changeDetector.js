@@ -122,60 +122,89 @@ function detectAnnouncements(oldData, newData) {
 }
 
 function detectSchedule(oldData, newData) {
-  if (!newData || !newData.length) return [];
+  if (!Array.isArray(newData) || !newData.length) return [];
 
-  // Match schedule table by header — same logic as getScheduleEntries in botRouter.js.
-  // Portal may use "Tên học phần", "Tên môn", or "Học phần".
-  const norm = (h) => String(h || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-  const isScheduleTable = (t) => {
-    const headers = (t.headers || []).map(norm);
-    return headers.some(h => h.includes("ten hoc phan") || h.includes("ten mon") || h === "mon hoc" || h === "hoc phan");
+  const norm = value => String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d")
+    .toLowerCase().replace(/\s+/g, " ").trim();
+  const clean = value => String(value ?? "").replace(/\s+/g, " ").trim();
+  const findColumn = (headers, aliases) => aliases
+    .map(alias => headers.indexOf(norm(alias)))
+    .find(index => index !== -1);
+  const isScheduleTable = table => {
+    const headers = (table?.headers || []).map(norm);
+    return headers.includes("ten hoc phan") || headers.includes("ten mon hoc") ||
+      headers.includes("ten mon") || headers.includes("mon hoc") || headers.includes("hoc phan");
+  };
+  const tables = data => Array.isArray(data) ? data.filter(isScheduleTable) : [];
+  const oldTables = tables(oldData);
+  const newTables = tables(newData);
+  if (!newTables.length || !oldTables.length) return []; // First sync: no notification.
+
+  const hasMeta = list => list.some(table => (table.headers || []).some(header =>
+    /năm học|học kỳ/i.test(String(header))
+  ));
+  if (hasMeta(newTables) && !hasMeta(oldTables)) return []; // Scraper format migration.
+
+  // Parse every table with its own headers. Merging rows under first table's
+  // column map caused false changes when portal returned different layouts.
+  const extract = table => {
+    const headers = (table.headers || []).map(norm);
+    const name = findColumn(headers, ["Tên học phần", "Tên môn học", "Tên môn", "Môn học", "Học phần"]);
+    const day = findColumn(headers, ["Thứ", "Ngày"]);
+    const period = findColumn(headers, ["Tiết", "Tiết học"]);
+    if (name === undefined || day === undefined || period === undefined) return [];
+    const room = findColumn(headers, ["Phòng", "Phòng học"]);
+    const className = findColumn(headers, ["Tên lớp tín chỉ", "Lớp học phần", "Lớp tín chỉ", "Lớp"]);
+    const time = findColumn(headers, ["Thời gian", "Ngày học"]);
+    const year = findColumn(headers, ["Năm học"]);
+    const semester = findColumn(headers, ["Học kỳ"]);
+    return (table.rows || []).map(row => ({
+      name: clean(row[name]),
+      className: className === undefined ? "" : clean(row[className]),
+      day: clean(row[day]),
+      period: clean(row[period]),
+      room: room === undefined ? "" : clean(row[room]),
+      time: time === undefined ? "" : clean(row[time]),
+      year: year === undefined ? clean(table.year || table.yearValue) : clean(row[year]),
+      semester: semester === undefined ? clean(table.semester || table.semesterValue) : clean(row[semester]),
+    })).filter(entry => entry.name && entry.day && entry.period && !/^tên học phần|^tên môn/i.test(entry.name));
   };
 
-  const oldTables = Array.isArray(oldData) ? oldData.filter(isScheduleTable) : [];
-  const newTables = newData.filter(isScheduleTable);
-  if (!newTables.length) return [];
-  if (!oldTables.length) return []; // Ignore first sync notify to avoid spam
-  const hasMeta = tables => tables.some(table => (table.headers || []).some(header => /năm học|học kỳ/i.test(String(header))));
-  if (hasMeta(newTables) && !hasMeta(oldTables)) return []; // Ignore format migration
+  const oldEntries = oldTables.flatMap(extract);
+  const newEntries = newTables.flatMap(extract);
+  if (!oldEntries.length || !newEntries.length) return []; // Malformed/changed HTML: stay silent.
 
-  // Multi-semester snapshots contain one table per year/semester. Compare merged rows.
-  const newTable = {
-    headers: newTables.find(table => table.headers?.length)?.headers || [],
-    rows: newTables.flatMap(table => table.rows || [])
+  const groupPart = (value, type) => {
+    const text = norm(value);
+    if (type === "year") return text.replace(/\s+/g, "").replace(/[–—]/g, "-");
+    const semester = text.match(/(?:ky|hoc ky)\s*(\d+)/);
+    return semester ? `ky${semester[1]}` : text;
   };
-  const oldTable = {
-    headers: oldTables.find(table => table.headers?.length)?.headers || [],
-    rows: oldTables.flatMap(table => table.rows || [])
-  };
+  const group = entry => `${groupPart(entry.year, "year")}|${groupPart(entry.semester, "semester")}`;
+  const oldGroups = new Set(oldEntries.map(group));
+  const newGroups = new Set(newEntries.map(group));
+  const hasGroupedCoverage = oldGroups.size > 0 && newGroups.size > 0;
+  // Old snapshots may contain only portal's default semester while new scraper
+  // contains every semester. Compare shared groups only; historical expansion
+  // is not a schedule change and must not notify every old course.
+  const comparableNewEntries = hasGroupedCoverage
+    ? newEntries.filter(entry => oldGroups.has(group(entry)))
+    : newEntries;
+  if (!comparableNewEntries.length) return [];
 
-  // Dynamically find header indices to prevent column shift bugs
-  const headers = (newTable.headers || []).map(norm);
-  const nameIdx = headers.findIndex(h => h.includes("ten hoc phan") || h.includes("ten mon") || h === "mon hoc" || h === "hoc phan");
-  const thuIdx = headers.findIndex(h => h === "thu" || h.includes("thu"));
-  const tietIdx = headers.findIndex(h => h === "tiet" || h.includes("tiet"));
-  const phongIdx = headers.findIndex(h => h === "phong" || h.includes("phong"));
-
-  const nameK = nameIdx !== -1 ? nameIdx : 2;
-  const thuK = thuIdx !== -1 ? thuIdx : 0;
-  const tietK = tietIdx !== -1 ? tietIdx : 1;
-  const phongK = phongIdx !== -1 ? phongIdx : 3;
-  const yearK = headers.findIndex(h => h.includes("nam hoc"));
-  const semesterK = headers.findIndex(h => h.includes("hoc ky"));
-  const rowKey = row => [row[nameK], yearK >= 0 ? row[yearK] : "", semesterK >= 0 ? row[semesterK] : ""].join("|");
-
+  // Same course/class can appear multiple times in one semester. Include
+  // schedule date range so Map does not overwrite one session with another.
+  const key = entry => [norm(entry.name), norm(entry.className), group(entry), norm(entry.time)].join("|");
+  const value = entry => [norm(entry.day), norm(entry.period), norm(entry.room), norm(entry.time)].join("|");
+  const oldRows = new Map(oldEntries.map(entry => [key(entry), entry]));
   const alerts = [];
-  const oldRows = new Map((oldTable.rows || []).map((r) => [rowKey(r), r]));
-  (newTable.rows || []).forEach((r) => {
-    const name = r[nameK];
-    // Skip section-header rows (single cell spanning columns, no course name)
-    if (!name || String(name).length < 2) return;
-
-    const oldRow = oldRows.get(rowKey(r));
-    if (!oldRow) {
-      alerts.push(`[~] Lịch học mới: ${name} - Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
-    } else if (oldRow[thuK] !== r[thuK] || oldRow[tietK] !== r[tietK] || oldRow[phongK] !== r[phongK]) {
-      alerts.push(`(->) Thay đổi lịch học môn: ${name} -> Thứ ${r[thuK]} tiết ${r[tietK]} phòng ${r[phongK]}`);
+  newEntries.forEach(entry => {
+    const oldEntry = oldRows.get(key(entry));
+    if (!oldEntry) {
+      alerts.push(`[~] Lịch học mới: ${entry.name} - Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
+    } else if (value(oldEntry) !== value(entry)) {
+      alerts.push(`(->) Thay đổi lịch học môn: ${entry.name} -> Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
     }
   });
   return [...new Set(alerts)];

@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { getScheduleEntries } = require("../src/botRouter");
+const { detectSchedule } = require("../src/changeDetector");
 
 const entries = getScheduleEntries([{
   headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"],
@@ -26,5 +27,13 @@ const latestEntries = getScheduleEntries([
   { yearValue: "2026", semesterValue: "1", headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["7-8", "Môn hiện tại", "6", "L02"]] }
 ], { latest: true });
 assert.deepStrictEqual(latestEntries.map(entry => entry.name), ["Môn hiện tại"]);
+
+const stableOld = [{
+  year: "2026-2027", semester: "Kỳ 1",
+  headers: ["STT", "Tên học phần", "Số tín chỉ", "Tên lớp tín chỉ", "Đường dẫn", "Mô tả", "Thời gian", "Thứ", "Tiết", "Phòng", "Giáo viên"],
+  rows: [["1", "Văn học Anh", "2", "Văn học Anh-09", "", "", "24/08/2026-06/12/2026", "6", "7-8", "B503(LNH)", "GV"]]
+}];
+assert.deepStrictEqual(detectSchedule(stableOld, JSON.parse(JSON.stringify(stableOld))), []);
+assert.deepStrictEqual(detectSchedule(stableOld, [{ ...stableOld[0], rows: [["1", "Văn học Anh", "2", "Văn học Anh-09", "", "", "24/08/2026-06/12/2026", "6", "7-8", "B503(LNH)", "GV"]]}]), []);
 
 console.log("Schedule format test passed OK!");
