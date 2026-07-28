@@ -29,6 +29,8 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
   const years = await readOptions("#cmbNamHoc");
   const collectedTables = [];
   const collectedRows = [];
+  const seenTables = new Set();
+  const seenRows = new Set();
   const isPlaceholderRow = (row) => /không\s+có\s+(?:dữ\s+liệu|lịch)|chưa\s+có\s+dữ\s+liệu|no\s+data/i.test(row.join(" "));
 
   for (const year of years) {
@@ -56,13 +58,21 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
           const usableRows = dataRows.filter(row => !isPlaceholderRow(row) && row.some(cell => String(cell ?? "").trim()));
           if (!headers.length || !usableRows.length) continue;
           if (!collectedRows.length) collectedRows.push([...headers, "Năm học", "Học kỳ"]);
-          collectedRows.push(...usableRows.map(row => [...row, year.text, semester.text]));
+          usableRows.forEach(row => {
+            const entry = [...row, year.text, semester.text];
+            const key = JSON.stringify(entry);
+            if (!seenRows.has(key)) { seenRows.add(key); collectedRows.push(entry); }
+          });
           continue;
         }
 
         for (const table of Array.isArray(extracted) ? extracted : []) {
           const rows = (table?.rows || []).filter(row => !isPlaceholderRow(row));
           if (!rows.some(row => row.some(cell => String(cell ?? "").trim()))) continue;
+          // Static tables repeat for every selection; keep one copy, keep per-selection rows.
+          const tableKey = JSON.stringify([table.headers || [], rows]);
+          if (seenTables.has(tableKey)) continue;
+          seenTables.add(tableKey);
           collectedTables.push({
             ...table,
             year: year.text,
@@ -134,8 +144,9 @@ function hasUsableData(key, value) {
     );
   }
   if (key === "hocBongKTKL") {
+    // Header-only tables mean portal responded successfully with no records.
     return value && typeof value === "object" && Object.values(value).some(rows =>
-      Array.isArray(rows) && rows.length > 1
+      Array.isArray(rows) && rows.length > 0
     );
   }
   if (Array.isArray(value)) {
@@ -185,18 +196,40 @@ const PAGES = [
     label: "Thông tin sinh viên",
     extract: () => {
       const info = {};
-      document.querySelectorAll("table tr").forEach((tr) => {
-        const tds = tr.querySelectorAll("td");
-        for (let i = 0; i < tds.length - 1; i += 2) {
-          const key = tds[i]?.innerText?.trim();
-          const val = tds[i + 1]?.innerText?.trim();
-          if (key) info[key] = val || "";
+      const controls = "input:not([type=file]):not([type=password]):not([type=hidden]), select, textarea";
+      const cleanKey = value => String(value || "").replace(/[:：]\s*$/, "").replace(/\s+/g, " ").trim();
+      const readControl = control => {
+        if (!control) return "";
+        if (control.matches("select")) {
+          return [...control.selectedOptions].map(option => option.textContent.trim()).filter(Boolean).join(", ");
         }
+        if (control.matches("input[type=checkbox], input[type=radio]")) return control.checked ? "Có" : "Không";
+        return String(control.value || control.innerText || "").trim();
+      };
+      const findControl = label => {
+        let sibling = label.nextElementSibling;
+        while (sibling) {
+          if (sibling.matches(controls)) return sibling;
+          if (sibling.matches(".NoiDungHoSo")) break;
+          sibling = sibling.nextElementSibling;
+        }
+        return label.parentElement?.querySelector(controls);
+      };
+      const addField = (key, control) => {
+        const clean = cleanKey(key);
+        const value = readControl(control);
+        if (clean && value) info[clean] = value;
+      };
+
+      // Portal uses span.NoiDungHoSo + sibling control, not label/form-group.
+      document.querySelectorAll(".NoiDungHoSo").forEach(label => {
+        addField(label.innerText, findControl(label));
       });
-      document.querySelectorAll(".form-group").forEach((g) => {
-        const label = g.querySelector("label");
-        const input = g.querySelector("input, select, span, p");
-        if (label && input) info[label.innerText.trim()] = (input.value || input.innerText || "").trim();
+
+      // Keep support for older portal markup.
+      document.querySelectorAll(".form-group").forEach(group => {
+        const label = group.querySelector("label");
+        addField(label?.innerText, group.querySelector(controls));
       });
       return info;
     },
@@ -265,7 +298,7 @@ const PAGES = [
     extract: () => {
       const sections = {};
       document.querySelectorAll("table").forEach((table, idx) => {
-        const heading = table.closest(".panel, .box, div")?.querySelector("h3, h4, .box-header, .panel-heading")?.innerText?.trim() || `table_${idx}`;
+        const heading = table.querySelector("thead tr")?.innerText?.trim().split("\n")[1] || `table_${idx}`;
         const rows = [];
         table.querySelectorAll("tr").forEach((tr) => {
           const cells = [...tr.querySelectorAll("td, th")].map((c) => c.innerText.trim());

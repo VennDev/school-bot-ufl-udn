@@ -102,7 +102,11 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
 
       return { browser, page, label };
     } catch (e) {
-      console.error(`  [${account.username}] Error inside ${label}:`, e.message);
+      // Losing login race gets ERR_ABORTED when winner cleanup closes its browser.
+      // Not a school-server failure; keep logs quiet and let Promise.any ignore loser.
+      if (!raceSettled && !e.message.includes("ERR_ABORTED")) {
+        console.error(`  [${account.username}] Error inside ${label}:`, e.message);
+      }
       await browser.close().catch(() => {});
       const idx = activeBrowsers.indexOf(browser);
       if (idx !== -1) activeBrowsers.splice(idx, 1);

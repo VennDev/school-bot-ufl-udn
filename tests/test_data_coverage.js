@@ -6,5 +6,7 @@ assert.strictEqual(hasUsableData("lichHoc", [{ headers: ["Môn học"], rows: [[
 assert.strictEqual(hasUsableData("lichThi", [["Môn", "Ngày"], ["Ngữ âm", "01/06/2025"]]), true);
 assert.strictEqual(hasUsableData("thongTinSV", { _raw: "" }), false);
 assert.strictEqual(hasUsableData("thongTinSV", { "Họ tên": "Nguyễn Văn A" }), true);
+// Header-only scholarship tables mean portal answered successfully with no records.
+assert.strictEqual(hasUsableData("hocBongKTKL", { Học_bổng: [["STT", "Học kỳ"]] }), true);
 
 console.log("Data coverage test passed OK!");
