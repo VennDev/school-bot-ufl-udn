@@ -231,26 +231,55 @@ function getScheduleEntries(data) {
     period: scheduleColumn(headers, ["Tiết", "Tiết học"]),
     name: scheduleColumn(headers, ["Tên học phần", "Tên môn học", "Môn học", "Học phần", "Tên môn"]),
     room: scheduleColumn(headers, ["Phòng", "Phòng học"]),
-    className: scheduleColumn(headers, ["Lớp học phần", "Lớp"]),
+    className: scheduleColumn(headers, ["Tên lớp tín chỉ", "Lớp học phần", "Lớp", "Lớp tín chỉ"]),
   };
 
-  // Portal layout uses: Tiết | Môn học | Thứ | Lớp học phần | Phòng.
-  const legacy = (table.rows || []).some(isLegacyRow);
+  // Only use legacy fallback if header resolution failed completely
+  const hasDetectedHeaders = columns.day !== -1 && columns.period !== -1 && columns.name !== -1;
+  const legacy = !hasDetectedHeaders && (table.rows || []).some(isLegacyRow);
   const fallback = { day: 2, period: 0, name: 1, room: 4, className: 3 };
   const col = legacy
     ? fallback
-    : Object.fromEntries(Object.entries(columns).map(([key, value]) => [key, value ?? fallback[key]]));
-  const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
-  const name = (row) => clean(row[col.name]).replace(/^tiết\s+/i, "");
+    : Object.fromEntries(Object.entries(columns).map(([key, value]) => [key, value !== -1 ? value : (fallback[key] ?? -1)]));
 
-  return (table.rows || []).map((row) => ({
-    day: clean(row[col.day]),
-    period: clean(row[col.period]),
-    name: name(row),
-    room: clean(row[col.room]),
-    className: clean(row[col.className]),
-  })).filter((entry) => entry.name && (isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ")) &&
-    !["môn học", "tên học phần", "học phần"].includes(entry.name.toLowerCase()));
+  const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+  const entries = [];
+
+  (table.rows || []).forEach((row) => {
+    const name = col.name !== -1 ? clean(row[col.name]).replace(/^tiết\s+/i, "") : "";
+    if (!name || ["stt", "môn học", "tên học phần", "học phần"].includes(name.toLowerCase())) return;
+
+    const rawDay = col.day !== -1 ? String(row[col.day] || "") : "";
+    const rawPeriod = col.period !== -1 ? String(row[col.period] || "") : "";
+    const rawRoom = col.room !== -1 ? String(row[col.room] || "") : "";
+    const className = col.className !== -1 ? clean(row[col.className]) : "";
+
+    const days = rawDay.split(/[\r\n]+/).map(clean).filter(Boolean);
+    const periods = rawPeriod.split(/[\r\n]+/).map(clean).filter(Boolean);
+    const rooms = rawRoom.split(/[\r\n]+/).map(clean).filter(Boolean);
+
+    if (days.length > 0 && (days.length === periods.length || days.length === rooms.length)) {
+      for (let i = 0; i < days.length; i++) {
+        entries.push({
+          day: days[i],
+          period: periods[i] || periods[0] || "",
+          name,
+          room: rooms[i] || rooms[0] || "",
+          className
+        });
+      }
+    } else {
+      entries.push({
+        day: days.join(", ") || clean(rawDay),
+        period: periods.join(", ") || clean(rawPeriod),
+        name,
+        room: rooms.join(", ") || clean(rawRoom),
+        className
+      });
+    }
+  });
+
+  return entries.filter((entry) => entry.name && (isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day)));
 }
 
 function formatScheduleDay(day) {
