@@ -359,6 +359,14 @@ function formatLichHoc(data, dayFilter, options = {}) {
   return txt;
 }
 
+function isSchedulePrefix(text) {
+  return /^(?:(?:lịch|lich)(?!\s*thi\b)(?:\s+(?:học|hoc))?|(?:thời khóa biểu|thoi khoa bieu))(?:\s|$)/i.test(String(text || "").trim());
+}
+
+function isScheduleQuery(text) {
+  return /^(?:(?:lịch|lich)(?!\s*thi\b)(?:\s+(?:học|hoc))?|(?:thời khóa biểu|thoi khoa bieu))(?:\s+(?:tuần này|tuần hiện tại|tuan nay|tuan hien tai))?$/i.test(String(text || "").trim());
+}
+
 function extractAcademicYearRequest(text) {
   const explicit = text.match(/\b(?:năm\s*học\s*)?(\d{4})\s*[-–]\s*(\d{4})\b/i);
   if (explicit) {
@@ -998,7 +1006,7 @@ async function handleMessage(senderPsid, messageText) {
   }
 
   const requestedScheduleYear = extractAcademicYearRequest(text);
-  if (requestedScheduleYear && (normalizedLowerText.startsWith("lịch học") || normalizedLowerText.startsWith("lich hoc"))) {
+  if (requestedScheduleYear && isSchedulePrefix(normalizedLowerText)) {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const matchingTables = filterAcademicYearTables(raw, requestedScheduleYear);
     if (matchingTables.length) return messenger.sendTextMessage(senderPsid, formatLichHoc(matchingTables));
@@ -1022,7 +1030,7 @@ async function handleMessage(senderPsid, messageText) {
     return messenger.sendTextMessage(senderPsid, reply);
   }
 
-  if (/^(?:lịch học|lich hoc|thời khóa biểu)(?:\s+(?:tuần này|tuần hiện tại|tuan nay|tuan hien tai))?$/i.test(normalizedLowerText)) {
+  if (isScheduleQuery(normalizedLowerText)) {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const entries = getScheduleEntries(raw, { latest: true });
     if (!entries.length) {
@@ -1267,4 +1275,4 @@ async function handleMessage(senderPsid, messageText) {
   return messenger.sendTextMessage(senderPsid, reply);
 }
 
-module.exports = { handleMessage, setBaseUrl, extractAcademicYearRequest, filterAcademicYearTables, getScheduleEntries };
+module.exports = { handleMessage, setBaseUrl, extractAcademicYearRequest, filterAcademicYearTables, getScheduleEntries, isScheduleQuery, isSchedulePrefix };

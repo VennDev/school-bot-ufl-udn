@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { getScheduleEntries } = require("../src/botRouter");
+const { getScheduleEntries, isScheduleQuery } = require("../src/botRouter");
 const { detectSchedule } = require("../src/changeDetector");
 
 const entries = getScheduleEntries([{
@@ -27,6 +27,10 @@ const latestEntries = getScheduleEntries([
   { yearValue: "2026", semesterValue: "1", headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["7-8", "Môn hiện tại", "6", "L02"]] }
 ], { latest: true });
 assert.deepStrictEqual(latestEntries.map(entry => entry.name), ["Môn hiện tại"]);
+assert.strictEqual(isScheduleQuery("lịch"), true);
+assert.strictEqual(isScheduleQuery("lịch tuần này"), true);
+assert.strictEqual(isScheduleQuery("thời khóa biểu"), true);
+assert.strictEqual(isScheduleQuery("lịch thi"), false);
 
 const stableOld = [{
   year: "2026-2027", semester: "Kỳ 1",
