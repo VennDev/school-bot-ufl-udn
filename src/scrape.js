@@ -19,6 +19,28 @@ const MAX_PARALLEL = 3;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function isLoginSuccessUrl(value) {
+  try {
+    const url = value instanceof URL ? value : new URL(value);
+    return /\/SinhVien(?:\/|$)/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function isLoginFailureUrl(value) {
+  try {
+    const url = value instanceof URL ? value : new URL(value);
+    return /\/DangNhap\/Login$/i.test(url.pathname) && url.searchParams.has("Message");
+  } catch {
+    return false;
+  }
+}
+
+function isLoginOutcomeUrl(value) {
+  return isLoginSuccessUrl(value) || isLoginFailureUrl(value);
+}
+
 async function loadResult(account) {
   const row = await db.getScrapedData(account.fb_id);
   if (!row) return {};
@@ -59,7 +81,7 @@ async function saveResult(account, result, baselineOldData, runNotify = false) {
   }
 }
 
-async function scrapeBatch(account, pages, torProxy, silent = false) {
+async function scrapeBatch(account, pages, torProxy, silent = false, notifyLoginFailure = false) {
   // Race Direct IP vs Tor — first to login wins. Loser gets closed.
   // ponytail: if >2 proxy types needed, refactor to generic raceWithCleanup helper.
   let fastBrowser = null;
@@ -98,7 +120,10 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
       await page.fill("#UserName", account.username);
       await page.fill("#Password", account.password);
       await page.click('button[type="submit"]');
-      await page.waitForURL("**/SinhVien**", { timeout: 25000 });
+      // Portal redirects invalid credentials to /DangNhap/Login?Message=...;
+      // waiting only for /SinhVien makes each bad login consume full timeout.
+      await page.waitForURL(url => isLoginOutcomeUrl(url), { timeout: 25000 });
+      if (!isLoginSuccessUrl(page.url())) throw new Error("INVALID_CREDENTIALS");
 
       return { browser, page, label };
     } catch (e) {
@@ -115,14 +140,26 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
   };
 
   try {
+    let rejectCredentialFailure;
+    const credentialFailure = new Promise((_, reject) => {
+      rejectCredentialFailure = reject;
+    });
     const loginPromises = [
-      tryLogin(null, "Direct IP"),
+      tryLogin(null, "Direct IP").catch((error) => {
+        if (error.message === "INVALID_CREDENTIALS") rejectCredentialFailure(error);
+        throw error;
+      }),
     ];
     if (torProxy) {
-      loginPromises.push(tryLogin(torProxy, "Tor Proxy"));
+      loginPromises.push(tryLogin(torProxy, "Tor Proxy").catch((error) => {
+        if (error.message === "INVALID_CREDENTIALS") rejectCredentialFailure(error);
+        throw error;
+      }));
     }
 
-    const winner = await Promise.any(loginPromises);
+    // Invalid credentials are definitive. Do not wait for a dead Tor race
+    // connection to hit its 25s timeout before telling user.
+    const winner = await Promise.race([Promise.any(loginPromises), credentialFailure]);
     raceSettled = true;
     fastBrowser = winner.browser;
     fastPage = winner.page;
@@ -142,9 +179,9 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
     // Close any remaining browser instances on total failure
     await Promise.all(activeBrowsers.map((b) => b.close().catch(() => {})));
     
-    // Background sync (silent) should NEVER delete users or send failure buttons.
-    // That prevents school server downtime from deleting active accounts.
-    if (!silent) {
+    const invalidCredentials = e.message === "INVALID_CREDENTIALS" || e.errors?.some(error => error.message === "INVALID_CREDENTIALS");
+    // Background sync should never delete users for transient network failures.
+    if (!silent || (notifyLoginFailure && invalidCredentials)) {
       await db.deleteUser(account.fb_id);
       await messenger.sendButtons(account.fb_id, "[X] Đăng nhập thất bại. Mã sinh viên hoặc mật khẩu cổng sinh viên không chính xác. Nhấn nút bên dưới để thử đăng nhập lại:", [
         {
@@ -224,7 +261,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false) {
   return { scraped, blocked };
 }
 
-async function scrapeAccount(account, torIdx, useTor, silent = false) {
+async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLoginFailure = false) {
   let result = await loadResult(account);
   // Snapshot original DB state ONCE before any scraping.
   // All change-detection calls compare against this baseline,
@@ -247,7 +284,7 @@ async function scrapeAccount(account, torIdx, useTor, silent = false) {
     attempt++;
     console.log(`\n  [${account.username}] Attempt ${attempt}/${MAX_RETRIES}: ${batch.map((p) => p.key).join(", ")}`);
 
-    const { scraped, blocked } = await scrapeBatch(account, batch, proxy, silent);
+    const { scraped, blocked } = await scrapeBatch(account, batch, proxy, silent, notifyLoginFailure);
     
     // Check if user still exists in database. If not (e.g. login failed and user was deleted), exit retry loop immediately.
     const userExists = await db.getUser(account.fb_id);
@@ -314,6 +351,7 @@ async function main() {
   const useTor = !args.includes("--no-tor");
   const parallel = args.includes("--parallel");
   const silent = args.includes("--silent");
+  const notifyLoginFailure = args.includes("--notify-login-failure");
   const accountFilter = args.find((a) => a.startsWith("--account="));
   const filterUser = accountFilter ? accountFilter.split("=")[1] : null;
   const fbIdFilter = args.find((a) => a.startsWith("--fb-id="));
@@ -359,7 +397,7 @@ async function main() {
     for (const chunk of chunks) {
       const promises = chunk.map((account, i) => {
         const torIdx = instances[i % instances.length].idx;
-        return scrapeAccount(account, torIdx, true, silent);
+        return scrapeAccount(account, torIdx, true, silent, notifyLoginFailure);
       });
       await Promise.all(promises);
 
@@ -372,12 +410,12 @@ async function main() {
   } else if (parallel && !useTor) {
     console.log("Parallel without Tor: running sequentially (same IP = instant block)\n");
     for (const account of accounts) {
-      await scrapeAccount(account, 0, false, silent);
+      await scrapeAccount(account, 0, false, silent, notifyLoginFailure);
     }
   } else {
     for (const account of accounts) {
       console.log(`\n=== ${account.label || account.username} ===`);
-      await scrapeAccount(account, 0, useTor, silent);
+      await scrapeAccount(account, 0, useTor, silent, notifyLoginFailure);
 
       if (useTor && accounts.indexOf(account) < accounts.length - 1) {
         await rotateIP(0);

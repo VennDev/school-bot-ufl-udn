@@ -490,7 +490,7 @@ function isNaturalLanguageQuestion(text) {
   return false;
 }
 
-async function handleMessage(senderPsid, messageText) {
+async function processMessage(senderPsid, messageText) {
   const text = messageText.trim();
 
   // Normalize payloads from FB buttons/quick replies to avoid string match failures
@@ -803,7 +803,7 @@ async function handleMessage(senderPsid, messageText) {
     else return messenger.sendTextMessage(senderPsid, "Lệnh toggle không hợp lệ.");
 
     await db.saveSettings(senderPsid, s);
-    return handleMessage(senderPsid, "/settings");
+    return processMessage(senderPsid, "/settings");
   }
 
   // Handle email save
@@ -887,7 +887,7 @@ async function handleMessage(senderPsid, messageText) {
         }
         scrapingInProgress.add(senderPsid);
         const scraperPath = path.resolve(__dirname, "./scrape.js");
-        const execCmd = `node "${scraperPath}" --fb-id="${senderPsid.replace(/"/g, '\\"')}" --silent`;
+        const execCmd = `node "${scraperPath}" --fb-id="${senderPsid.replace(/"/g, '\\"')}" --silent --notify-login-failure`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
         const child = exec(execCmd, async (err, stdout, stderr) => {
           scrapingInProgress.delete(senderPsid);
@@ -1275,4 +1275,50 @@ async function handleMessage(senderPsid, messageText) {
   return messenger.sendTextMessage(senderPsid, reply);
 }
 
-module.exports = { handleMessage, setBaseUrl, extractAcademicYearRequest, filterAcademicYearTables, getScheduleEntries, isScheduleQuery, isSchedulePrefix };
+const MESSAGE_BATCH_DELAY = 1200;
+
+function createMessageBatcher(processBatch, delayMs = MESSAGE_BATCH_DELAY) {
+  const pending = new Map();
+
+  return (senderPsid, messageText) => new Promise((resolve, reject) => {
+    const batch = pending.get(senderPsid) || { messages: [], waiters: [], timer: null };
+    batch.messages.push(String(messageText).trim());
+    batch.waiters.push({ resolve, reject });
+    clearTimeout(batch.timer);
+    batch.timer = setTimeout(async () => {
+      pending.delete(senderPsid);
+      try {
+        const result = await processBatch(senderPsid, batch.messages.join("\n"));
+        batch.waiters.forEach(({ resolve: done }) => done(result));
+      } catch (error) {
+        batch.waiters.forEach(({ reject: fail }) => fail(error));
+      }
+    }, delayMs);
+    pending.set(senderPsid, batch);
+  });
+}
+
+const batchMessage = createMessageBatcher(processMessage);
+
+function isBatchableMessage(senderPsid, messageText) {
+  if (loginSessions.has(senderPsid)) return false;
+  const text = String(messageText || "").trim();
+  return text.includes(" ") && !text.startsWith("/") && isNaturalLanguageQuestion(text);
+}
+
+function handleMessage(senderPsid, messageText) {
+  return isBatchableMessage(senderPsid, messageText)
+    ? batchMessage(senderPsid, messageText)
+    : processMessage(senderPsid, messageText);
+}
+
+module.exports = {
+  handleMessage,
+  createMessageBatcher,
+  setBaseUrl,
+  extractAcademicYearRequest,
+  filterAcademicYearTables,
+  getScheduleEntries,
+  isScheduleQuery,
+  isSchedulePrefix,
+};
