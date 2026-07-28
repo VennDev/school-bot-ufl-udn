@@ -79,6 +79,30 @@ app.post("/api/admin/toggle-bot", requireAdmin, async (req, res) => {
   res.json({ success: true, status: nextState });
 });
 
+app.get("/api/admin/user-detail", requireAdmin, async (req, res) => {
+  const { fb_id } = req.query;
+  if (!fb_id) return res.status(400).json({ error: "Missing fb_id" });
+  try {
+    const user = await db.getUser(fb_id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const rawData = await db.getScrapedData(fb_id) || {};
+    const parsedData = {
+      canhBao: rawData.canh_bao ? JSON.parse(rawData.canh_bao) : null,
+      thongTinSV: rawData.thong_tin_sv ? JSON.parse(rawData.thong_tin_sv) : null,
+      ketQuaHocTap: rawData.ket_qua_hoc_tap ? JSON.parse(rawData.ket_qua_hoc_tap) : null,
+      diemRenLuyen: rawData.diem_ren_luyen ? JSON.parse(rawData.diem_ren_luyen) : null,
+      lichThi: rawData.lich_thi ? JSON.parse(rawData.lich_thi) : null,
+      hocBongKTKL: rawData.hoc_bong_ktkl ? JSON.parse(rawData.hoc_bong_ktkl) : null,
+      lichHoc: rawData.lich_hoc ? JSON.parse(rawData.lich_hoc) : null,
+      hocPhi: rawData.hoc_phi ? JSON.parse(rawData.hoc_phi) : null,
+      updatedAt: rawData.updated_at
+    };
+    res.json({ username: user.username, fb_id, data: parsedData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/admin/stats", requireAdmin, async (req, res) => {
   const users = await db.getAllUsers();
   const detailedUsers = await Promise.all(users.map(async (u) => {

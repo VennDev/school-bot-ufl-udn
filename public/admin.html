@@ -297,6 +297,39 @@
         </form>
       </div>
     </main>
+
+    <!-- User Detail Modal -->
+    <div id="user-detail-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+        <!-- Modal Header -->
+        <div class="bg-blue-700 text-white p-4 flex justify-between items-center">
+          <div>
+            <h2 class="text-lg font-bold flex items-center gap-2">
+              <span>🎓 Dữ Liệu Sinh Viên:</span>
+              <span id="modal-username" class="text-yellow-300"></span>
+            </h2>
+            <p class="text-xs text-blue-200">FB ID: <span id="modal-fbid"></span> | Cập nhật: <span id="modal-updated"></span></p>
+          </div>
+          <button onclick="closeUserModal()" class="text-white hover:text-red-300 text-2xl font-bold px-2">&times;</button>
+        </div>
+
+        <!-- Modal Tabs -->
+        <div class="bg-gray-100 border-b flex overflow-x-auto text-sm font-medium">
+          <button onclick="switchModalTab('diem')" id="mtab-diem" class="px-4 py-3 text-blue-600 border-b-2 border-blue-600 bg-white">📊 Điểm số</button>
+          <button onclick="switchModalTab('lichhoc')" id="mtab-lichhoc" class="px-4 py-3 text-gray-600 hover:text-blue-600">📅 Lịch học</button>
+          <button onclick="switchModalTab('lichthi')" id="mtab-lichthi" class="px-4 py-3 text-gray-600 hover:text-blue-600">📝 Lịch thi</button>
+          <button onclick="switchModalTab('hocphi')" id="mtab-hocphi" class="px-4 py-3 text-gray-600 hover:text-blue-600">💰 Học phí</button>
+          <button onclick="switchModalTab('hoso')" id="mtab-hoso" class="px-4 py-3 text-gray-600 hover:text-blue-600">👤 Hồ sơ SV</button>
+          <button onclick="switchModalTab('drl')" id="mtab-drl" class="px-4 py-3 text-gray-600 hover:text-blue-600">🏆 DRL & Học bổng</button>
+          <button onclick="switchModalTab('canhbao')" id="mtab-canhbao" class="px-4 py-3 text-gray-600 hover:text-blue-600">⚠️ Cảnh báo</button>
+        </div>
+
+        <!-- Modal Content Body -->
+        <div id="modal-tab-content" class="p-6 overflow-y-auto flex-1 space-y-4">
+          <!-- Dynamic content filled by JS -->
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -537,6 +570,7 @@
             </span>
           </td>
           <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+            <button onclick="viewUserDetail('${u.fb_id}')" class="text-teal-600 hover:text-teal-800 mr-3 font-semibold">Xem dữ liệu Web</button>
             <button onclick="testNotifyUser('${u.username}', this, '${u.fb_id}')" class="text-orange-500 hover:text-orange-700 mr-3" title="Sửa nhẹ điểm, sync, kiểm tra có alert không">Test Notify</button>
             <button onclick="syncSingleUser('${u.username}', '${u.fb_id}')" class="text-blue-600 hover:text-blue-900 mr-3">Sync</button>
             <button onclick="deleteUser('${u.fb_id}')" class="text-red-600 hover:text-red-900">Xóa</button>
@@ -778,6 +812,175 @@
         resultEl.className = 'text-xs text-red-600';
         resultEl.innerText = `[X] Lỗi kết nối: ${e.message}`;
       }
+    }
+
+    let currentModalData = null;
+
+    async function viewUserDetail(fbId) {
+      const modal = document.getElementById('user-detail-modal');
+      modal.classList.remove('hidden');
+      document.getElementById('modal-tab-content').innerHTML = '<div class="text-center py-10 text-gray-500 font-medium">⏳ Đang tải dữ liệu từ cơ sở dữ liệu...</div>';
+
+      try {
+        const res = await fetch(`/api/admin/user-detail?fb_id=${encodeURIComponent(fbId)}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Lỗi lấy dữ liệu');
+
+        currentModalData = result.data;
+        document.getElementById('modal-username').innerText = result.username;
+        document.getElementById('modal-fbid').innerText = result.fb_id;
+        document.getElementById('modal-updated').innerText = result.data.updatedAt ? new Date(result.data.updatedAt).toLocaleString('vi-VN') : 'Chưa đồng bộ';
+
+        switchModalTab('diem');
+      } catch (e) {
+        document.getElementById('modal-tab-content').innerHTML = `<div class="text-center py-10 text-red-500 font-bold">[X] ${e.message}</div>`;
+      }
+    }
+
+    function closeUserModal() {
+      document.getElementById('user-detail-modal').classList.add('hidden');
+    }
+
+    function switchModalTab(tab) {
+      const tabs = ['diem', 'lichhoc', 'lichthi', 'hocphi', 'hoso', 'drl', 'canhbao'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`mtab-${t}`);
+        if (!btn) return;
+        if (t === tab) {
+          btn.className = 'px-4 py-3 text-blue-600 border-b-2 border-blue-600 bg-white font-bold shadow-sm';
+        } else {
+          btn.className = 'px-4 py-3 text-gray-600 hover:text-blue-600 font-medium';
+        }
+      });
+
+      const content = document.getElementById('modal-tab-content');
+      if (!currentModalData) return;
+
+      if (tab === 'diem') renderDiemTab(content, currentModalData.ketQuaHocTap);
+      else if (tab === 'lichhoc') renderLichHocTab(content, currentModalData.lichHoc);
+      else if (tab === 'lichthi') renderLichThiTab(content, currentModalData.lichThi);
+      else if (tab === 'hocphi') renderHocPhiTab(content, currentModalData.hocPhi);
+      else if (tab === 'hoso') renderHoSoTab(content, currentModalData.thongTinSV);
+      else if (tab === 'drl') renderDrlTab(content, currentModalData.diemRenLuyen, currentModalData.hocBongKTKL);
+      else if (tab === 'canhbao') renderCanhBaoTab(content, currentModalData.canhBao);
+    }
+
+    function renderTableHTML(headers, rows) {
+      if (!headers || !headers.length) return '';
+      let html = '<div class="overflow-x-auto border rounded-lg shadow-sm mb-4"><table class="min-w-full divide-y divide-gray-200 text-sm"><thead class="bg-blue-50 text-blue-900 font-semibold text-xs uppercase"><tr>';
+      headers.forEach(h => {
+        html += `<th class="px-4 py-2.5 text-left">${h}</th>`;
+      });
+      html += '</tr></thead><tbody class="divide-y divide-gray-100 bg-white">';
+      (rows || []).forEach(r => {
+        html += '<tr class="hover:bg-gray-50">';
+        (r || []).forEach(c => {
+          html += `<td class="px-4 py-2 whitespace-nowrap">${c ?? ''}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      return html;
+    }
+
+    function renderDiemTab(container, raw) {
+      if (!raw || !raw.length) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-400">Chưa có dữ liệu kết quả học tập</div>';
+        return;
+      }
+      let html = '<div class="space-y-6">';
+      raw.forEach((t, i) => {
+        if (!t.headers || !t.headers.length) return;
+        const title = t.headers.includes('Tên học phần') ? '📊 Bảng Điểm Môn Học' : (t.headers.includes('Tên chứng chỉ') ? '📜 Chứng Chỉ' : `Bảng ${i + 1}`);
+        html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">${title}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function renderLichHocTab(container, raw) {
+      if (!raw || !raw.length) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-400">Chưa có dữ liệu lịch học</div>';
+        return;
+      }
+      let html = '<div class="space-y-6">';
+      raw.forEach((t, i) => {
+        const title = t.year && t.semester ? `📅 Lịch Học ${t.year} - ${t.semester}` : `📅 Bảng Lịch Học ${i + 1}`;
+        html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">${title}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function renderLichThiTab(container, raw) {
+      if (!raw || !raw.length) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-400">Chưa có dữ liệu lịch thi</div>';
+        return;
+      }
+      const headers = raw[0];
+      const rows = raw.slice(1);
+      container.innerHTML = `<div><h4 class="text-sm font-bold text-blue-700 mb-2">📝 Danh Sách Lịch Thi</h4>${renderTableHTML(headers, rows)}</div>`;
+    }
+
+    function renderHocPhiTab(container, raw) {
+      if (!raw || !raw.length) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-400">Chưa có dữ liệu học phí</div>';
+        return;
+      }
+      let html = '<div class="space-y-6">';
+      raw.forEach((t, i) => {
+        const title = i === 0 ? '💰 Học Phí Theo Kỳ' : (i === 1 ? '💸 Khoản Thu Khác' : '💳 Chi Tiết Nộp Tiền');
+        html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">${title}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function renderHoSoTab(container, raw) {
+      if (!raw || !Object.keys(raw).length) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-400">Chưa có thông tin hồ sơ sinh viên</div>';
+        return;
+      }
+      let html = '<div class="bg-gray-50 p-4 rounded-xl border grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">';
+      for (const [k, v] of Object.entries(raw)) {
+        if (k.startsWith('_')) continue;
+        html += `<div class="bg-white p-3 rounded shadow-sm border"><span class="block text-xs font-bold text-gray-500 uppercase">${k}</span><span class="font-medium text-gray-800">${v || '—'}</span></div>`;
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function renderDrlTab(container, drlRaw, hbRaw) {
+      let html = '<div class="space-y-6">';
+      if (drlRaw && drlRaw.length) {
+        html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">🏆 Điểm Rèn Luyện</h4>${renderTableHTML(drlRaw[0], drlRaw.slice(1))}</div>`;
+      }
+      if (hbRaw && typeof hbRaw === 'object') {
+        for (const [k, v] of Object.entries(hbRaw)) {
+          if (Array.isArray(v) && v.length) {
+            html += `<div><h4 class="text-sm font-bold text-blue-700 mb-2">🎁 ${k}</h4>${renderTableHTML(v[0], v.slice(1))}</div>`;
+          }
+        }
+      }
+      if (!drlRaw && !hbRaw) html += '<div class="text-center py-8 text-gray-400">Chưa có dữ liệu rèn luyện / học bổng</div>';
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function renderCanhBaoTab(container, raw) {
+      if (!raw || !raw.length) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-400">Chưa có cảnh báo / thông báo học vụ</div>';
+        return;
+      }
+      let html = '<div class="space-y-3">';
+      raw.forEach((item, i) => {
+        const text = typeof item === 'string' ? item : (item.content || JSON.stringify(item));
+        html += `<div class="bg-amber-50 border-l-4 border-amber-500 p-3 rounded shadow-sm text-sm text-amber-900 font-medium"><span>[!] ${text}</span></div>`;
+      });
+      html += '</div>';
+      container.innerHTML = html;
     }
 
     function logout() {
