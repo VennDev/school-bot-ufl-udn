@@ -59,7 +59,7 @@ function requireAdmin(req, res, next) {
       return next();
     }
   } catch {}
-  res.sendStatus(401);
+  res.status(401).json({ error: "Unauthorized" });
 }
 
 // Admin API routes

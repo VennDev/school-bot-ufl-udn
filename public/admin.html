@@ -820,18 +820,25 @@
       }
     }
 
+    async function readJSON(response) {
+      const text = await response.text();
+      try { return text ? JSON.parse(text) : {}; }
+      catch { throw new Error(`API trả về phản hồi không hợp lệ (${response.status})`); }
+    }
+
     let currentModalData = null;
 
     async function viewUserDetail(fbId) {
       const modal = document.getElementById('user-detail-modal');
       modal.classList.remove('hidden');
       document.getElementById('modal-tab-content').innerHTML = '<div class="text-center py-10 text-gray-500 font-medium">⏳ Đang tải dữ liệu từ cơ sở dữ liệu...</div>';
+      document.getElementById('modal-coverage').innerHTML = '';
 
       try {
         const res = await fetch(`/api/admin/user-detail?fb_id=${encodeURIComponent(fbId)}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        const result = await res.json();
+        const result = await readJSON(res);
         if (!res.ok) throw new Error(result.error || 'Lỗi lấy dữ liệu');
 
         currentModalData = result.data;
@@ -859,11 +866,15 @@
     async function syncModalUser() {
       const fbId = document.getElementById('modal-fbid').innerText;
       if (!fbId) return;
-      const res = await fetch(`/api/admin/sync-user?fb_id=${encodeURIComponent(fbId)}`, {
-        method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const result = await res.json();
-      alert(result.message || result.error || 'Không thể đồng bộ');
+      try {
+        const res = await fetch(`/api/admin/sync-user?fb_id=${encodeURIComponent(fbId)}`, {
+          method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const result = await readJSON(res);
+        alert(result.message || result.error || 'Không thể đồng bộ');
+      } catch (error) {
+        alert(error.message);
+      }
     }
 
     function switchModalTab(tab) {
