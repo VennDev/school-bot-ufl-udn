@@ -583,6 +583,8 @@ async function handleMessage(senderPsid, messageText) {
       scrapingInProgress.delete(senderPsid);
       if (err) {
         messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ dữ liệu tức thời thất bại hoặc bị nghẽn mạng.");
+      } else {
+        messenger.sendTextMessage(senderPsid, "[✓] Đã đồng bộ dữ liệu hoàn tất! Thông tin lịch học, điểm số và học vụ của bạn đã được cập nhật mới nhất.");
       }
     });
     return;
@@ -849,9 +851,18 @@ async function handleMessage(senderPsid, messageText) {
               // Login failed, scraper already sent "[X] Đăng nhập thất bại..." — do not send conflicting success message
               return;
             }
-            // Only send welcome if user actually survived (login succeeded).
-            // ponytail: scraper also sends welcome on full sync complete. If duplicate welcome becomes issue,
-            // remove either this block or the one in scrape.js scrapeAccount().
+            // Send welcome message and menu on complete sync
+            await messenger.sendQuickReplies(senderPsid, `[✓] Chúc mừng bạn đã kết nối tài khoản sinh viên ${username} và đồng bộ dữ liệu thành công! Tôi có thể giúp gì cho bạn?`, [
+              { title: "Lịch học", payload: "LICH_HOC" },
+              { title: "Lịch thi", payload: "LICH_THI" },
+              { title: "Điểm số", payload: "DIEM_SO" },
+              { title: "Học phí", payload: "HOC_PHI" },
+              { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
+              { title: "Đăng xuất", payload: "LOGOUT_POSTBACK" }
+            ]);
+            setTimeout(() => {
+              messenger.sendOtnRequest(senderPsid, "Đăng ký nhận thông báo GPA & Điểm mới tự động", "ACCOUNT_UPDATE").catch(() => {});
+            }, 1500);
           }
         });
         child.stdout.on("data", (data) => {
