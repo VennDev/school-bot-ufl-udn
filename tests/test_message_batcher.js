@@ -9,14 +9,15 @@ const { createMessageBatcher } = require("../src/botRouter");
   }, 10);
 
   const results = await Promise.all([
-    batchMessage("user-1", "Mình muốn hỏi GPA"),
-    batchMessage("user-1", "và lịch thi sắp tới?")
+    batchMessage("user-1", "Bạn"),
+    batchMessage("user-1", "có"),
+    batchMessage("user-1", "biết")
   ]);
 
-  assert.deepStrictEqual(results, ["ok", "ok"]);
+  assert.deepStrictEqual(results, ["ok", "ok", "ok"]);
   assert.deepStrictEqual(calls, [{
     senderPsid: "user-1",
-    text: "Mình muốn hỏi GPA\nvà lịch thi sắp tới?"
+    text: "Bạn\ncó\nbiết"
   }]);
   console.log("Message batcher OK");
 })().catch((error) => {

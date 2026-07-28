@@ -1278,38 +1278,100 @@ async function processMessage(senderPsid, messageText) {
 const MESSAGE_BATCH_DELAY = 1200;
 
 function createMessageBatcher(processBatch, delayMs = MESSAGE_BATCH_DELAY) {
-  const pending = new Map();
+  const states = new Map();
 
-  return (senderPsid, messageText) => new Promise((resolve, reject) => {
-    const batch = pending.get(senderPsid) || { messages: [], waiters: [], timer: null };
-    batch.messages.push(String(messageText).trim());
-    batch.waiters.push({ resolve, reject });
-    clearTimeout(batch.timer);
-    batch.timer = setTimeout(async () => {
-      pending.delete(senderPsid);
-      try {
-        const result = await processBatch(senderPsid, batch.messages.join("\n"));
-        batch.waiters.forEach(({ resolve: done }) => done(result));
-      } catch (error) {
-        batch.waiters.forEach(({ reject: fail }) => fail(error));
+  const drain = async (senderPsid, state) => {
+    if (state.running) return;
+    state.running = true;
+    try {
+      while (state.queue.length) {
+        const batch = state.queue.shift();
+        try {
+          const result = await processBatch(senderPsid, batch.messages.join("\n"));
+          batch.waiters.forEach(({ resolve }) => resolve(result));
+        } catch (error) {
+          batch.waiters.forEach(({ reject }) => reject(error));
+        }
       }
+    } finally {
+      state.running = false;
+      if (!state.pending && !state.queue.length) states.delete(senderPsid);
+    }
+  };
+
+  const enqueue = (senderPsid, messageText) => new Promise((resolve, reject) => {
+    const state = states.get(senderPsid) || { pending: null, queue: [], running: false };
+    const pending = state.pending || { messages: [], waiters: [], timer: null };
+    pending.messages.push(String(messageText).trim());
+    pending.waiters.push({ resolve, reject });
+    clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => {
+      if (state.pending !== pending) return;
+      state.pending = null;
+      state.queue.push(pending);
+      void drain(senderPsid, state);
     }, delayMs);
-    pending.set(senderPsid, batch);
+    state.pending = pending;
+    states.set(senderPsid, state);
   });
+
+  // Immediate commands cancel unsent chat fragments, then wait behind active AI work.
+  enqueue.enqueueNow = (senderPsid, messageText) => new Promise((resolve, reject) => {
+    const state = states.get(senderPsid) || { pending: null, queue: [], running: false };
+    if (state.pending) {
+      clearTimeout(state.pending.timer);
+      state.pending.waiters.forEach(({ resolve: done }) => done(undefined));
+      state.pending = null;
+    }
+    state.queue.push({ messages: [String(messageText).trim()], waiters: [{ resolve, reject }] });
+    states.set(senderPsid, state);
+    void drain(senderPsid, state);
+  });
+
+  return enqueue;
 }
 
 const batchMessage = createMessageBatcher(processMessage);
 
+const IMMEDIATE_MESSAGES = new Set([
+  "pages", "trang", "sync", "đồng bộ", "menu", "xem menu", "cho xem menu",
+  "xem menu hoc vu", "xem menu cau hoi", "câu hỏi thường gặp", "qc_hocbong",
+  "qc_canhbao", "qc_xeploai", "qc_caithien", "thông tin về dịch vụ", "dịch vụ",
+  "lịch học", "lịch thi", "tất cả lịch thi", "điểm số", "gpa", "diem so", "diem",
+  "tiến độ", "tín chỉ", "tien do", "tin chi", "học vụ", "thông báo", "hoc vu",
+  "thong bao", "tất cả thông báo", "tat ca thong bao", "tất cả học vụ", "tat ca hoc vu",
+  "học phí", "tiền", "hoc phi", "tien", "hồ sơ", "hồ sơ sinh viên", "ho so",
+  "lý lịch", "ly lich", "thống kê", "thong ke", "phân tích", "phan tich",
+  "tóm tắt tuần", "tóm tắt", "tom tat", "test utility", "test utility messaging"
+]);
+
+function isImmediateMessage(text) {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  return normalized.startsWith("/") ||
+    IMMEDIATE_MESSAGES.has(normalized) ||
+    normalized.startsWith("testpage") ||
+    normalized.startsWith("toggle ") ||
+    normalized.startsWith("toggle_") ||
+    normalized.startsWith("email ") ||
+    normalized.startsWith("lịch học thứ") ||
+    normalized.startsWith("lịch học t") ||
+    normalized.startsWith("lịch học cn") ||
+    normalized.startsWith("lịch học chủ nhật") ||
+    normalized.startsWith("lich hoc ") ||
+    /^\d+$/.test(normalized) ||
+    /^[a-z0-9]+_[a-z0-9_]+$/i.test(normalized);
+}
+
 function isBatchableMessage(senderPsid, messageText) {
   if (loginSessions.has(senderPsid)) return false;
   const text = String(messageText || "").trim();
-  return text.includes(" ") && !text.startsWith("/") && isNaturalLanguageQuestion(text);
+  return Boolean(text) && !isImmediateMessage(text);
 }
 
 function handleMessage(senderPsid, messageText) {
   return isBatchableMessage(senderPsid, messageText)
     ? batchMessage(senderPsid, messageText)
-    : processMessage(senderPsid, messageText);
+    : batchMessage.enqueueNow(senderPsid, messageText);
 }
 
 module.exports = {
