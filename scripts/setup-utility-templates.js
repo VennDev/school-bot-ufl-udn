@@ -9,10 +9,10 @@
  * Requires: FB_PAGE_TOKEN and FB_PAGE_ID in .env
  *
  * Creates 4 templates:
- *   1. ufl_account_update  — grade changes, account status (replaces ACCOUNT_UPDATE tag)
- *   2. ufl_exam_reminder   — exam date/time/room reminders (replaces CONFIRMED_EVENT_UPDATE tag)
- *   3. ufl_tuition_alert   — tuition debt warnings
- *   4. ufl_announcement    — general academic announcements
+ *   1. ufl_account_update_v2  — grade changes, account status
+ *   2. ufl_exam_reminder_v2   — exam date/time/room reminders
+ *   3. ufl_tuition_alert_v2   — tuition debt warnings
+ *   4. ufl_announcement_v2    — general academic announcements
  *
  * ponytail: if template content needs adjustment, edit TEMPLATES below and re-run.
  * Templates auto-approve within seconds. Check Facebook Business Manager if rejected.
@@ -48,31 +48,44 @@ async function main() {
 
   const TEMPLATES = [
     {
-      name: "ufl_account_update",
-      language: "vi",
-      category: "UTILITY",
-      components: [{ type: "BODY", text: "{{1}}" }],
-    },
-    {
-      name: "ufl_exam_reminder",
+      name: "ufl_account_update_v2",
       language: "vi",
       category: "UTILITY",
       components: [{
         type: "BODY",
-        text: "[UFL Bot] Nhắc thi:\nMôn: {{1}}\nNgày: {{2}} - Giờ: {{3}}\nPhòng: {{4}} - Hình thức: {{5}}",
+        text: "[UFL Bot] Cập nhật học vụ:\n{{1}}\n\nMở UFL Bot để xem chi tiết.",
+        example: { body_text: [["Điểm môn học đã thay đổi"]] },
       }],
     },
     {
-      name: "ufl_tuition_alert",
+      name: "ufl_exam_reminder_v2",
       language: "vi",
       category: "UTILITY",
-      components: [{ type: "BODY", text: "{{1}}" }],
+      components: [{
+        type: "BODY",
+        text: "[UFL Bot] Nhắc thi:\nMôn: {{1}}\nNgày: {{2}} - Giờ: {{3}}\nPhòng: {{4}} - Hình thức: {{5}}\n\nMở UFL Bot để xem chi tiết.",
+        example: { body_text: [["Lập trình", "20/06/2026", "07:00", "A101", "Thi viết"]] },
+      }],
     },
     {
-      name: "ufl_announcement",
+      name: "ufl_tuition_alert_v2",
       language: "vi",
       category: "UTILITY",
-      components: [{ type: "BODY", text: "{{1}}" }],
+      components: [{
+        type: "BODY",
+        text: "[UFL Bot] Cập nhật học phí:\n{{1}}\n\nMở UFL Bot để xem chi tiết.",
+        example: { body_text: [["Có thay đổi thông tin học phí"]] },
+      }],
+    },
+    {
+      name: "ufl_announcement_v2",
+      language: "vi",
+      category: "UTILITY",
+      components: [{
+        type: "BODY",
+        text: "[UFL Bot] Thông báo học vụ:\n{{1}}\n\nMở UFL Bot để xem chi tiết.",
+        example: { body_text: [["Có thông báo mới từ nhà trường"]] },
+      }],
     },
   ];
 
@@ -98,7 +111,8 @@ async function main() {
         console.error(`  FAILED: ${result.error.message} (code: ${result.error.code}, subcode: ${result.error.error_subcode})`);
       }
     } else {
-      console.log(`  OK — id: ${result.id}, status: ${result.status}, category: ${result.category}`);
+      const label = result.status === "APPROVED" ? "APPROVED" : `NOT APPROVED (${result.status || "unknown"})`;
+      console.log(`  Created — id: ${result.id}, status: ${label}, category: ${result.category}`);
     }
   }
 
