@@ -529,7 +529,7 @@ async function handleMessage(senderPsid, messageText) {
     }
     scrapingInProgress.add(senderPsid);
     const scraperPath = path.resolve(__dirname, "./scrape.js");
-    const execCmd = `node "${scraperPath}" --fb-id="${user.fb_id.replace(/"/g, '\\"')}"`;
+    const execCmd = `node "${scraperPath}" --fb-id="${user.fb_id.replace(/"/g, '\\"')}" --silent`;
     exec(execCmd, (err) => {
       scrapingInProgress.delete(senderPsid);
       if (err) {
@@ -578,7 +578,7 @@ async function handleMessage(senderPsid, messageText) {
     scrapingInProgress.add(senderPsid);
     await messenger.sendTextMessage(senderPsid, "Đang khởi động đồng bộ dữ liệu tức thời từ cổng sinh viên. Quá trình có thể mất 1-2 phút...");
     const scraperPath = path.resolve(__dirname, "./scrape.js");
-    const execCmd = `node "${scraperPath}" --fb-id="${user.fb_id.replace(/"/g, '\\"')}"`;
+    const execCmd = `node "${scraperPath}" --fb-id="${user.fb_id.replace(/"/g, '\\"')}" --silent`;
     exec(execCmd, (err) => {
       scrapingInProgress.delete(senderPsid);
       if (err) {
@@ -828,7 +828,7 @@ async function handleMessage(senderPsid, messageText) {
         }
         scrapingInProgress.add(senderPsid);
         const scraperPath = path.resolve(__dirname, "./scrape.js");
-        const execCmd = `node "${scraperPath}" --fb-id="${senderPsid.replace(/"/g, '\\"')}"`;
+        const execCmd = `node "${scraperPath}" --fb-id="${senderPsid.replace(/"/g, '\\"')}" --silent`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
         const child = exec(execCmd, async (err, stdout, stderr) => {
           scrapingInProgress.delete(senderPsid);

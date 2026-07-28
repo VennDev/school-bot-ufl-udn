@@ -6,8 +6,8 @@ function detectGrades(oldData, newData) {
   if (!newData) return [];
   const oldTable = oldData?.find((t) => t.headers?.includes("Tên học phần"));
   const newTable = newData.find((t) => t.headers?.includes("Tên học phần"));
-  if (!newTable) return [];
-  if (!oldTable) return []; // Ignore first sync notify to avoid spam
+  if (!newTable || !newTable.rows) return [];
+  if (!oldTable || !oldTable.rows || oldTable.rows.length === 0) return []; // Ignore first sync / empty snapshot notify to avoid spam
 
   const headers = newTable.headers || [];
   const keyIdx = headers.indexOf("Mã học phần") !== -1 ? headers.indexOf("Mã học phần") : (headers.indexOf("Mã lớp học phần") !== -1 ? headers.indexOf("Mã lớp học phần") : 1);
@@ -20,7 +20,10 @@ function detectGrades(oldData, newData) {
   newTable.rows.forEach((r) => {
     const oldRow = oldRows.get(r[keyIdx]);
     if (!oldRow) {
-      alerts.push(`[=] Điểm mới môn: ${r[nameIdx]} - TBCHP: ${r[scoreIdx]} (${r[charIdx] || "?"})`);
+      // Only treat as single new grade alert if old table was not a partial snapshot (expansion across semesters)
+      if (oldTable.rows.length >= newTable.rows.length - 3) {
+        alerts.push(`[=] Điểm mới môn: ${r[nameIdx]} - TBCHP: ${r[scoreIdx]} (${r[charIdx] || "?"})`);
+      }
     } else if (oldRow[scoreIdx] !== r[scoreIdx]) {
       alerts.push(`(->) Thay đổi điểm môn: ${r[nameIdx]} -> TBCHP mới: ${r[scoreIdx]} (${r[charIdx] || "?"})`);
     }
