@@ -3,9 +3,10 @@ const db = require("./db");
 // ---- Utility Template names (create via: npm run setup-templates) ----
 // ponytail: if template names change, update here AND re-run setup-templates.
 const UTILITY_TEMPLATES = {
-  ACCOUNT_UPDATE: "ufl_account_update_v2",   // grades, account status
+  // Meta approved generic school-notification template covers grade/tuition alerts too.
+  ACCOUNT_UPDATE: "ufl_announcement_v2",      // grades, account status
   EVENT_REMINDER: "ufl_exam_reminder_v2",     // exam date/time/room reminders
-  TUITION_ALERT: "ufl_tuition_alert_v2",      // tuition debt warnings
+  TUITION_ALERT: "ufl_announcement_v2",       // tuition debt warnings
   ANNOUNCEMENT: "ufl_announcement_v2",        // academic announcements, schedule changes
 };
 
