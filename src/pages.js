@@ -1,19 +1,76 @@
 const BASE = "https://sinhvien.ufl.udn.vn";
 
+// Shared helper: determine current academic year + semester for dropdown selection.
+// Returns { namHoc, hocKy } where namHoc is the cmbNamHoc value (e.g. "2025" for "2025-2026").
+// ponytail: if school changes semester calendar, adjust month ranges here.
+function _currentSemester() {
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1-12
+  const year = now.getFullYear();
+  // Kỳ 1: Aug-Dec, Kỳ 2: Jan-May, Kỳ 3 (hè): Jun-Jul
+  if (month >= 8) return { namHoc: String(year), hocKy: "1" };
+  if (month >= 1 && month <= 5) return { namHoc: String(year - 1), hocKy: "2" };
+  return { namHoc: String(year - 1), hocKy: "3" };
+}
+
+// Shared setup: select học kỳ + năm học + chuyên ngành chính on pages that have these dropdowns.
+// Waits for page reload after each selection (portal uses JS onChange submit).
+async function _setupSemester(page) {
+  const { namHoc, hocKy } = _currentSemester();
+
+  const namHocSelect = await page.$("#cmbNamHoc");
+  if (namHocSelect) {
+    const opts = await namHocSelect.$$eval("option", els => els.map(e => e.value));
+    if (opts.includes(namHoc)) {
+      await page.selectOption("#cmbNamHoc", namHoc);
+      await page.waitForTimeout(2000);
+      await page.waitForLoadState("networkidle").catch(() => {});
+    }
+  }
+
+  const hocKySelect = await page.$("#cmbHocKy");
+  if (hocKySelect) {
+    await page.selectOption("#cmbHocKy", hocKy);
+    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle").catch(() => {});
+  }
+
+  const cnSelect = await page.$("#cmbChuyenNganh");
+  if (cnSelect) {
+    await page.selectOption("#cmbChuyenNganh", "0");
+    await page.waitForTimeout(1500);
+    await page.waitForLoadState("networkidle").catch(() => {});
+  }
+}
+
 const PAGES = [
   {
     key: "canhBao",
     url: `${BASE}/CanhBao/Index`,
     label: "Cảnh báo / Thông báo",
+    // Announcements are rendered as <label> elements inside #divDataContent, not tables.
     extract: () => {
-      const rows = [];
-      document.querySelectorAll("table tr").forEach((tr, i) => {
-        if (i === 0) return;
-        const cells = [...tr.querySelectorAll("td")].map((td) => td.innerText.trim());
-        if (cells.length) rows.push(cells);
-      });
-      if (!rows.length) return [{ content: document.body.innerText.substring(0, 3000) }];
-      return rows;
+      const items = [];
+      const container = document.querySelector("#divDataContent");
+      if (container) {
+        const labels = container.querySelectorAll("label");
+        labels.forEach(l => {
+          const text = l.innerText?.trim();
+          if (text && text.length > 10) {
+            items.push({ content: text });
+          }
+        });
+      }
+      // Fallback: if no labels found, try grabbing all text blocks from the content area
+      if (!items.length) {
+        const main = document.querySelector("#divDataContent, .news-listing, .col-md-9");
+        if (main) {
+          items.push({ content: main.innerText.trim().substring(0, 3000) });
+        } else {
+          items.push({ content: document.body.innerText.substring(0, 3000) });
+        }
+      }
+      return items;
     },
   },
   {
@@ -43,6 +100,9 @@ const PAGES = [
     key: "ketQuaHocTap",
     url: `${BASE}/TraCuuDiemSV/Index`,
     label: "Kết quả học tập",
+    // Portal has cmbHocKy, cmbNamHoc, cmbChuyenNganh — default unselected shows all semesters.
+    // Select current semester to get consistent, focused data for change detection.
+    setup: _setupSemester,
     extract: () => {
       const tables = [];
       document.querySelectorAll("table").forEach((table) => {
@@ -61,6 +121,8 @@ const PAGES = [
     key: "diemRenLuyen",
     url: `${BASE}/TraCuuDiemSV/DiemRenLuyen`,
     label: "Điểm rèn luyện",
+    // Portal has cmbHocKy, cmbNamHoc — default unselected shows all semesters.
+    setup: _setupSemester,
     extract: () => {
       const rows = [];
       document.querySelectorAll("table tr").forEach((tr) => {
@@ -108,52 +170,7 @@ const PAGES = [
     // Select correct học kỳ + năm học before extracting.
     // Portal has dropdowns: cmbHocKy (1/2/3), cmbNamHoc (2018..2026), cmbChuyenNganh (0/1).
     // Default loads with "--- Chọn ... ---" which may show stale or no data.
-    setup: async (page) => {
-      const now = new Date();
-      const month = now.getMonth() + 1; // 1-12
-      const year = now.getFullYear();
-
-      // Determine academic year and semester
-      // Kỳ 1: Aug-Dec, Kỳ 2: Jan-May, Kỳ 3 (hè): Jun-Jul
-      let namHoc, hocKy;
-      if (month >= 8) {
-        namHoc = String(year);        // e.g. 2025 -> "2025-2026"
-        hocKy = "1";
-      } else if (month >= 1 && month <= 5) {
-        namHoc = String(year - 1);    // e.g. 2025 -> "2024-2025"
-        hocKy = "2";
-      } else {
-        namHoc = String(year - 1);    // Jun-Jul: hè của năm học trước
-        hocKy = "3";
-      }
-
-      // Select năm học first (triggers page reload via JS)
-      const namHocSelect = await page.$("#cmbNamHoc");
-      if (namHocSelect) {
-        const opts = await namHocSelect.$$eval("option", els => els.map(e => e.value));
-        if (opts.includes(namHoc)) {
-          await page.selectOption("#cmbNamHoc", namHoc);
-          await page.waitForTimeout(2000);
-          await page.waitForLoadState("networkidle").catch(() => {});
-        }
-      }
-
-      // Select học kỳ
-      const hocKySelect = await page.$("#cmbHocKy");
-      if (hocKySelect) {
-        await page.selectOption("#cmbHocKy", hocKy);
-        await page.waitForTimeout(2000);
-        await page.waitForLoadState("networkidle").catch(() => {});
-      }
-
-      // Select chuyên ngành chính (0)
-      const cnSelect = await page.$("#cmbChuyenNganh");
-      if (cnSelect) {
-        await page.selectOption("#cmbChuyenNganh", "0");
-        await page.waitForTimeout(1500);
-        await page.waitForLoadState("networkidle").catch(() => {});
-      }
-    },
+    setup: _setupSemester,
     extract: () => {
       const tables = [];
       document.querySelectorAll("table").forEach((table) => {
