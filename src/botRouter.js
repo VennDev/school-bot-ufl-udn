@@ -875,7 +875,7 @@ async function processMessage(senderPsid, messageText) {
   else if (actionText === "hoc_phi") actionText = "học phí";
   else if (actionText === "tiet_hoc") actionText = "thời gian tiết học";
   else if (actionText === "sync_postback") actionText = "/sync";
-  else if (actionText === "logout_postback") actionText = "/logout";
+  else if (actionText === "logout_postback" || actionText === "đăng xuất" || actionText === "đăng xuất tài khoản" || actionText === "logout") actionText = "/logout";
   else if (actionText === "login_postback") actionText = "/login";
   else if (actionText === "menu_postback") actionText = "xem menu hoc vu"; // map Tra cứu học vụ to xem menu hoc vu view
   else if (actionText === "settings_postback") actionText = "/settings";
@@ -1717,7 +1717,7 @@ const batchMessage = createMessageBatcher(processMessage);
 
 const IMMEDIATE_MESSAGES = new Set([
   "pages", "trang", "sync", "đồng bộ", "menu", "xem menu", "cho xem menu",
-  "xem menu hoc vu", "xem menu cau hoi", "câu hỏi thường gặp", "qc_hocbong",
+  "xem menu hoc vu", "xem menu cau hoi", "câu hỏi thường gặp", "đăng xuất", "đăng xuất tài khoản", "logout", "qc_hocbong",
   "qc_canhbao", "qc_xeploai", "qc_caithien", "thông tin về dịch vụ", "dịch vụ",
   "lịch học", "lịch thi", "tất cả lịch thi", "điểm số", "gpa", "diem so", "diem",
   "tiến độ", "tín chỉ", "tien do", "tin chi", "học vụ", "thông báo", "hoc vu",
