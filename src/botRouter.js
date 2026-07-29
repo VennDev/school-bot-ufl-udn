@@ -438,6 +438,40 @@ function academicYearFromValue(value) {
   return match ? `${match[1]}-${match[2]}` : null;
 }
 
+function academicYearStartFromDateText(value) {
+  const starts = [...String(value || "").matchAll(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/g)]
+    .map(match => {
+      const month = Number(match[2]);
+      let year = Number(match[3]);
+      if (year < 100) year += 2000;
+      if (year < 2000 || year > new Date().getFullYear() + 1) return null;
+      return month >= 8 ? year : year - 1;
+    }).filter(year => year !== null);
+  return starts.length ? Math.max(...starts) : null;
+}
+
+function currentAcademicYearStart() {
+  const now = new Date();
+  return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function academicYearStartFromTable(table) {
+  const rowDates = (table?.rows || []).flatMap(row => {
+    const text = Array.isArray(row) ? row.join(" ") : String(row || "");
+    const start = academicYearStartFromDateText(text);
+    return start === null ? [] : [start];
+  });
+  if (rowDates.length) return Math.max(...rowDates);
+  const label = table?.year || table?.academicYear || table?.yearText;
+  const match = String(label || "").match(/\b(\d{4})\s*[-–]\s*\d{4}\b/);
+  if (match) {
+    const start = Number(match[1]);
+    if (start <= new Date().getFullYear() + 1) return start;
+  }
+  const value = Number(table?.yearValue);
+  return value >= 2000 && value <= new Date().getFullYear() + 1 ? value : null;
+}
+
 function getExamRows(data, request = null, showAll = false) {
   if (!Array.isArray(data) || data.length < 2) return [];
   const headers = Array.isArray(data[0]) ? data[0] : [];
@@ -453,20 +487,20 @@ function getExamRows(data, request = null, showAll = false) {
   }
   if (request?.ordinal || showAll) return request?.ordinal ? [] : rows;
 
-  const currentYear = new Date().getFullYear();
+  const wantedStart = currentAcademicYearStart();
+  const wantedLabel = `${wantedStart}-${wantedStart + 1}`;
   if (yearIndex >= 0) {
     const labeled = rows.map(row => ({ row, year: academicYearFromValue(row[yearIndex]) }))
       .filter(item => item.year);
-    const candidates = [`${currentYear}-${currentYear + 1}`, `${currentYear - 1}-${currentYear}`];
-    const active = candidates.find(year => labeled.some(item => item.year === year));
-    if (active) return labeled.filter(item => item.year === active).map(item => item.row);
+    const active = labeled.filter(item => item.year === wantedLabel).map(item => item.row);
+    if (active.length) return active;
   }
 
-  const yearText = String(currentYear);
-  return rows.filter(row => {
-    const date = String(row[3] || "");
-    return date.includes(yearText) || date.includes("/" + yearText.slice(2));
-  });
+  // Prefer academic-year dates over Gregorian calendar-year filtering. This
+  // avoids showing 2025-2026 when current academic year is 2026-2027.
+  const dated = rows.filter(row => academicYearStartFromDateText(row[3]) === wantedStart);
+  if (dated.length) return dated;
+  return [];
 }
 
 function academicYearLabels(table) {

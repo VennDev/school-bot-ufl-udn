@@ -1,5 +1,45 @@
 const BASE = "https://sinhvien.ufl.udn.vn";
 
+function parseAcademicYear(value) {
+  const match = String(value || "").match(/\b(\d{4})\s*[-–]\s*(\d{4})\b/);
+  return match ? { start: Number(match[1]), end: Number(match[2]) } : null;
+}
+
+function inferAcademicYearFromRows(rows, headers = []) {
+  const normalizedHeaders = headers.map(value => String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim());
+  const timeIndex = normalizedHeaders.findIndex(header => /thoi gian hoc|thoi gian|ngay hoc|ngay thi/.test(header));
+  if (timeIndex < 0) return null;
+  const dateTexts = (Array.isArray(rows) ? rows : []).map(row => {
+    if (!Array.isArray(row)) return "";
+    return String(row[timeIndex] || "");
+  });
+  const starts = dateTexts.flatMap(text => [...text.matchAll(/(?:ngày\s*:\s*)?(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/gi)]
+    .map(match => {
+      const month = Number(match[2]);
+      let year = Number(match[3]);
+      if (year < 100) year += 2000;
+      return year >= 2000 && year <= new Date().getFullYear() + 2
+        ? (month >= 8 ? year : year - 1)
+        : null;
+    }).filter(Boolean));
+  if (!starts.length) return null;
+  const start = Math.max(...starts);
+  return { start, end: start + 1, text: `${start}-${start + 1}` };
+}
+
+function normalizeAcademicYearSelection(yearText, rows, headers = []) {
+  const parsed = parseAcademicYear(yearText);
+  const inferred = inferAcademicYearFromRows(rows, headers);
+  // Row dates are source-of-truth. Portal occasionally returns stale or
+  // corrupt labels (for example 2031-2032) after async dropdown updates.
+  if (inferred) return { text: inferred.text, value: String(inferred.start) };
+  if (parsed && parsed.start <= new Date().getFullYear() + 1) {
+    return { text: String(yearText).trim(), value: String(parsed.start) };
+  }
+  return { text: String(yearText || "").trim(), value: String(yearText || "").trim() };
+}
+
 // Read every real year/semester option. Keep only combinations whose page returns rows.
 async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") {
   const hasYearSelect = await page.$("#cmbNamHoc");
@@ -57,9 +97,10 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
           const dataRows = extracted?.rows || rows.slice(1);
           const usableRows = dataRows.filter(row => !isPlaceholderRow(row) && row.some(cell => String(cell ?? "").trim()));
           if (!headers.length || !usableRows.length) continue;
+          const selection = normalizeAcademicYearSelection(year.text, usableRows, headers);
           if (!collectedRows.length) collectedRows.push([...headers, "Năm học", "Học kỳ"]);
           usableRows.forEach(row => {
-            const entry = [...row, year.text, semester.text];
+            const entry = [...row, selection.text, semester.text];
             const key = JSON.stringify(entry);
             if (!seenRows.has(key)) { seenRows.add(key); collectedRows.push(entry); }
           });
@@ -71,13 +112,14 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
           if (!rows.some(row => row.some(cell => String(cell ?? "").trim()))) continue;
           // Same rows can exist in multiple academic years. Keep selection metadata,
           // or a year-specific query can lose an otherwise valid match.
-          const tableKey = JSON.stringify([year.value, semester.value, table.headers || [], rows]);
+          const selection = normalizeAcademicYearSelection(year.text, rows, table.headers || []);
+          const tableKey = JSON.stringify([selection.value, semester.value, table.headers || [], rows]);
           if (seenTables.has(tableKey)) continue;
           seenTables.add(tableKey);
           collectedTables.push({
             ...table,
-            year: year.text,
-            yearValue: year.value,
+            year: selection.text,
+            yearValue: selection.value,
             semester: semester.text,
             semesterValue: semester.value,
             headers: [...(table.headers || []), "Năm học", "Học kỳ"],
@@ -354,4 +396,4 @@ const PAGES = [
   },
 ];
 
-module.exports = { BASE, PAGES, hasUsableData };
+module.exports = { BASE, PAGES, hasUsableData, normalizeAcademicYearSelection };

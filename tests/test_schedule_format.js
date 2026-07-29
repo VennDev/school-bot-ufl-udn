@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { getScheduleEntries, isScheduleQuery } = require("../src/botRouter");
+const { normalizeAcademicYearSelection } = require("../src/pages");
 const { detectSchedule } = require("../src/changeDetector");
 
 const entries = getScheduleEntries([{
@@ -40,6 +41,20 @@ const portalSchedule = getScheduleEntries([{
 assert.deepStrictEqual(portalSchedule[0], {
   day: "Thứ 4", period: "7 - 9", name: "Biên dịch 1", room: "", className: "Biên dịch 1-03", date: "15/10/2025"
 });
+
+assert.deepStrictEqual(normalizeAcademicYearSelection(
+  "2031-2032",
+  [["1", "Biên dịch 1-03", "Biên dịch 1", "Thứ 4;Ngày: 15/10/2025;Tiết: 7 - 9"]],
+  ["STT", "Tên lớp học phần", "Tên môn", "Thời gian học"]
+), { text: "2025-2026", value: "2025" });
+assert.deepStrictEqual(normalizeAcademicYearSelection(
+  "2031-2032",
+  [
+    ["1", "Môn cũ", "Môn cũ", "Thứ 4;Ngày: 15/10/2025;Tiết: 7 - 9"],
+    ["2", "Môn mới", "Môn mới", "Thứ 7;Ngày: 03/04/2027;Tiết: 9 - 11"]
+  ],
+  ["STT", "Tên lớp học phần", "Tên môn", "Thời gian học"]
+), { text: "2026-2027", value: "2026" });
 
 const stableOld = [{
   year: "2026-2027", semester: "Kỳ 1",
