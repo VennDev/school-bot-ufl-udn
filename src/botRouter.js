@@ -299,7 +299,7 @@ function getScheduleEntries(data, options = {}) {
     const n = normalizeScheduleHeader(h);
     return n.includes("ten hoc phan") || n.includes("ten mon") || n === "mon hoc" || n === "hoc phan";
   };
-  const tables = data.filter((t) => {
+  let tables = data.filter((t) => {
     const headers = (t.headers || []).map(normalizeScheduleHeader);
     return headers.some(isScheduleHeader) || (t.rows || []).some(isLegacyRow) || (t.rows || []).some(isPortalScheduleRow);
   });
@@ -320,7 +320,9 @@ function getScheduleEntries(data, options = {}) {
       const semester = Number(semesterText.match(/\d+/)?.[0] || table.semesterValue || 0);
       const metadataIsValid = year >= 2000 && year <= currentYear + 1;
       const rowYear = academicYearStartFromTable(table);
-      const rankingYear = sourceIsValid || metadataIsValid ? year : (rowYear ?? 0);
+      // Portal can label returned rows with a plausible but wrong future year.
+      // Real dates identify academic year; metadata only fills date-less tables.
+      const rankingYear = rowYear ?? (sourceIsValid || metadataIsValid ? year : 0);
       return {
         value: rankingYear * 10 + semester,
         sourceIsValid,
@@ -331,7 +333,11 @@ function getScheduleEntries(data, options = {}) {
     const pool = validRanks.length ? ranks.map((rank, index) => ({ rank, table: tables[index] }))
       .filter(item => item.rank.sourceIsValid) : tables.map((table, index) => ({ rank: ranks[index], table }));
     const latestValue = Math.max(...pool.map(item => item.rank.value));
-    tables.splice(0, tables.length, ...pool.filter(item => item.rank.value === latestValue).map(item => item.table));
+    tables = pool.filter(item => item.rank.value === latestValue).map(item => item.table);
+    const targetYear = Math.max(...tables.map(academicYearStartFromTable).filter(Number.isInteger));
+    if (Number.isInteger(targetYear)) {
+      tables = tables.map(table => ({ ...table, rows: filterScheduleRowsByAcademicYear(table, targetYear) }));
+    }
   }
 
   const fallback = { day: 2, period: 0, name: 1, room: 4, className: 3 };
@@ -399,9 +405,14 @@ function getScheduleEntries(data, options = {}) {
     });
   });
 
-  return entries.filter((entry) => entry.name && (
-    isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day) || entry.period || entry.date
-  ));
+  const seen = new Set();
+  return entries.filter((entry) => {
+    if (!entry.name || !(isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day) || entry.period || entry.date)) return false;
+    const key = JSON.stringify([entry.day, entry.date, entry.period, entry.name, entry.room, entry.className]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function formatScheduleDay(day) {
@@ -525,6 +536,13 @@ function academicYearStartFromTable(table) {
   return value >= 2000 && value <= new Date().getFullYear() + 1 ? value : null;
 }
 
+function filterScheduleRowsByAcademicYear(table, wantedStart) {
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+  const dated = rows.filter(row => academicYearStartFromDateText(Array.isArray(row) ? row.join(" ") : row) !== null);
+  if (!dated.length) return rows;
+  return rows.filter(row => academicYearStartFromDateText(Array.isArray(row) ? row.join(" ") : row) === wantedStart);
+}
+
 function getExamRows(data, request = null, showAll = false) {
   if (!Array.isArray(data) || data.length < 2) return [];
   const headers = Array.isArray(data[0]) ? data[0] : [];
@@ -592,10 +610,11 @@ function filterAcademicYearTables(data, request) {
     const parts = String(request.value).replace(/[–—]/g, "-").split("-").map(v => v.trim());
     if (parts.length !== 2 || !/^\d{4}$/.test(parts[0]) || !/^\d{4}$/.test(parts[1])) return [];
     const wanted = `${parts[0]}-${parts[1]}`;
+    const wantedStart = Number(parts[0]);
     return data.filter((item) => academicYearLabels(item).some((label) => {
       const matches = label.match(/\b(\d{4})\s*-\s*(\d{4})\b/g) || [];
       return matches.some(pair => pair.replace(/\s+/g, "") === wanted);
-    }));
+    })).map(item => ({ ...item, rows: filterScheduleRowsByAcademicYear(item, wantedStart) }));
   }
   if (!Number.isInteger(request.ordinal) || request.ordinal < 1) return [];
   const ordinal = String(request.ordinal);
@@ -1266,7 +1285,7 @@ async function processMessage(senderPsid, messageText) {
   if (normalizedLowerText.startsWith("lịch học thứ") || normalizedLowerText.startsWith("lịch học t") || normalizedLowerText.startsWith("lịch học cn") || normalizedLowerText.startsWith("lịch học chủ nhật") || normalizedLowerText.startsWith("lich hoc thu") || normalizedLowerText.startsWith("lich hoc t") || normalizedLowerText.startsWith("lich hoc cn") || normalizedLowerText.startsWith("lich hoc chu nhat")) {
     const dayPart = text.replace(/lịch học /i, "").replace(/lich hoc /i, "").trim();
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
-    const entries = getScheduleEntries(raw);
+    const entries = getScheduleEntries(raw, { latest: true });
     const dayMap = {
       "2": "thứ 2", "3": "thứ 3", "4": "thứ 4", "5": "thứ 5", "6": "thứ 6", "7": "thứ 7", "cn": "chủ nhật",
       "thu2": "thứ 2", "thu3": "thứ 3", "thu4": "thứ 4", "thu5": "thứ 5", "thu6": "thứ 6", "thu7": "thứ 7",
@@ -1283,7 +1302,7 @@ async function processMessage(senderPsid, messageText) {
       subtitle: [formatScheduleDay(entry.day), entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | "),
     }));
-    return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, dayPart));
+    return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, dayPart, { latest: true }));
   }
 
   if (normalizedLowerText === "điểm số" || normalizedLowerText === "gpa" || normalizedLowerText === "diem so" || normalizedLowerText === "diem") {

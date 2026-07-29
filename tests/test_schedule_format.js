@@ -28,6 +28,11 @@ const latestEntries = getScheduleEntries([
   { yearValue: "2026", semesterValue: "1", headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["7-8", "Môn hiện tại", "6", "L02"]] }
 ], { latest: true });
 assert.deepStrictEqual(latestEntries.map(entry => entry.name), ["Môn hiện tại"]);
+const mixedYearTables = getScheduleEntries([
+  { year: "2027-2028", sourceYear: "2027-2028", semester: "Kỳ 3", headers: ["STT", "Tên lớp học phần", "Tên môn", "Thời gian học"], rows: [["1", "Mới", "Mới", "Thứ 4;Ngày: 15/10/2025;Tiết: 7 - 9"]] },
+  { year: "2026-2027", sourceYear: "2026-2027", semester: "Kỳ 1", headers: ["STT", "Tên lớp học phần", "Tên môn", "Thời gian học"], rows: [["1", "Đúng", "Đúng", "Thứ 4;Ngày: 15/10/2026;Tiết: 7 - 9"]] }
+], { latest: true });
+assert.deepStrictEqual(mixedYearTables.map(entry => entry.name), ["Đúng"]);
 assert.strictEqual(isScheduleQuery("lịch"), true);
 assert.strictEqual(isScheduleQuery("lịch tuần này"), true);
 assert.strictEqual(isScheduleQuery("thời khóa biểu"), true);
@@ -70,6 +75,11 @@ assert.deepStrictEqual(normalizeAcademicYearSelection(
   ],
   ["STT", "Tên lớp học phần", "Tên môn", "Thời gian học"]
 ), { text: "2026-2027", value: "2026" });
+assert.deepStrictEqual(normalizeAcademicYearSelection(
+  "2027-2028",
+  [["1", "Biên dịch 1", "Thứ 4;Ngày: 15/10/2025;Tiết: 7 - 9"]],
+  ["STT", "Tên môn", "Thời gian học"]
+), { text: "2025-2026", value: "2025" });
 
 const stableOld = [{
   year: "2026-2027", semester: "Kỳ 1",

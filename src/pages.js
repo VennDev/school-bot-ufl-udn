@@ -33,12 +33,12 @@ function inferAcademicYearFromRows(rows, headers = []) {
 function normalizeAcademicYearSelection(yearText, rows, headers = []) {
   const parsed = parseAcademicYear(yearText);
   const inferred = inferAcademicYearFromRows(rows, headers);
-  // Trust valid dropdown selection. Only replace corrupt future labels
-  // (for example 2031-2032) with row-date inference.
+  // Row dates win. Portal can return a plausible but wrong option label
+  // (for example 2027-2028 while rows end in April 2027).
+  if (inferred) return { text: inferred.text, value: String(inferred.start) };
   if (parsed && parsed.start <= new Date().getFullYear() + 1) {
     return { text: String(yearText).trim(), value: String(parsed.start) };
   }
-  if (inferred) return { text: inferred.text, value: String(inferred.start) };
   return { text: String(yearText || "").trim(), value: String(yearText || "").trim() };
 }
 
