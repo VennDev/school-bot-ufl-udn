@@ -295,6 +295,31 @@ function formatHocPhi(data) {
   return `[$] TÌNH TRẠNG HỌC PHÍ:\n\n${lines.join("\n")}`;
 }
 
+function formatTietHoc() {
+  return `⏰ THỜI GIAN CÁC TIẾT HỌC:
+
+BUỔI SÁNG
+- Tiết 1: 7h00 - 7h50
+- Tiết 2: 7h50 - 8h40 (Giải lao 10 phút)
+- Tiết 3: 8h50 - 9h40 (Giải lao 05 phút)
+- Tiết 4: 9h45 - 10h35
+- Tiết 5: 10h35 - 11h25 (Giải lao 05 phút)
+- Tiết 6: 11h30 - 12h20
+
+BUỔI CHIỀU
+- Tiết 7: 13h00 - 13h50
+- Tiết 8: 13h50 - 14h40 (Giải lao 10 phút)
+- Tiết 9: 14h50 - 15h40 (Giải lao 05 phút)
+- Tiết 10: 15h45 - 16h35
+- Tiết 11: 16h35 - 17h25
+
+BUỔI TỐI
+- Tiết 12: 17h30 - 18h20
+- Tiết 13: 18h20 - 19h10 (Giải lao 10 phút)
+- Tiết 14: 19h20 - 20h10
+- Tiết 15: 20h10 - 21h00`;
+}
+
 function formatThongTinSV(data) {
   if (!data) return "Chưa có dữ liệu hồ sơ sinh viên.";
   let txt = "[i] THÔNG TIN HỒ SƠ SINH VIÊN:\n";
@@ -848,6 +873,7 @@ async function processMessage(senderPsid, messageText) {
   else if (actionText === "diem_so") actionText = "điểm số";
   else if (actionText === "tien_do") actionText = "tiến độ";
   else if (actionText === "hoc_phi") actionText = "học phí";
+  else if (actionText === "tiet_hoc") actionText = "thời gian tiết học";
   else if (actionText === "sync_postback") actionText = "/sync";
   else if (actionText === "logout_postback") actionText = "/logout";
   else if (actionText === "login_postback") actionText = "/login";
@@ -1049,14 +1075,16 @@ async function processMessage(senderPsid, messageText) {
     const menuText = "📚 MENU TRA CỨU HỌC VỤ\nChọn thông tin bạn muốn kiểm tra:";
     return messenger.sendQuickReplies(senderPsid, menuText, [
       { title: "Lịch học", payload: "LICH_HOC" },
-      { title: "Lịch thi (năm nay)", payload: "LICH_THI" },
-      { title: "Tất cả Lịch thi", payload: "ALL_LICH_THI" },
+      { title: "Lịch thi", payload: "LICH_THI" },
       { title: "Điểm số", payload: "DIEM_SO" },
-      { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
-      { title: "Tiến độ", payload: "TIEN_DO" },
       { title: "Học phí", payload: "HOC_PHI" },
+      { title: "Thời gian & tiết học", payload: "TIET_HOC" },
       { title: "Cài đặt", payload: "SETTINGS_POSTBACK" }
     ]);
+  }
+
+  if (normalizedLowerText === "thời gian tiết học" || normalizedLowerText === "thời gian & tiết học" || normalizedLowerText === "thời gian & các tiết học" || normalizedLowerText === "thời gian cac tiet hoc" || normalizedLowerText === "tiết học" || normalizedLowerText === "tiet hoc") {
+    return messenger.sendTextMessage(senderPsid, formatTietHoc());
   }
 
   if (normalizedLowerText === "xem menu cau hoi" || normalizedLowerText === "câu hỏi thường gặp") {
@@ -1143,6 +1171,7 @@ async function processMessage(senderPsid, messageText) {
       { title: "Toggle Lịch Thi", payload: "TOGGLE_THI" },
       { title: "Toggle Học Phí", payload: "TOGGLE_HOCPHI" },
       { title: "Toggle Thông báo", payload: "TOGGLE_THONGBAO" },
+      { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
     ]);
   }
 
@@ -1693,7 +1722,7 @@ const IMMEDIATE_MESSAGES = new Set([
   "lịch học", "lịch thi", "tất cả lịch thi", "điểm số", "gpa", "diem so", "diem",
   "tiến độ", "tín chỉ", "tien do", "tin chi", "học vụ", "thông báo", "hoc vu",
   "thong bao", "tất cả thông báo", "tat ca thong bao", "tất cả học vụ", "tat ca hoc vu",
-  "học phí", "tiền", "hoc phi", "tien", "hồ sơ", "hồ sơ sinh viên", "ho so",
+  "học phí", "tiền", "hoc phi", "tien", "thời gian tiết học", "thời gian & tiết học", "thời gian & các tiết học", "tiết học", "tiet hoc", "hồ sơ", "hồ sơ sinh viên", "ho so",
   "lý lịch", "ly lich", "thống kê", "thong ke", "phân tích", "phan tich",
   "tóm tắt tuần", "tóm tắt", "tom tat", "test utility", "test utility messaging"
 ]);
@@ -1741,4 +1770,5 @@ module.exports = {
   getExamRows,
   formatHocPhi,
   formatKetQuaHocTap,
+  formatTietHoc,
 };
