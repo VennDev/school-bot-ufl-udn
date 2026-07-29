@@ -1276,7 +1276,7 @@ async function processMessage(senderPsid, messageText) {
 }
 
 // Short fragments need wider quiet window: users often send next Messenger bubble after >1.2s.
-const MESSAGE_BATCH_DELAY = 3000;
+const MESSAGE_BATCH_DELAY = 5000;
 
 function createMessageBatcher(processBatch, delayMs = MESSAGE_BATCH_DELAY) {
   const states = new Map();
