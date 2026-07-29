@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { getScheduleEntries, isScheduleQuery } = require("../src/botRouter");
+const { getScheduleEntries, isScheduleQuery, examDetails } = require("../src/botRouter");
 const { normalizeAcademicYearSelection } = require("../src/pages");
 const { detectSchedule } = require("../src/changeDetector");
 
@@ -37,7 +37,16 @@ const examRows = [
   ["STT", "Mã học phần", "Tên học phần", "Ngày thi", "Ca thi", "Giờ thi", "Lần thi", "Đợt thi", "Số báo danh", "Phòng thi", "Hình thức"],
   ["1", "4131132", "Ngoại ngữ II.2", "08/05/2026", "", "9 giờ 30", "1", "3", "005", "C501(LNH)", "Tự luận"]
 ];
-assert.ok(examRows[0].includes("Ngày thi"));
+assert.deepStrictEqual(examDetails(examRows, examRows[1]), {
+  subject: "Ngoại ngữ II.2",
+  date: "08/05/2026",
+  academicYear: 2025,
+  session: "",
+  time: "9 giờ 30",
+  candidate: "005",
+  room: "C501(LNH)",
+  format: "Tự luận"
+});
 
 const portalSchedule = getScheduleEntries([{
   year: "2031-2032", semester: "Kỳ 3",

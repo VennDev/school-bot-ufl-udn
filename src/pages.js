@@ -24,21 +24,21 @@ function inferAcademicYearFromRows(rows, headers = []) {
         : null;
     }).filter(Boolean));
   if (!starts.length) return null;
-  const counts = new Map();
-  starts.forEach(start => counts.set(start, (counts.get(start) || 0) + 1));
-  const start = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+  // One selected portal table can contain old classes plus a newer make-up
+  // date. Latest real date identifies academic-year table better than majority.
+  const start = Math.max(...starts);
   return { start, end: start + 1, text: `${start}-${start + 1}` };
 }
 
 function normalizeAcademicYearSelection(yearText, rows, headers = []) {
   const parsed = parseAcademicYear(yearText);
   const inferred = inferAcademicYearFromRows(rows, headers);
-  // Row dates are source-of-truth. Portal occasionally returns stale or
-  // corrupt labels (for example 2031-2032) after async dropdown updates.
-  if (inferred) return { text: inferred.text, value: String(inferred.start) };
+  // Trust valid dropdown selection. Only replace corrupt future labels
+  // (for example 2031-2032) with row-date inference.
   if (parsed && parsed.start <= new Date().getFullYear() + 1) {
     return { text: String(yearText).trim(), value: String(parsed.start) };
   }
+  if (inferred) return { text: inferred.text, value: String(inferred.start) };
   return { text: String(yearText || "").trim(), value: String(yearText || "").trim() };
 }
 

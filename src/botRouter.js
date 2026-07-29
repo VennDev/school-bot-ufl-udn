@@ -175,7 +175,7 @@ function normalizeExamHeaders(data) {
     candidate: find(["Số báo danh", "SBD"]) ?? 8,
     room: find(["Phòng thi", "Phòng"]) ?? 9,
     format: find(["Hình thức", "Hình thức thi"]) ?? 10,
-    year: find(["Năm học", "Nien khoa", "Academic year"]),
+    year: find(["Năm học", "Nien khoa", "Academic year"]) ?? -1,
   };
 }
 
@@ -184,14 +184,19 @@ function examDetails(data, row) {
   const cells = row.map(value => String(value || "").trim());
   const findDate = () => cells.find(value => /\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/.test(value)) || "";
   const findTime = () => cells.find(value => /\b\d{1,2}\s*(?:giờ|h)\b/i.test(value)) || "";
+  const findRoom = () => cells.find(value => /\b[A-Z]\d{2,4}(?:\([^)]*\))?\b/i.test(value)) || "";
+  const findFormat = () => cells.find(value => /tự luận|trắc nghiệm|vấn đáp|thực hành/i.test(value)) || "";
+  const findCandidate = () => cells.slice(Math.max(0, columns.date + 1)).find(value => /^\d{3,12}$/.test(value)) || "";
+  const date = cells[columns.date] || findDate();
   return {
     subject: cells[columns.subject] || cells[2] || "Môn học",
-    date: cells[columns.date] || findDate(),
+    date,
+    academicYear: academicYearStartFromDateText(date),
     session: cells[columns.session] || "",
     time: cells[columns.time] || findTime(),
     candidate: cells[columns.candidate] || "",
-    room: cells[columns.room] || "",
-    format: cells[columns.format] || "",
+    room: cells[columns.room] || findRoom(),
+    format: cells[columns.format] || findFormat(),
   };
 }
 
@@ -205,7 +210,15 @@ function formatLichThi(data, showAll = false, selectedRows = null) {
   rows.slice(0, 5).forEach((row) => {
     const exam = examDetails(data, row);
     const time = [exam.session && `Ca ${exam.session}`, exam.time].filter(Boolean).join(" - ");
-    txt += `\n- Môn: ${exam.subject}\n  Ngày: ${exam.date}${time ? ` (${time})` : ""}\n  Phòng: ${exam.room}${exam.format ? ` - HT: ${exam.format}` : ""}\n`;
+    const details = [
+      exam.academicYear && `Năm học ${exam.academicYear}-${exam.academicYear + 1}`,
+      exam.date && `Ngày ${exam.date}`,
+      time,
+      exam.room && `Phòng ${exam.room}`,
+      exam.candidate && `SBD ${exam.candidate}`,
+      exam.format && `HT ${exam.format}`,
+    ].filter(Boolean);
+    txt += `\n- Môn: ${exam.subject}\n  ${details.join(" | ") || "Chưa có ngày thi/phòng thi trong dữ liệu."}\n`;
   });
   return txt;
 }
@@ -305,9 +318,11 @@ function getScheduleEntries(data, options = {}) {
       const year = metadataYear > currentYear + 1 ? 0 : metadataYear;
       const semesterText = String(table.semester || "");
       const semester = Number(semesterText.match(/\d+/)?.[0] || table.semesterValue || 0);
+      const metadataIsValid = year >= 2000 && year <= currentYear + 1;
       const rowYear = academicYearStartFromTable(table);
+      const rankingYear = sourceIsValid || metadataIsValid ? year : (rowYear ?? 0);
       return {
-        value: (rowYear ?? year) * 10 + semester,
+        value: rankingYear * 10 + semester,
         sourceIsValid,
       };
     };
@@ -518,8 +533,10 @@ function getExamRows(data, request = null, showAll = false) {
   const rows = data.slice(1).filter(Array.isArray);
   if (request?.value) {
     const wanted = academicYearFromValue(request.value);
-    if (!wanted || yearIndex < 0) return [];
-    return rows.filter(row => academicYearFromValue(row[yearIndex]) === wanted);
+    if (!wanted) return [];
+    if (yearIndex >= 0) return rows.filter(row => academicYearFromValue(row[yearIndex]) === wanted);
+    const wantedStart = Number(wanted.slice(0, 4));
+    return rows.filter(row => academicYearStartFromDateText(row[columns.date]) === wantedStart);
   }
   if (request?.ordinal || showAll) return request?.ordinal ? [] : rows;
 
@@ -532,11 +549,13 @@ function getExamRows(data, request = null, showAll = false) {
     if (active.length) return active;
   }
 
-  // Prefer academic-year dates over Gregorian calendar-year filtering. This
-  // avoids showing 2025-2026 when current academic year is 2026-2027.
+  // Prefer current academic-year rows. If no exam has been published for that
+  // academic year yet, show exams in current calendar year instead of hiding
+  // valid synchronized data from previous semester.
   const dated = rows.filter(row => academicYearStartFromDateText(row[columns.date]) === wantedStart);
   if (dated.length) return dated;
-  return [];
+  const calendarYear = String(new Date().getFullYear());
+  return rows.filter(row => String(row[columns.date] || "").includes(calendarYear));
 }
 
 function academicYearLabels(table) {
@@ -1181,7 +1200,7 @@ async function processMessage(senderPsid, messageText) {
     const requestedExamYear = extractAcademicYearRequest(text);
     const filtered = getExamRows(raw, requestedExamYear);
     if (!filtered.length) {
-      const label = requestedExamYear?.value ? requestedExamYear.label : "năm học gần nhất";
+      const label = requestedExamYear?.value ? requestedExamYear.label : `năm học ${currentAcademicYearStart()}-${currentAcademicYearStart() + 1}`;
       return messenger.sendTextMessage(senderPsid, `Không có lịch thi cho ${label}. Gõ 'tất cả lịch thi' để xem toàn bộ.`);
     }
 
@@ -1189,7 +1208,7 @@ async function processMessage(senderPsid, messageText) {
       const exam = examDetails(raw, row);
       return {
         title: `Thi: ${exam.subject}`,
-        subtitle: [`Ngày: ${exam.date}`, exam.session && `Ca: ${exam.session}`, exam.time && `Giờ: ${exam.time}`, exam.room && `Phòng: ${exam.room}`, exam.candidate && `SBD: ${exam.candidate}`, exam.format && `HT: ${exam.format}`].filter(Boolean).join(" | ")
+        subtitle: [exam.academicYear && `Năm học ${exam.academicYear}-${exam.academicYear + 1}`, exam.date && `Ngày: ${exam.date}`, exam.session && `Ca: ${exam.session}`, exam.time && `Giờ: ${exam.time}`, exam.room && `Phòng: ${exam.room}`, exam.candidate && `SBD: ${exam.candidate}`, exam.format && `HT: ${exam.format}`].filter(Boolean).join(" | ") || "Chưa có ngày thi/phòng thi trong dữ liệu."
       };
     });
     return sendCardsOrText(senderPsid, elements, formatLichThi(raw, false, filtered));
@@ -1206,7 +1225,7 @@ async function processMessage(senderPsid, messageText) {
       const exam = examDetails(raw, row);
       return {
         title: `Thi: ${exam.subject}`,
-        subtitle: [`Ngày: ${exam.date}`, exam.session && `Ca: ${exam.session}`, exam.time && `Giờ: ${exam.time}`, exam.room && `Phòng: ${exam.room}`, exam.candidate && `SBD: ${exam.candidate}`, exam.format && `HT: ${exam.format}`].filter(Boolean).join(" | ")
+        subtitle: [exam.academicYear && `Năm học ${exam.academicYear}-${exam.academicYear + 1}`, exam.date && `Ngày: ${exam.date}`, exam.session && `Ca: ${exam.session}`, exam.time && `Giờ: ${exam.time}`, exam.room && `Phòng: ${exam.room}`, exam.candidate && `SBD: ${exam.candidate}`, exam.format && `HT: ${exam.format}`].filter(Boolean).join(" | ") || "Chưa có ngày thi/phòng thi trong dữ liệu."
       };
     });
     return sendCardsOrText(senderPsid, elements, formatLichThi(raw, true, filtered));
@@ -1586,4 +1605,7 @@ module.exports = {
   getScheduleEntries,
   isScheduleQuery,
   isSchedulePrefix,
+  normalizeExamHeaders,
+  examDetails,
+  getExamRows,
 };
