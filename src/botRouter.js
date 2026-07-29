@@ -207,7 +207,7 @@ function formatLichThi(data, showAll = false, selectedRows = null) {
   if (!showAll && !selectedRows) rows = getExamRows(data);
   if (!rows.length) return showAll ? "Không có lịch thi." : "Không có lịch thi trong năm học hiện tại.";
 
-  rows.slice(0, 5).forEach((row) => {
+  rows.slice(0, showAll ? rows.length : 5).forEach((row) => {
     const exam = examDetails(data, row);
     const time = [exam.session && `Ca ${exam.session}`, exam.time].filter(Boolean).join(" - ");
     const details = [
@@ -395,7 +395,11 @@ function getScheduleEntries(data, options = {}) {
 
     const rawTime = col.time !== -1 ? clean(row[col.time]) : "";
     const parsedDay = rawTime.match(/(?:^|[;|])\s*(thứ\s*[2-7]|chủ nhật)\b/i)?.[1] || "";
-    const parsedDate = rawTime.match(/ngày\s*:\s*([^;|]+)/i)?.[1]?.trim().replace(/\s+00:00:00$/, "") || "";
+    const dateMatches = [...rawTime.matchAll(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g)].map(match => match[0]);
+    const parsedDate = rawTime.match(/ngày\s*:\s*([^;|]+)/i)?.[1]?.trim().replace(/\s+00:00:00$/, "") ||
+      (dateMatches.length > 1 ? `${dateMatches[0]} - ${dateMatches[1]}` : dateMatches[0] || "");
+    const parsedDateStart = dateMatches[0] || "";
+    const parsedDateEnd = dateMatches[1] || dateMatches[0] || "";
     const parsedPeriod = rawTime.match(/tiết\s*:\s*([^;|]+)/i)?.[1]?.trim() || "";
     const rawDay = col.day !== -1 ? String(row[col.day] || "") : parsedDay;
     const rawPeriod = col.period !== -1 ? String(row[col.period] || "") : parsedPeriod;
@@ -414,7 +418,7 @@ function getScheduleEntries(data, options = {}) {
           name,
           room: rooms[i] || rooms[0] || "",
           className,
-          ...(parsedDate ? { date: parsedDate } : {})
+          ...(parsedDate ? { date: parsedDate, dateStart: parsedDateStart, dateEnd: parsedDateEnd } : {})
         });
       }
     } else {
@@ -424,7 +428,7 @@ function getScheduleEntries(data, options = {}) {
         name,
         room: rooms.join(", ") || clean(rawRoom),
         className,
-        ...(parsedDate ? { date: parsedDate } : {})
+        ...(parsedDate ? { date: parsedDate, dateStart: parsedDateStart, dateEnd: parsedDateEnd } : {})
       });
     }
     });
@@ -452,14 +456,25 @@ function clipCardText(value, maxLength = 80) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
-async function sendCardsOrText(senderPsid, elements, fallbackText) {
-  const cards = Array.isArray(elements)
+function prepareCards(elements) {
+  return Array.isArray(elements)
     ? elements.filter(card => card && String(card.title || card.subtitle || "").trim()).map(card => ({
         ...card,
         title: clipCardText(card.title),
         subtitle: clipCardText(card.subtitle),
-      })).slice(0, 5)
+      }))
     : [];
+}
+
+function splitCardBatches(elements, size = 5) {
+  const cards = prepareCards(elements);
+  const batches = [];
+  for (let i = 0; i < cards.length; i += size) batches.push(cards.slice(i, i + size));
+  return batches;
+}
+
+async function sendCardsOrText(senderPsid, elements, fallbackText) {
+  const cards = splitCardBatches(elements)[0] || [];
   if (!cards.length) return messenger.sendTextMessage(senderPsid, fallbackText);
   try {
     const result = await messenger.sendGenericTemplate(senderPsid, cards);
@@ -467,6 +482,20 @@ async function sendCardsOrText(senderPsid, elements, fallbackText) {
   } catch {
     return messenger.sendTextMessage(senderPsid, fallbackText);
   }
+}
+
+async function sendCardBatchesOrText(senderPsid, elements, fallbackText) {
+  const batches = splitCardBatches(elements);
+  if (!batches.length) return messenger.sendTextMessage(senderPsid, fallbackText);
+  for (const cards of batches) {
+    try {
+      const result = await messenger.sendGenericTemplate(senderPsid, cards);
+      if (result?.error) return messenger.sendTextMessage(senderPsid, fallbackText);
+    } catch {
+      return messenger.sendTextMessage(senderPsid, fallbackText);
+    }
+  }
+  return { ok: true, batches: batches.length };
 }
 
 function formatLichHoc(data, dayFilter, options = {}) {
@@ -488,7 +517,7 @@ function formatLichHoc(data, dayFilter, options = {}) {
   if (!filtered.length) return txt + "Không có tiết học nào.";
 
   filtered.slice(0, 7).forEach((entry) => {
-    const details = [entry.day && `Thứ ${entry.day.replace(/^thứ\s*/i, "")}`, entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`];
+    const details = [entry.day && `Thứ ${entry.day.replace(/^thứ\s*/i, "")}`, entry.dateStart && `Từ ${entry.dateStart}`, entry.dateEnd && `Đến ${entry.dateEnd}`, entry.period && `Tiết ${entry.period}`];
     if (entry.room) details.push(`Phòng ${entry.room}`);
     if (entry.className) details.push(`Lớp ${entry.className}`);
     txt += `\n- ${entry.name} | ${details.filter(Boolean).join(" | ")}`;
@@ -1285,14 +1314,14 @@ async function processMessage(senderPsid, messageText) {
     }
     const filtered = getExamRows(raw, null, true);
     if (!filtered.length) return messenger.sendTextMessage(senderPsid, "Không có lịch thi.");
-    const elements = filtered.slice(0, 5).map((row) => {
+    const elements = filtered.map((row) => {
       const exam = examDetails(raw, row);
       return {
         title: `Thi: ${exam.subject}`,
         subtitle: [exam.academicYear && `Năm học ${exam.academicYear}-${exam.academicYear + 1}`, exam.date && `Ngày: ${exam.date}`, exam.session && `Ca: ${exam.session}`, exam.time && `Giờ: ${exam.time}`, exam.room && `Phòng: ${exam.room}`, exam.candidate && `SBD: ${exam.candidate}`, exam.format && `HT: ${exam.format}`].filter(Boolean).join(" | ") || "Chưa có ngày thi/phòng thi trong dữ liệu."
       };
     });
-    return sendCardsOrText(senderPsid, elements, formatLichThi(raw, true, filtered));
+    return sendCardBatchesOrText(senderPsid, elements, formatLichThi(raw, true, filtered));
   }
 
   const requestedScheduleYear = extractAcademicYearRequest(text);
@@ -1304,9 +1333,9 @@ async function processMessage(senderPsid, messageText) {
       return messenger.sendTextMessage(senderPsid, `Không có dữ liệu lịch học cho ${label} trong dữ liệu đã đồng bộ.`);
     }
     const scheduleEntries = getScheduleEntries(matchingTables);
-    const elements = scheduleEntries.slice(0, 5).map((entry) => ({
+    const elements = scheduleEntries.map((entry) => ({
       title: entry.name,
-      subtitle: [formatScheduleDay(entry.day), entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+      subtitle: [formatScheduleDay(entry.day), entry.dateStart && `Từ: ${entry.dateStart}`, entry.dateEnd && `Đến: ${entry.dateEnd}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | ")
     }));
     return sendCardsOrText(senderPsid, elements, formatLichHoc(matchingTables));
@@ -1319,9 +1348,9 @@ async function processMessage(senderPsid, messageText) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch học trong kỳ hiện tại.");
     }
     const scheduleEntries = getScheduleEntries(raw, { latest: true });
-    const elements = scheduleEntries.slice(0, 5).map((entry) => ({
+    const elements = scheduleEntries.map((entry) => ({
       title: entry.name,
-      subtitle: [formatScheduleDay(entry.day), entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+      subtitle: [formatScheduleDay(entry.day), entry.dateStart && `Từ: ${entry.dateStart}`, entry.dateEnd && `Đến: ${entry.dateEnd}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | ")
     }));
     return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, null, { latest: true }));
@@ -1342,9 +1371,9 @@ async function processMessage(senderPsid, messageText) {
       return messenger.sendTextMessage(senderPsid, `Không có lịch học nào vào ${dayPart}.`);
     }
 
-    const elements = filtered.slice(0, 5).map((entry) => ({
+    const elements = filtered.map((entry) => ({
       title: entry.name,
-      subtitle: [formatScheduleDay(entry.day), entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+      subtitle: [formatScheduleDay(entry.day), entry.dateStart && `Từ: ${entry.dateStart}`, entry.dateEnd && `Đến: ${entry.dateEnd}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | "),
     }));
     return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, dayPart, { latest: true }));

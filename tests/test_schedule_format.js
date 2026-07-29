@@ -69,7 +69,7 @@ const portalSchedule = getScheduleEntries([{
   rows: [["1", "Biên dịch 1-03", "Biên dịch 1", "Thứ 4;Ngày: 15/10/2025;Tiết: 7 - 9", ""]]
 }]);
 assert.deepStrictEqual(portalSchedule[0], {
-  day: "Thứ 4", period: "7 - 9", name: "Biên dịch 1", room: "", className: "Biên dịch 1-03", date: "15/10/2025"
+  day: "Thứ 4", period: "7 - 9", name: "Biên dịch 1", room: "", className: "Biên dịch 1-03", date: "15/10/2025", dateStart: "15/10/2025", dateEnd: "15/10/2025"
 });
 
 assert.deepStrictEqual(normalizeAcademicYearSelection(
