@@ -254,22 +254,27 @@ function getScheduleEntries(data, options = {}) {
   if (!Array.isArray(data)) return [];
   const isPeriod = (value) => /^\d+(?:\s*[-–]\s*\d+)?$/.test(String(value || "").trim());
   const isDay = (value) => /^(?:thứ\s*)?[2-7]$|^chủ nhật$/i.test(String(value || "").trim());
+  const hasScheduleTime = (value) => /(?:thứ\s*(?:[2-7])|chủ nhật)|ngày\s*:|tiết\s*:/i.test(String(value || ""));
   const isLegacyRow = (row) => isPeriod(row?.[0]) && isDay(row?.[2]) && String(row?.[1] || "").trim();
+  const isPortalScheduleRow = (row) => hasScheduleTime(row?.[3]) && String(row?.[2] || "").trim();
   const isScheduleHeader = (h) => {
     const n = normalizeScheduleHeader(h);
     return n.includes("ten hoc phan") || n.includes("ten mon") || n === "mon hoc" || n === "hoc phan";
   };
   const tables = data.filter((t) => {
     const headers = (t.headers || []).map(normalizeScheduleHeader);
-    return headers.some(isScheduleHeader) || (t.rows || []).some(isLegacyRow);
+    return headers.some(isScheduleHeader) || (t.rows || []).some(isLegacyRow) || (t.rows || []).some(isPortalScheduleRow);
   });
   if (!tables.length) return [];
 
   if (options.latest && tables.length > 1) {
     const scheduleValue = table => {
       const yearText = String(table.year || "");
-      const year = Number(yearText.match(/\d{4}/)?.[0] ||
+      const metadataYear = Number(yearText.match(/\d{4}/)?.[0] ||
         (Number(table.yearValue) >= 1000 ? table.yearValue : 0));
+      // Portal occasionally returns a corrupt/future academic label while row
+      // dates still contain current lessons. Do not let that label hide valid data.
+      const year = metadataYear > new Date().getFullYear() + 1 ? 0 : metadataYear;
       const semesterText = String(table.semester || "");
       const semester = Number(semesterText.match(/\d+/)?.[0] || table.semesterValue || 0);
       return year * 10 + semester;
@@ -289,22 +294,30 @@ function getScheduleEntries(data, options = {}) {
     const columns = {
       day: scheduleColumn(headers, ["Thứ", "Ngày"]),
       period: scheduleColumn(headers, ["Tiết", "Tiết học"]),
+      time: scheduleColumn(headers, ["Thời gian học", "Thời gian" ]),
       name: scheduleColumn(headers, ["Tên học phần", "Tên môn học", "Môn học", "Học phần", "Tên môn"]),
       room: scheduleColumn(headers, ["Phòng", "Phòng học"]),
-      className: scheduleColumn(headers, ["Tên lớp tín chỉ", "Lớp học phần", "Lớp", "Lớp tín chỉ"]),
+      className: scheduleColumn(headers, ["Tên lớp tín chỉ", "Tên lớp học phần", "Lớp học phần", "Lớp", "Lớp tín chỉ"]),
     };
-    const hasDetectedHeaders = columns.day !== -1 && columns.period !== -1 && columns.name !== -1;
+    const hasDetectedHeaders = columns.name !== -1 && (columns.time !== -1 || (columns.day !== -1 && columns.period !== -1));
     const legacy = !hasDetectedHeaders && (table.rows || []).some(isLegacyRow);
     const col = legacy
       ? fallback
-      : Object.fromEntries(Object.entries(columns).map(([key, value]) => [key, value !== -1 ? value : (fallback[key] ?? -1)]));
+      : Object.fromEntries(Object.entries(columns).map(([key, value]) => [
+          key,
+          value !== -1 ? value : (key === "room" && columns.time === -1 ? fallback[key] : (key === "className" && columns.time === -1 ? fallback[key] : -1))
+        ]));
 
     (table.rows || []).forEach((row) => {
     const name = col.name !== -1 ? clean(row[col.name]).replace(/^tiết\s+/i, "") : "";
-    if (!name || ["stt", "môn học", "tên học phần", "học phần"].includes(name.toLowerCase())) return;
+    if (!name || ["stt", "môn học", "tên học phần", "học phần", "tên môn"].includes(name.toLowerCase())) return;
 
-    const rawDay = col.day !== -1 ? String(row[col.day] || "") : "";
-    const rawPeriod = col.period !== -1 ? String(row[col.period] || "") : "";
+    const rawTime = col.time !== -1 ? clean(row[col.time]) : "";
+    const parsedDay = rawTime.match(/(?:^|[;|])\s*(thứ\s*[2-7]|chủ nhật)\b/i)?.[1] || "";
+    const parsedDate = rawTime.match(/ngày\s*:\s*([^;|]+)/i)?.[1]?.trim() || "";
+    const parsedPeriod = rawTime.match(/tiết\s*:\s*([^;|]+)/i)?.[1]?.trim() || "";
+    const rawDay = col.day !== -1 ? String(row[col.day] || "") : parsedDay;
+    const rawPeriod = col.period !== -1 ? String(row[col.period] || "") : parsedPeriod;
     const rawRoom = col.room !== -1 ? String(row[col.room] || "") : "";
     const className = col.className !== -1 ? clean(row[col.className]) : "";
 
@@ -319,7 +332,8 @@ function getScheduleEntries(data, options = {}) {
           period: periods[i] || periods[0] || "",
           name,
           room: rooms[i] || rooms[0] || "",
-          className
+          className,
+          ...(parsedDate ? { date: parsedDate } : {})
         });
       }
     } else {
@@ -328,13 +342,16 @@ function getScheduleEntries(data, options = {}) {
         period: periods.join(", ") || clean(rawPeriod),
         name,
         room: rooms.join(", ") || clean(rawRoom),
-        className
+        className,
+        ...(parsedDate ? { date: parsedDate } : {})
       });
     }
     });
   });
 
-  return entries.filter((entry) => entry.name && (isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day)));
+  return entries.filter((entry) => entry.name && (
+    isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day) || entry.period || entry.date
+  ));
 }
 
 function formatScheduleDay(day) {
@@ -384,7 +401,7 @@ function formatLichHoc(data, dayFilter, options = {}) {
   if (!filtered.length) return txt + "Không có tiết học nào.";
 
   filtered.slice(0, 7).forEach((entry) => {
-    const details = [entry.day && `Thứ ${entry.day.replace(/^thứ\s*/i, "")}`, entry.period && `Tiết ${entry.period}`];
+    const details = [entry.day && `Thứ ${entry.day.replace(/^thứ\s*/i, "")}`, entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`];
     if (entry.room) details.push(`Phòng ${entry.room}`);
     if (entry.className) details.push(`Lớp ${entry.className}`);
     txt += `\n- ${entry.name} | ${details.filter(Boolean).join(" | ")}`;
@@ -1130,7 +1147,7 @@ async function processMessage(senderPsid, messageText) {
     const scheduleEntries = getScheduleEntries(matchingTables);
     const elements = scheduleEntries.slice(0, 5).map((entry) => ({
       title: entry.name,
-      subtitle: [formatScheduleDay(entry.day), entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+      subtitle: [formatScheduleDay(entry.day), entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | ")
     }));
     return sendCardsOrText(senderPsid, elements, formatLichHoc(matchingTables));
@@ -1145,7 +1162,7 @@ async function processMessage(senderPsid, messageText) {
     const scheduleEntries = getScheduleEntries(raw, { latest: true });
     const elements = scheduleEntries.slice(0, 5).map((entry) => ({
       title: entry.name,
-      subtitle: [formatScheduleDay(entry.day), entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+      subtitle: [formatScheduleDay(entry.day), entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | ")
     }));
     return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, null, { latest: true }));
@@ -1168,7 +1185,7 @@ async function processMessage(senderPsid, messageText) {
 
     const elements = filtered.slice(0, 5).map((entry) => ({
       title: entry.name,
-      subtitle: [formatScheduleDay(entry.day), entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+      subtitle: [formatScheduleDay(entry.day), entry.date && `Ngày ${entry.date}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | "),
     }));
     return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, dayPart));

@@ -32,6 +32,15 @@ assert.strictEqual(isScheduleQuery("lịch tuần này"), true);
 assert.strictEqual(isScheduleQuery("thời khóa biểu"), true);
 assert.strictEqual(isScheduleQuery("lịch thi"), false);
 
+const portalSchedule = getScheduleEntries([{
+  year: "2031-2032", semester: "Kỳ 3",
+  headers: ["STT", "TÊN LỚP HỌC PHẦN", "TÊN MÔN", "THỜI GIAN HỌC", "THỜI GIAN DỰ KIẾN DẠY BÙ"],
+  rows: [["1", "Biên dịch 1-03", "Biên dịch 1", "Thứ 4;Ngày: 15/10/2025;Tiết: 7 - 9", ""]]
+}]);
+assert.deepStrictEqual(portalSchedule[0], {
+  day: "Thứ 4", period: "7 - 9", name: "Biên dịch 1", room: "", className: "Biên dịch 1-03", date: "15/10/2025"
+});
+
 const stableOld = [{
   year: "2026-2027", semester: "Kỳ 1",
   headers: ["STT", "Tên học phần", "Số tín chỉ", "Tên lớp tín chỉ", "Đường dẫn", "Mô tả", "Thời gian", "Thứ", "Tiết", "Phòng", "Giáo viên"],
