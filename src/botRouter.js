@@ -370,7 +370,7 @@ function getScheduleEntries(data, options = {}) {
 
     const rawTime = col.time !== -1 ? clean(row[col.time]) : "";
     const parsedDay = rawTime.match(/(?:^|[;|])\s*(thứ\s*[2-7]|chủ nhật)\b/i)?.[1] || "";
-    const parsedDate = rawTime.match(/ngày\s*:\s*([^;|]+)/i)?.[1]?.trim() || "";
+    const parsedDate = rawTime.match(/ngày\s*:\s*([^;|]+)/i)?.[1]?.trim().replace(/\s+00:00:00$/, "") || "";
     const parsedPeriod = rawTime.match(/tiết\s*:\s*([^;|]+)/i)?.[1]?.trim() || "";
     const rawDay = col.day !== -1 ? String(row[col.day] || "") : parsedDay;
     const rawPeriod = col.period !== -1 ? String(row[col.period] || "") : parsedPeriod;
@@ -408,7 +408,8 @@ function getScheduleEntries(data, options = {}) {
   const seen = new Set();
   return entries.filter((entry) => {
     if (!entry.name || !(isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day) || entry.period || entry.date)) return false;
-    const key = JSON.stringify([entry.day, entry.date, entry.period, entry.name, entry.room, entry.className]);
+    const date = String(entry.date || "").replace(/\s+00:00:00$/, "");
+    const key = JSON.stringify([entry.day, date, entry.period, entry.name, entry.room, entry.className]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -506,7 +507,7 @@ function academicYearStartFromDateText(value) {
       let year = Number(match[3]);
       if (year < 100) year += 2000;
       if (year < 2000 || year > new Date().getFullYear() + 1) return null;
-      return month >= 8 ? year : year - 1;
+      return month >= 7 ? year : year - 1;
     }).filter(year => year !== null);
   if (!starts.length) return null;
   const counts = new Map();
@@ -517,6 +518,15 @@ function academicYearStartFromDateText(value) {
 function currentAcademicYearStart() {
   const now = new Date();
   return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function parseExamDate(value) {
+  const match = String(value || "").match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+  if (!match) return null;
+  let year = Number(match[3]);
+  if (year < 100) year += 2000;
+  const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function academicYearStartFromTable(table) {
@@ -549,31 +559,38 @@ function getExamRows(data, request = null, showAll = false) {
   const columns = normalizeExamHeaders(data);
   const yearIndex = columns.year;
   const rows = data.slice(1).filter(Array.isArray);
+  const dated = rows.filter(row => academicYearStartFromDateText(row[columns.date]) !== null);
+  const rowsForYear = (wantedStart, allowMetadata = true) => {
+    const matchingDates = dated.filter(row => academicYearStartFromDateText(row[columns.date]) === wantedStart);
+    const wanted = `${wantedStart}-${wantedStart + 1}`;
+    const matchingLabels = yearIndex >= 0
+      ? rows.filter(row => academicYearFromValue(row[yearIndex]) === wanted)
+      : [];
+    if (matchingDates.length) {
+      const datedSet = new Set(matchingDates);
+      return matchingDates.concat(allowMetadata
+        ? matchingLabels.filter(row => !datedSet.has(row) && !String(row[columns.date] || "").trim())
+        : []);
+    }
+    return dated.length && allowMetadata ? matchingLabels : [];
+  };
+
   if (request?.value) {
     const wanted = academicYearFromValue(request.value);
     if (!wanted) return [];
-    if (yearIndex >= 0) return rows.filter(row => academicYearFromValue(row[yearIndex]) === wanted);
     const wantedStart = Number(wanted.slice(0, 4));
-    return rows.filter(row => academicYearStartFromDateText(row[columns.date]) === wantedStart);
+    const matching = rowsForYear(wantedStart);
+    return matching;
   }
   if (request?.ordinal || showAll) return request?.ordinal ? [] : rows;
 
   const wantedStart = currentAcademicYearStart();
-  const wantedLabel = `${wantedStart}-${wantedStart + 1}`;
-  if (yearIndex >= 0) {
-    const labeled = rows.map(row => ({ row, year: academicYearFromValue(row[yearIndex]) }))
-      .filter(item => item.year);
-    const active = labeled.filter(item => item.year === wantedLabel).map(item => item.row);
-    if (active.length) return active;
+  if (dated.length) {
+    const availableStarts = [...new Set(dated.map(row => academicYearStartFromDateText(row[columns.date])))].sort((a, b) => b - a);
+    const nearest = availableStarts.find(start => start <= wantedStart) ?? availableStarts[0];
+    return rowsForYear(nearest, true);
   }
-
-  // Prefer current academic-year rows. If no exam has been published for that
-  // academic year yet, show exams in current calendar year instead of hiding
-  // valid synchronized data from previous semester.
-  const dated = rows.filter(row => academicYearStartFromDateText(row[columns.date]) === wantedStart);
-  if (dated.length) return dated;
-  const calendarYear = String(new Date().getFullYear());
-  return rows.filter(row => String(row[columns.date] || "").includes(calendarYear));
+  return [];
 }
 
 function academicYearLabels(table) {
@@ -1442,7 +1459,9 @@ async function processMessage(senderPsid, messageText) {
   const requestedAcademicYear = extractAcademicYearRequest(messageText);
   const requestedSchedule = requestedAcademicYear
     ? filterAcademicYearTables(filteredSchedule, requestedAcademicYear)
-    : filteredSchedule.slice(0, 4);
+    : getScheduleEntries(filteredSchedule, { latest: true });
+
+  const aiExamRows = isRequestingAll ? filteredExams.slice(1) : getExamRows(filteredExams);
 
   const cleanData = {
     user: { username: user.username },
@@ -1454,13 +1473,13 @@ async function processMessage(senderPsid, messageText) {
     gpa_summary: gpaSummary,
     recent_grades: recentGradesFiltered,
     exams: isRequestingAll 
-      ? filteredExams.slice(0, 5)
-      : filteredExams.slice(1).filter(r => {
-          const examDate = parseDate(r[3]);
+      ? aiExamRows.slice(0, 5)
+      : aiExamRows.filter(r => {
+          const examDate = parseExamDate(r[normalizeExamHeaders(filteredExams).date]);
           if (examDate) {
             return examDate >= todayReset;
           }
-          const dateStr = r[3] || "";
+          const dateStr = r[normalizeExamHeaders(filteredExams).date] || "";
           return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
         }).slice(0, 3),
     tuition: data.hoc_phi ? JSON.parse(data.hoc_phi) : [],

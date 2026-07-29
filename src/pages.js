@@ -20,7 +20,7 @@ function inferAcademicYearFromRows(rows, headers = []) {
       let year = Number(match[3]);
       if (year < 100) year += 2000;
       return year >= 2000 && year <= new Date().getFullYear() + 2
-        ? (month >= 8 ? year : year - 1)
+        ? (month >= 7 ? year : year - 1)
         : null;
     }).filter(Boolean));
   if (!starts.length) return null;
@@ -28,6 +28,37 @@ function inferAcademicYearFromRows(rows, headers = []) {
   // date. Latest real date identifies academic-year table better than majority.
   const start = Math.max(...starts);
   return { start, end: start + 1, text: `${start}-${start + 1}` };
+}
+
+function rowAcademicYearStart(row, headers = []) {
+  const normalizedHeaders = headers.map(value => String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim());
+  const timeIndex = normalizedHeaders.findIndex(header => /thoi gian hoc|thoi gian|ngay hoc|ngay thi/.test(header));
+  const text = Array.isArray(row)
+    ? (timeIndex >= 0 ? String(row[timeIndex] || "") : row.join(" "))
+    : String(row || "");
+  const starts = [...text.matchAll(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/g)]
+    .map(match => {
+      let year = Number(match[3]);
+      if (year < 100) year += 2000;
+      if (year < 2000 || year > new Date().getFullYear() + 2) return null;
+      return Number(match[2]) >= 7 ? year : year - 1;
+    }).filter(year => year !== null);
+  return starts.length ? Math.max(...starts) : null;
+}
+
+function filterRowsByAcademicYear(rows, headers, wantedStart) {
+  const dated = rows.filter(row => rowAcademicYearStart(row, headers) !== null);
+  if (!dated.length) return rows;
+  return rows.filter(row => {
+    const start = rowAcademicYearStart(row, headers);
+    return start === null || start === wantedStart;
+  });
+}
+
+function academicYearTextForRow(row, headers, fallback) {
+  const start = rowAcademicYearStart(row, headers);
+  return start === null ? fallback : `${start}-${start + 1}`;
 }
 
 function normalizeAcademicYearSelection(yearText, rows, headers = []) {
@@ -102,7 +133,7 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
           const selection = normalizeAcademicYearSelection(year.text, usableRows, headers);
           if (!collectedRows.length) collectedRows.push([...headers, "Năm học", "Học kỳ"]);
           usableRows.forEach(row => {
-            const entry = [...row, selection.text, semester.text];
+            const entry = [...row, academicYearTextForRow(row, headers, selection.text), semester.text];
             const key = JSON.stringify(entry);
             if (!seenRows.has(key)) { seenRows.add(key); collectedRows.push(entry); }
           });
@@ -114,8 +145,9 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
           if (!rows.some(row => row.some(cell => String(cell ?? "").trim()))) continue;
           // Same rows can exist in multiple academic years. Keep selection metadata,
           // or a year-specific query can lose an otherwise valid match.
-          const selection = normalizeAcademicYearSelection(year.text, rows, table.headers || []);
-          const tableKey = JSON.stringify([selection.value, semester.value, table.headers || [], rows]);
+          const headers = table.headers || [];
+          const selection = normalizeAcademicYearSelection(year.text, rows, headers);
+          const tableKey = JSON.stringify([selection.value, semester.value, headers, rows]);
           if (seenTables.has(tableKey)) continue;
           seenTables.add(tableKey);
           collectedTables.push({
@@ -126,8 +158,8 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
             sourceYearValue: year.value,
             semester: semester.text,
             semesterValue: semester.value,
-            headers: [...(table.headers || []), "Năm học", "Học kỳ"],
-            rows: rows.map(row => [...row, year.text, semester.text]),
+            headers: [...headers, "Năm học", "Học kỳ"],
+            rows: rows.map(row => [...row, academicYearTextForRow(row, headers, selection.text), semester.text]),
           });
         }
       } catch {
@@ -400,4 +432,4 @@ const PAGES = [
   },
 ];
 
-module.exports = { BASE, PAGES, hasUsableData, normalizeAcademicYearSelection };
+module.exports = { BASE, PAGES, hasUsableData, normalizeAcademicYearSelection, filterRowsByAcademicYear };

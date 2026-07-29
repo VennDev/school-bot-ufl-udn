@@ -1,6 +1,6 @@
 const assert = require("assert");
 const { getScheduleEntries, isScheduleQuery, examDetails } = require("../src/botRouter");
-const { normalizeAcademicYearSelection } = require("../src/pages");
+const { normalizeAcademicYearSelection, filterRowsByAcademicYear } = require("../src/pages");
 const { detectSchedule } = require("../src/changeDetector");
 
 const entries = getScheduleEntries([{
@@ -80,6 +80,12 @@ assert.deepStrictEqual(normalizeAcademicYearSelection(
   [["1", "Biên dịch 1", "Thứ 4;Ngày: 15/10/2025;Tiết: 7 - 9"]],
   ["STT", "Tên môn", "Thời gian học"]
 ), { text: "2025-2026", value: "2025" });
+assert.deepStrictEqual(filterRowsByAcademicYear([
+  ["1", "Cũ", "Thứ 4;Ngày: 15/10/2025;Tiết: 7 - 9"],
+  ["2", "Đúng", "Thứ 4;Ngày: 15/10/2026;Tiết: 7 - 9"],
+], ["STT", "Tên môn", "Thời gian học"], 2026), [
+  ["2", "Đúng", "Thứ 4;Ngày: 15/10/2026;Tiết: 7 - 9"],
+]);
 
 const stableOld = [{
   year: "2026-2027", semester: "Kỳ 1",

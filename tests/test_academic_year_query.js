@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { extractAcademicYearRequest, filterAcademicYearTables } = require("../src/botRouter");
+const { extractAcademicYearRequest, filterAcademicYearTables, getExamRows } = require("../src/botRouter");
 
 assert.deepStrictEqual(extractAcademicYearRequest("Lịch học năm 2023-2024"), {
   label: "năm học 2023-2024",
@@ -24,5 +24,21 @@ const currentSchedule = [{
   rows: [["1", "Biên dịch 2", "3", "Biên dịch 2-15"]]
 }];
 assert.strictEqual(filterAcademicYearTables(currentSchedule, { ordinal: 2 }).length, 0);
+
+const examData = [
+  ["STT", "Tên học phần", "Ngày thi", "Năm học"],
+  ["1", "Môn cũ", "10/12/2024", "2025-2026"],
+  ["2", "Môn mới", "08/05/2026", "2025-2026"]
+];
+assert.deepStrictEqual(getExamRows(examData).map(row => row[1]), ["Môn mới"]);
+assert.deepStrictEqual(getExamRows([
+  ["STT", "Tên học phần", "Ngày thi", "Năm học"],
+  ["1", "Môn cũ", "", "2024-2025"],
+  ["2", "Môn mới", "08/05/2026", "2025-2026"]
+]).map(row => row[1]), ["Môn mới"]);
+assert.deepStrictEqual(getExamRows([
+  ["STT", "Tên học phần", "Ngày thi", "Năm học"],
+  ["1", "Môn cũ", "", "2024-2025"]
+]).map(row => row[1]), []);
 
 console.log("Academic-year query test passed OK!");
