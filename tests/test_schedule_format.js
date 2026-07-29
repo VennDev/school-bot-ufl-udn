@@ -33,6 +33,12 @@ assert.strictEqual(isScheduleQuery("lịch tuần này"), true);
 assert.strictEqual(isScheduleQuery("thời khóa biểu"), true);
 assert.strictEqual(isScheduleQuery("lịch thi"), false);
 
+const examRows = [
+  ["STT", "Mã học phần", "Tên học phần", "Ngày thi", "Ca thi", "Giờ thi", "Lần thi", "Đợt thi", "Số báo danh", "Phòng thi", "Hình thức"],
+  ["1", "4131132", "Ngoại ngữ II.2", "08/05/2026", "", "9 giờ 30", "1", "3", "005", "C501(LNH)", "Tự luận"]
+];
+assert.ok(examRows[0].includes("Ngày thi"));
+
 const portalSchedule = getScheduleEntries([{
   year: "2031-2032", semester: "Kỳ 3",
   headers: ["STT", "TÊN LỚP HỌC PHẦN", "TÊN MÔN", "THỜI GIAN HỌC", "THỜI GIAN DỰ KIẾN DẠY BÙ"],

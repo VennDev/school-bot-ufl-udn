@@ -24,7 +24,9 @@ function inferAcademicYearFromRows(rows, headers = []) {
         : null;
     }).filter(Boolean));
   if (!starts.length) return null;
-  const start = Math.max(...starts);
+  const counts = new Map();
+  starts.forEach(start => counts.set(start, (counts.get(start) || 0) + 1));
+  const start = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
   return { start, end: start + 1, text: `${start}-${start + 1}` };
 }
 
@@ -120,6 +122,8 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
             ...table,
             year: selection.text,
             yearValue: selection.value,
+            sourceYear: year.text,
+            sourceYearValue: year.value,
             semester: semester.text,
             semesterValue: semester.value,
             headers: [...(table.headers || []), "Năm học", "Học kỳ"],
