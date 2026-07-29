@@ -20,6 +20,7 @@ Cổng chatbot Messenger quản lý thông tin & tăng hiệu suất cho sinh vi
 
 - Node.js >= 18
 - Tor (bật ControlPort 9051)
+- `tesseract` + language data `vie` để OCR ảnh Messenger
 
 ## Cài đặt
 

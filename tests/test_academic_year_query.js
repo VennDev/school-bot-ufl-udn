@@ -8,11 +8,16 @@ assert.deepStrictEqual(extractAcademicYearRequest("Lịch học năm 2023-2024")
 
 const data = [
   { title: "Năm học 2023-2024", rows: [["Thứ 2", "1", "Môn cũ"]] },
-  { title: "Năm học 2024-2025", rows: [["Thứ 3", "2", "Môn mới"]] }
+  { title: "Năm học 2024-2025", rows: [["Thứ 3", "2", "Môn mới"]] },
+  { title: "Môn 2023-2024", rows: [["Thứ 4", "3", "Không có nhãn năm"]] },
+  { rows: [["Thứ 5", "4", "2023-2024"]] },
 ];
 
 assert.strictEqual(filterAcademicYearTables(data, { value: "2023-2024" }).length, 1);
 assert.strictEqual(filterAcademicYearTables(data, { value: "2023-2024" })[0].rows[0][2], "Môn cũ");
+assert.strictEqual(filterAcademicYearTables([{ title: "Lịch hiện tại", rows: [["2023-2024"]] }], { value: "2023-2024" }).length, 0);
+assert.strictEqual(filterAcademicYearTables([{ academicYear: "Năm thứ 2" }], { ordinal: 2 }).length, 1);
+assert.strictEqual(filterAcademicYearTables([{ academicYear: "Kỳ 3" }], { ordinal: 2 }).length, 0);
 
 const currentSchedule = [{
   headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"],

@@ -55,6 +55,18 @@ function setBaseUrl(url) {
   appBaseUrl = url;
 }
 
+async function askAIWithTyping(senderPsid, systemPrompt, userPrompt) {
+  await messenger.sendTypingAction(senderPsid, "typing_on");
+  try {
+    return { reply: await askAI(systemPrompt, userPrompt) };
+  } catch (error) {
+    console.error("[botRouter] AI request failed:", error.message);
+    return { reply: "Trợ lý AI không thể xử lý yêu cầu lúc này. Vui lòng thử lại sau." };
+  } finally {
+    await messenger.sendTypingAction(senderPsid, "typing_off");
+  }
+}
+
 function formatCanhBao(data, showAll = false) {
   if (!data || !data.length) return "Không có cảnh báo học vụ mới nào.";
   let txt = "[!] THÔNG BÁO HỌC VỤ MỚI NHẤT:\n";
@@ -152,13 +164,13 @@ function formatKetQuaHocTap(scrapedData) {
   return txt;
 }
 
-function formatLichThi(data, showAll = false) {
+function formatLichThi(data, showAll = false, selectedRows = null) {
   if (!data || !data.length || data.length < 2) return "Không có lịch thi sắp tới.";
   let txt = "[~] LỊCH THI:\n";
   const currentYear = new Date().getFullYear().toString();
   
-  let rows = data.slice(1);
-  if (!showAll) {
+  let rows = Array.isArray(selectedRows) ? selectedRows : data.slice(1);
+  if (!showAll && !selectedRows) {
     rows = rows.filter(r => {
       const dateStr = r[3] || "";
       return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
@@ -232,9 +244,10 @@ function normalizeScheduleHeader(value) {
 
 function scheduleColumn(headers, aliases) {
   const normalized = headers.map(normalizeScheduleHeader);
-  return aliases
+  const index = aliases
     .map((alias) => normalized.indexOf(normalizeScheduleHeader(alias)))
-    .find((index) => index !== -1);
+    .find((value) => value !== -1);
+  return index === undefined ? -1 : index;
 }
 
 function getScheduleEntries(data, options = {}) {
@@ -254,8 +267,11 @@ function getScheduleEntries(data, options = {}) {
 
   if (options.latest && tables.length > 1) {
     const scheduleValue = table => {
-      const year = Number(table.yearValue || String(table.year || "").match(/\d{4}/)?.[0] || 0);
-      const semester = Number(table.semesterValue || String(table.semester || "").match(/\d+/)?.[0] || 0);
+      const yearText = String(table.year || "");
+      const year = Number(yearText.match(/\d{4}/)?.[0] ||
+        (Number(table.yearValue) >= 1000 ? table.yearValue : 0));
+      const semesterText = String(table.semester || "");
+      const semester = Number(semesterText.match(/\d+/)?.[0] || table.semesterValue || 0);
       return year * 10 + semester;
     };
     const latestValue = Math.max(...tables.map(scheduleValue));
@@ -263,33 +279,27 @@ function getScheduleEntries(data, options = {}) {
     tables.splice(0, tables.length, latest[latest.length - 1] || tables[tables.length - 1]);
   }
 
-  // Multi-semester scraper stores one table per year/semester. Merge selected rows.
-  const table = {
-    headers: tables.find(t => t.headers?.length)?.headers || [],
-    rows: tables.flatMap(t => t.rows || [])
-  };
-
-  const headers = table.headers || [];
-  const columns = {
-    day: scheduleColumn(headers, ["Thứ", "Ngày"]),
-    period: scheduleColumn(headers, ["Tiết", "Tiết học"]),
-    name: scheduleColumn(headers, ["Tên học phần", "Tên môn học", "Môn học", "Học phần", "Tên môn"]),
-    room: scheduleColumn(headers, ["Phòng", "Phòng học"]),
-    className: scheduleColumn(headers, ["Tên lớp tín chỉ", "Lớp học phần", "Lớp", "Lớp tín chỉ"]),
-  };
-
-  // Only use legacy fallback if header resolution failed completely
-  const hasDetectedHeaders = columns.day !== -1 && columns.period !== -1 && columns.name !== -1;
-  const legacy = !hasDetectedHeaders && (table.rows || []).some(isLegacyRow);
   const fallback = { day: 2, period: 0, name: 1, room: 4, className: 3 };
-  const col = legacy
-    ? fallback
-    : Object.fromEntries(Object.entries(columns).map(([key, value]) => [key, value !== -1 ? value : (fallback[key] ?? -1)]));
-
   const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
   const entries = [];
 
-  (table.rows || []).forEach((row) => {
+  // Resolve each table independently. Different semesters can change column order.
+  tables.forEach((table) => {
+    const headers = table.headers || [];
+    const columns = {
+      day: scheduleColumn(headers, ["Thứ", "Ngày"]),
+      period: scheduleColumn(headers, ["Tiết", "Tiết học"]),
+      name: scheduleColumn(headers, ["Tên học phần", "Tên môn học", "Môn học", "Học phần", "Tên môn"]),
+      room: scheduleColumn(headers, ["Phòng", "Phòng học"]),
+      className: scheduleColumn(headers, ["Tên lớp tín chỉ", "Lớp học phần", "Lớp", "Lớp tín chỉ"]),
+    };
+    const hasDetectedHeaders = columns.day !== -1 && columns.period !== -1 && columns.name !== -1;
+    const legacy = !hasDetectedHeaders && (table.rows || []).some(isLegacyRow);
+    const col = legacy
+      ? fallback
+      : Object.fromEntries(Object.entries(columns).map(([key, value]) => [key, value !== -1 ? value : (fallback[key] ?? -1)]));
+
+    (table.rows || []).forEach((row) => {
     const name = col.name !== -1 ? clean(row[col.name]).replace(/^tiết\s+/i, "") : "";
     if (!name || ["stt", "môn học", "tên học phần", "học phần"].includes(name.toLowerCase())) return;
 
@@ -321,6 +331,7 @@ function getScheduleEntries(data, options = {}) {
         className
       });
     }
+    });
   });
 
   return entries.filter((entry) => entry.name && (isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day)));
@@ -330,6 +341,28 @@ function formatScheduleDay(day) {
   const value = String(day || "").trim();
   if (!value) return "";
   return /^thứ\s|^chủ nhật/i.test(value) ? value : `Thứ ${value}`;
+}
+
+function clipCardText(value, maxLength = 80) {
+  const text = String(value || "").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+async function sendCardsOrText(senderPsid, elements, fallbackText) {
+  const cards = Array.isArray(elements)
+    ? elements.filter(card => card && String(card.title || card.subtitle || "").trim()).map(card => ({
+        ...card,
+        title: clipCardText(card.title),
+        subtitle: clipCardText(card.subtitle),
+      })).slice(0, 5)
+    : [];
+  if (!cards.length) return messenger.sendTextMessage(senderPsid, fallbackText);
+  try {
+    const result = await messenger.sendGenericTemplate(senderPsid, cards);
+    return result?.error ? messenger.sendTextMessage(senderPsid, fallbackText) : result;
+  } catch {
+    return messenger.sendTextMessage(senderPsid, fallbackText);
+  }
 }
 
 function formatLichHoc(data, dayFilter, options = {}) {
@@ -377,13 +410,92 @@ function extractAcademicYearRequest(text) {
   return ordinal ? { label: `năm ${ordinal[1]}`, ordinal: Number(ordinal[1]) } : null;
 }
 
+function normalizeAcademicLabel(value) {
+  return String(value ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[–—]/g, "-").replace(/\s+/g, " ").trim();
+}
+
+function academicYearFromValue(value) {
+  const match = normalizeAcademicLabel(value).match(/\b(\d{4})\s*-\s*(\d{4})\b/);
+  return match ? `${match[1]}-${match[2]}` : null;
+}
+
+function getExamRows(data, request = null, showAll = false) {
+  if (!Array.isArray(data) || data.length < 2) return [];
+  const headers = Array.isArray(data[0]) ? data[0] : [];
+  const yearIndex = headers.findIndex((header) => {
+    const label = normalizeAcademicLabel(header);
+    return label === "nam hoc" || label === "academic year" || label === "nien khoa";
+  });
+  const rows = data.slice(1).filter(Array.isArray);
+  if (request?.value) {
+    const wanted = academicYearFromValue(request.value);
+    if (!wanted || yearIndex < 0) return [];
+    return rows.filter(row => academicYearFromValue(row[yearIndex]) === wanted);
+  }
+  if (request?.ordinal || showAll) return request?.ordinal ? [] : rows;
+
+  const currentYear = new Date().getFullYear();
+  if (yearIndex >= 0) {
+    const labeled = rows.map(row => ({ row, year: academicYearFromValue(row[yearIndex]) }))
+      .filter(item => item.year);
+    const candidates = [`${currentYear}-${currentYear + 1}`, `${currentYear - 1}-${currentYear}`];
+    const active = candidates.find(year => labeled.some(item => item.year === year));
+    if (active) return labeled.filter(item => item.year === active).map(item => item.row);
+  }
+
+  const yearText = String(currentYear);
+  return rows.filter(row => {
+    const date = String(row[3] || "");
+    return date.includes(yearText) || date.includes("/" + yearText.slice(2));
+  });
+}
+
+function academicYearLabels(table) {
+  if (!table || typeof table !== "object") return [];
+  const labels = [];
+  ["year", "yearValue", "academicYear", "academic_year", "yearText"].forEach((key) => {
+    if (table[key] !== undefined && table[key] !== null) labels.push(String(table[key]));
+  });
+  const title = normalizeAcademicLabel(table.title);
+  if (title && (/nam\s+hoc|nam\s+thu|academic\s+year|nien\s+khoa/.test(title) || /^\d{4}\s*-\s*\d{4}$/.test(title))) {
+    labels.push(title);
+  }
+  // Scraper appends selected year/semester labels to rows. Read cells only
+  // when header explicitly identifies year; never inspect arbitrary course text.
+  const headers = Array.isArray(table.headers) ? table.headers : [];
+  const yearColumns = headers.map(normalizeAcademicLabel).reduce((indexes, header, index) => {
+    if (/^nam\s+hoc$|academic\s+year|nien\s+khoa/.test(header)) indexes.push(index);
+    return indexes;
+  }, []);
+  for (const row of Array.isArray(table.rows) ? table.rows : []) {
+    if (!Array.isArray(row)) continue;
+    yearColumns.forEach(index => labels.push(String(row[index] ?? "")));
+    row.forEach(cell => {
+      const value = normalizeAcademicLabel(cell);
+      if (/nam\s+hoc|nam\s+thu|academic\s+year|nien\s+khoa/.test(value)) labels.push(value);
+    });
+  }
+  return labels.map(normalizeAcademicLabel);
+}
+
 function filterAcademicYearTables(data, request) {
   if (!Array.isArray(data) || !request) return [];
-  const serialized = (item) => JSON.stringify(item);
-  const pattern = request.value
-    ? new RegExp(`${request.value.split("-")[0]}\\s*[-–]\\s*${request.value.split("-")[1]}`, "i")
-    : new RegExp(`năm\\s*(?:học\\s*)?(?:đào tạo\\s*)?(?:thứ\\s*)?${request.ordinal}\\b`, "i");
-  return data.filter((item) => pattern.test(serialized(item)));
+  if (request.value) {
+    const parts = String(request.value).replace(/[–—]/g, "-").split("-").map(v => v.trim());
+    if (parts.length !== 2 || !/^\d{4}$/.test(parts[0]) || !/^\d{4}$/.test(parts[1])) return [];
+    const wanted = `${parts[0]}-${parts[1]}`;
+    return data.filter((item) => academicYearLabels(item).some((label) => {
+      const matches = label.match(/\b(\d{4})\s*-\s*(\d{4})\b/g) || [];
+      return matches.some(pair => pair.replace(/\s+/g, "") === wanted);
+    }));
+  }
+  if (!Number.isInteger(request.ordinal) || request.ordinal < 1) return [];
+  const ordinal = String(request.ordinal);
+  return data.filter((item) => academicYearLabels(item).some((label) =>
+    new RegExp(`\\bnam(?: hoc)?\\s+(?:thu\\s+)?${ordinal}\\b`, "i").test(label)
+  ));
 }
 
 function isStudentProfileQuery(text) {
@@ -505,6 +617,7 @@ async function processMessage(senderPsid, messageText) {
   else if (actionText === "logout_postback") actionText = "/logout";
   else if (actionText === "login_postback") actionText = "/login";
   else if (actionText === "menu_postback") actionText = "xem menu hoc vu"; // map Tra cứu học vụ to xem menu hoc vu view
+  else if (actionText === "settings_postback") actionText = "/settings";
   else if (actionText === "faq_postback") actionText = "xem menu cau hoi";
   else if (actionText === "qc_hocbong") actionText = "qc_hocbong";
   else if (actionText === "qc_canhbao") actionText = "qc_canhbao";
@@ -581,17 +694,23 @@ async function processMessage(senderPsid, messageText) {
       return messenger.sendTextMessage(senderPsid, "Đang có quá trình đồng bộ khác chạy. Vui lòng đợi...");
     }
     scrapingInProgress.add(senderPsid);
+    await messenger.sendTypingAction(senderPsid, "typing_on");
     const scraperPath = path.resolve(__dirname, "./scrape.js");
     const execCmd = `node "${scraperPath}" --fb-id="${user.fb_id.replace(/"/g, '\\"')}" --silent`;
     exec(execCmd, async (err) => {
-      scrapingInProgress.delete(senderPsid);
-      if (err) {
-        return messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ thất bại.");
+      try {
+        scrapingInProgress.delete(senderPsid);
+        if (err) {
+          await messenger.sendTextMessage(senderPsid, "[X] Quá trình đồng bộ thất bại.");
+          return;
+        }
+        const complete = await isSyncComplete(senderPsid);
+        await messenger.sendTextMessage(senderPsid, complete
+          ? `[✓] Đã đồng bộ xong mục "${arg}". Gõ /pages để kiểm tra.`
+          : "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
+      } finally {
+        await messenger.sendTypingAction(senderPsid, "typing_off");
       }
-      const complete = await isSyncComplete(senderPsid);
-      return messenger.sendTextMessage(senderPsid, complete
-        ? `[✓] Đã đồng bộ xong mục "${arg}". Gõ /pages để kiểm tra.`
-        : "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
     });
     return;
   }
@@ -632,21 +751,28 @@ async function processMessage(senderPsid, messageText) {
     }
     scrapingInProgress.add(senderPsid);
     await messenger.sendTextMessage(senderPsid, "Đang khởi động đồng bộ dữ liệu tức thời từ cổng sinh viên. Quá trình có thể mất 1-2 phút...");
+    await messenger.sendTypingAction(senderPsid, "typing_on");
     const scraperPath = path.resolve(__dirname, "./scrape.js");
     const execCmd = `node "${scraperPath}" --fb-id="${user.fb_id.replace(/"/g, '\\"')}" --silent`;
     exec(execCmd, async (err) => {
-      scrapingInProgress.delete(senderPsid);
-      if (err) {
+      try {
+        scrapingInProgress.delete(senderPsid);
+        if (err) {
+          const complete = await isSyncComplete(senderPsid);
+          await messenger.sendTextMessage(senderPsid, complete
+            ? "[X] Quá trình đồng bộ dữ liệu tức thời thất bại hoặc bị nghẽn mạng."
+            : "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
+          return;
+        }
         const complete = await isSyncComplete(senderPsid);
-        return messenger.sendTextMessage(senderPsid, complete
-          ? "[X] Quá trình đồng bộ dữ liệu tức thời thất bại hoặc bị nghẽn mạng."
-          : "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
+        if (!complete) {
+          await messenger.sendTextMessage(senderPsid, "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
+          return;
+        }
+        await sendSyncConfirmation(senderPsid, user.username);
+      } finally {
+        await messenger.sendTypingAction(senderPsid, "typing_off");
       }
-      const complete = await isSyncComplete(senderPsid);
-      if (!complete) {
-        return messenger.sendTextMessage(senderPsid, "[!] Đồng bộ chưa hoàn tất. Một số mục chưa có dữ liệu; thử /sync lại sau.");
-      }
-      return sendSyncConfirmation(senderPsid, user.username);
     });
     return;
   }
@@ -694,7 +820,7 @@ async function processMessage(senderPsid, messageText) {
       { title: "Đồng bộ", payload: "SYNC_POSTBACK" },
       { title: "Tiến độ", payload: "TIEN_DO" },
       { title: "Học phí", payload: "HOC_PHI" },
-      { title: "Cài đặt", payload: "MENU_POSTBACK" }
+      { title: "Cài đặt", payload: "SETTINGS_POSTBACK" }
     ]);
   }
 
@@ -833,8 +959,7 @@ async function processMessage(senderPsid, messageText) {
             try {
               fallbackPrompt = fs.readFileSync(path.resolve(__dirname, "../rules.txt"), "utf8");
             } catch (e) { /* use empty */ }
-            await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
-            const reply = await askAI(fallbackPrompt, text);
+            const { reply } = await askAIWithTyping(senderPsid, fallbackPrompt, text);
             return messenger.sendTextMessage(senderPsid, reply);
           }
           return messenger.sendTextMessage(senderPsid, "Mã sinh viên không hợp lệ. Vui lòng nhập lại (chỉ gồm các chữ số):");
@@ -853,8 +978,7 @@ async function processMessage(senderPsid, messageText) {
           try {
             fallbackPrompt = fs.readFileSync(path.resolve(__dirname, "../rules.txt"), "utf8");
           } catch (e) { /* use empty */ }
-          await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
-          const reply = await askAI(fallbackPrompt, text);
+          const { reply } = await askAIWithTyping(senderPsid, fallbackPrompt, text);
           return messenger.sendTextMessage(senderPsid, reply);
         }
         // Allow user to cancel login flow
@@ -886,12 +1010,14 @@ async function processMessage(senderPsid, messageText) {
           return messenger.sendTextMessage(senderPsid, "Đang có quá trình đồng bộ khác chạy. Vui lòng đợi...");
         }
         scrapingInProgress.add(senderPsid);
+        await messenger.sendTypingAction(senderPsid, "typing_on");
         const scraperPath = path.resolve(__dirname, "./scrape.js");
         const execCmd = `node "${scraperPath}" --fb-id="${senderPsid.replace(/"/g, '\\"')}" --silent --notify-login-failure`;
         console.log(`[botRouter] Executing scrape command: ${execCmd}`);
         const child = exec(execCmd, async (err, stdout, stderr) => {
-          scrapingInProgress.delete(senderPsid);
-          if (err) {
+          try {
+            scrapingInProgress.delete(senderPsid);
+            if (err) {
             console.error(`[async-sync] Scrape process exited with error for ${username}:`, err.message);
             // Check if user still exists — scraper deletes user on login failure
             const stillExists = await db.getUser(senderPsid);
@@ -918,6 +1044,9 @@ async function processMessage(senderPsid, messageText) {
             setTimeout(() => {
               messenger.sendOtnRequest(senderPsid, "Đăng ký nhận thông báo GPA & Điểm mới tự động", "ACCOUNT_UPDATE").catch(() => {});
             }, 1500);
+          }
+          } finally {
+            await messenger.sendTypingAction(senderPsid, "typing_off");
           }
         });
         child.stdout.on("data", (data) => {
@@ -957,33 +1086,23 @@ async function processMessage(senderPsid, messageText) {
     systemPrompt = `Bạn là trợ lý AI hữu ích hỗ trợ sinh viên trường Đại học Ngoại ngữ - Đại học Đà Nẵng (UFL).`;
   }
   
-  if (normalizedLowerText === "lịch thi" || normalizedLowerText === "lich thi") {
+  if (/^(?:lịch|lich)\s+thi(?:\s|$)/i.test(normalizedLowerText)) {
     const raw = data.lich_thi ? JSON.parse(data.lich_thi) : null;
     if (!raw || !raw.length || raw.length < 2) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch thi sắp tới.");
     }
-    const currentYear = new Date().getFullYear().toString();
-    const filtered = raw.slice(1).filter(r => {
-      const dateStr = r[3] || "";
-      return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
-    });
-
+    const requestedExamYear = extractAcademicYearRequest(text);
+    const filtered = getExamRows(raw, requestedExamYear);
     if (!filtered.length) {
-      return messenger.sendTextMessage(senderPsid, "Không có lịch thi trong năm nay. Gõ 'tất cả lịch thi' để xem toàn bộ.");
+      const label = requestedExamYear?.value ? requestedExamYear.label : "năm học gần nhất";
+      return messenger.sendTextMessage(senderPsid, `Không có lịch thi cho ${label}. Gõ 'tất cả lịch thi' để xem toàn bộ.`);
     }
 
     const elements = filtered.slice(0, 5).map((r) => ({
       title: `Thi: ${r[2] || "Môn học"}`,
-      subtitle: `Ngày: ${r[3]} (${r[5]})\nPhòng: ${r[9]} | SBD: ${r[8]} | HT: ${r[10]}`,
-      buttons: [
-        {
-          type: "postback",
-          title: "Xem Điểm",
-          payload: "DIEM_SO"
-        }
-      ]
+      subtitle: `Ngày: ${r[3] || ""} | Ca: ${r[5] || ""} | Phòng: ${r[9] || ""} | SBD: ${r[8] || ""} | HT: ${r[10] || ""}`
     }));
-    return messenger.sendGenericTemplate(senderPsid, elements);
+    return sendCardsOrText(senderPsid, elements, formatLichThi(raw, false, filtered));
   }
 
   if (normalizedLowerText === "tất cả lịch thi" || normalizedLowerText === "tat ca lich thi") {
@@ -991,43 +1110,30 @@ async function processMessage(senderPsid, messageText) {
     if (!raw || !raw.length || raw.length < 2) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch thi sắp tới.");
     }
-    const elements = raw.slice(1, 6).map((r) => ({
+    const filtered = getExamRows(raw, null, true);
+    if (!filtered.length) return messenger.sendTextMessage(senderPsid, "Không có lịch thi.");
+    const elements = filtered.slice(0, 5).map((r) => ({
       title: `Thi: ${r[2] || "Môn học"}`,
-      subtitle: `Ngày: ${r[3]} (${r[5]})\nPhòng: ${r[9]} | SBD: ${r[8]} | HT: ${r[10]}`,
-      buttons: [
-        {
-          type: "postback",
-          title: "Xem Điểm",
-          payload: "DIEM_SO"
-        }
-      ]
+      subtitle: `Ngày: ${r[3] || ""} | Ca: ${r[5] || ""} | Phòng: ${r[9] || ""} | SBD: ${r[8] || ""} | HT: ${r[10] || ""}`
     }));
-    return messenger.sendGenericTemplate(senderPsid, elements);
+    return sendCardsOrText(senderPsid, elements, formatLichThi(raw, true, filtered));
   }
 
   const requestedScheduleYear = extractAcademicYearRequest(text);
   if (requestedScheduleYear && isSchedulePrefix(normalizedLowerText)) {
     const raw = data.lich_hoc ? JSON.parse(data.lich_hoc) : null;
     const matchingTables = filterAcademicYearTables(raw, requestedScheduleYear);
-    if (matchingTables.length) return messenger.sendTextMessage(senderPsid, formatLichHoc(matchingTables));
-
-    const scheduleForAI = raw && raw.length ? raw : null;
-    const gradesForAI = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : [];
-    const academicTables = gradesForAI.filter((table) => {
-      const headers = (table.headers || []).join(" ").toLowerCase();
-      return headers.includes("kỳ thứ") || headers.includes("học kỳ") || headers.includes("tên học phần");
-    });
-    if (!scheduleForAI && !academicTables.length) {
-      const label = requestedScheduleYear.value ? requestedScheduleYear.label : `năm ${requestedScheduleYear.ordinal}`;
+    const label = requestedScheduleYear.value ? requestedScheduleYear.label : `năm ${requestedScheduleYear.ordinal}`;
+    if (!matchingTables.length) {
       return messenger.sendTextMessage(senderPsid, `Không có dữ liệu lịch học cho ${label} trong dữ liệu đã đồng bộ.`);
     }
-
-    const schedulePrompt = `${systemPrompt}\n\nDỮ LIỆU HỌC VỤ GỐC CỦA SINH VIÊN:\n${JSON.stringify({ lịch_học: scheduleForAI, bảng_học_phần: academicTables }, null, 2)}\n\nQuy tắc truy vấn năm học:\n- Chỉ trả lời năm được hỏi nếu dữ liệu có nhãn năm tương ứng hoặc có cột Kỳ thứ/Học kỳ để xác định rõ.\n- Với chương trình 4 năm, năm N chỉ gồm kỳ thứ ${requestedScheduleYear.ordinal ? `${requestedScheduleYear.ordinal * 2 - 1} và ${requestedScheduleYear.ordinal * 2}` : "được ghi rõ trong dữ liệu"}; không dùng lịch của kỳ khác.\n- Nếu dữ liệu chỉ có lịch hiện tại và không xác định được năm, nói rõ không có dữ liệu cho năm đó. Tuyệt đối không suy đoán hoặc lấy lịch hiện tại gán cho năm cũ.\n`;
-    await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang kiểm tra lịch học...");
-    const reply = await askAI(schedulePrompt, text);
-    await db.saveConversation(senderPsid, "user", text);
-    await db.saveConversation(senderPsid, "assistant", reply);
-    return messenger.sendTextMessage(senderPsid, reply);
+    const scheduleEntries = getScheduleEntries(matchingTables);
+    const elements = scheduleEntries.slice(0, 5).map((entry) => ({
+      title: entry.name,
+      subtitle: [formatScheduleDay(entry.day), entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+        .filter(Boolean).join(" | ")
+    }));
+    return sendCardsOrText(senderPsid, elements, formatLichHoc(matchingTables));
   }
 
   if (isScheduleQuery(normalizedLowerText)) {
@@ -1036,7 +1142,13 @@ async function processMessage(senderPsid, messageText) {
     if (!entries.length) {
       return messenger.sendTextMessage(senderPsid, "Không có lịch học trong kỳ hiện tại.");
     }
-    return messenger.sendTextMessage(senderPsid, formatLichHoc(raw, null, { latest: true }));
+    const scheduleEntries = getScheduleEntries(raw, { latest: true });
+    const elements = scheduleEntries.slice(0, 5).map((entry) => ({
+      title: entry.name,
+      subtitle: [formatScheduleDay(entry.day), entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+        .filter(Boolean).join(" | ")
+    }));
+    return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, null, { latest: true }));
   }
 
   if (normalizedLowerText.startsWith("lịch học thứ") || normalizedLowerText.startsWith("lịch học t") || normalizedLowerText.startsWith("lịch học cn") || normalizedLowerText.startsWith("lịch học chủ nhật") || normalizedLowerText.startsWith("lich hoc thu") || normalizedLowerText.startsWith("lich hoc t") || normalizedLowerText.startsWith("lich hoc cn") || normalizedLowerText.startsWith("lich hoc chu nhat")) {
@@ -1056,10 +1168,10 @@ async function processMessage(senderPsid, messageText) {
 
     const elements = filtered.slice(0, 5).map((entry) => ({
       title: entry.name,
-      subtitle: [entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
+      subtitle: [formatScheduleDay(entry.day), entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | "),
     }));
-    return messenger.sendGenericTemplate(senderPsid, elements);
+    return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, dayPart));
   }
 
   if (normalizedLowerText === "điểm số" || normalizedLowerText === "gpa" || normalizedLowerText === "diem so" || normalizedLowerText === "diem") {
@@ -1101,8 +1213,7 @@ async function processMessage(senderPsid, messageText) {
 
     const statsPrompt = `${systemPrompt}\n\nDữ liệu sinh viên cần phân tích:\n${JSON.stringify(cleanDataForStats, null, 2)}\n\nYêu cầu định dạng phản hồi:\n[+] Tóm tắt: (1-2 câu nhận xét chung)\n[+] Phân tích chi tiết:\n- Tiến độ học tập & GPA: (Mô tả ngắn)\n- Lịch thi & Học phí: (Mô tả ngắn)\n[+] Lời khuyên: (1 câu khuyên học tập)`;
 
-    await messenger.sendTextMessage(senderPsid, "AI đang phân tích dữ liệu học tập của bạn...");
-    const statsResult = await askAI(statsPrompt, "Hãy thống kê và phân tích tiến độ học tập của tôi.");
+    const { reply: statsResult } = await askAIWithTyping(senderPsid, statsPrompt, "Hãy thống kê và phân tích tiến độ học tập của tôi.");
     await db.saveConversation(senderPsid, "user", messageText);
     await db.saveConversation(senderPsid, "assistant", statsResult);
     return messenger.sendTextMessage(senderPsid, statsResult);
@@ -1120,8 +1231,7 @@ async function processMessage(senderPsid, messageText) {
 
     const summaryPrompt = `${systemPrompt}\n\nDữ liệu tuần của sinh viên:\n${JSON.stringify(cleanDataForSummary, null, 2)}\n\nYêu cầu định dạng:\n[+] Tóm tắt tuần học: (Nhận xét tổng quan tuần tới ngắn trong 1 câu)\n[+] Lịch trình:\n- Lịch học chính: (Các môn cần học tuần tới)\n- Lịch thi & Học phí: (Các môn thi sắp tới, tình trạng học phí/nợ nếu có)\n[+] Nhiệm vụ ưu tiên: (Bullet point ngắn gọn các việc cần làm)`;
 
-    await messenger.sendTextMessage(senderPsid, "AI đang tổng hợp và tóm tắt tuần của bạn...");
-    const summaryResult = await askAI(summaryPrompt, "Hãy tóm tắt tuần học tập của tôi.");
+    const { reply: summaryResult } = await askAIWithTyping(senderPsid, summaryPrompt, "Hãy tóm tắt tuần học tập của tôi.");
     await db.saveConversation(senderPsid, "user", messageText);
     await db.saveConversation(senderPsid, "assistant", summaryResult);
     return messenger.sendTextMessage(senderPsid, summaryResult);
@@ -1265,8 +1375,7 @@ async function processMessage(senderPsid, messageText) {
     systemPrompt += `\n\n===== LỊCH SỬ HỘI THOẠI GẦN ĐÂY =====\n${formatted}`;
   }
 
-  await messenger.sendTextMessage(senderPsid, "Trợ lý AI đang suy nghĩ...");
-  const reply = await askAI(systemPrompt, messageText);
+  const { reply } = await askAIWithTyping(senderPsid, systemPrompt, messageText);
 
   // Persist conversation turn
   await db.saveConversation(senderPsid, "user", messageText);

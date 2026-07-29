@@ -69,8 +69,9 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
         for (const table of Array.isArray(extracted) ? extracted : []) {
           const rows = (table?.rows || []).filter(row => !isPlaceholderRow(row));
           if (!rows.some(row => row.some(cell => String(cell ?? "").trim()))) continue;
-          // Static tables repeat for every selection; keep one copy, keep per-selection rows.
-          const tableKey = JSON.stringify([table.headers || [], rows]);
+          // Same rows can exist in multiple academic years. Keep selection metadata,
+          // or a year-specific query can lose an otherwise valid match.
+          const tableKey = JSON.stringify([year.value, semester.value, table.headers || [], rows]);
           if (seenTables.has(tableKey)) continue;
           seenTables.add(tableKey);
           collectedTables.push({

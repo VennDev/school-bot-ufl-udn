@@ -17,10 +17,10 @@ assert.deepStrictEqual(entries, [
 
 const multiSemesterEntries = getScheduleEntries([
   { headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["1", "Môn cũ", "2", "L01"]] },
-  { headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["2", "Môn mới", "4", "L02"]] }
+  { headers: ["Môn học", "Phòng", "Thứ", "Tiết", "Lớp"], rows: [["Môn mới", "B204", "4", "2", "L02"]] }
 ]);
 assert.strictEqual(multiSemesterEntries.length, 2);
-assert.ok(multiSemesterEntries.some(entry => entry.name === "Môn mới"));
+assert.ok(multiSemesterEntries.some(entry => entry.name === "Môn mới" && entry.room === "B204" && entry.period === "2"));
 
 const latestEntries = getScheduleEntries([
   { yearValue: "2025", semesterValue: "2", headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["1", "Môn cũ", "2", "L01"]] },

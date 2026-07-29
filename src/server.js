@@ -9,6 +9,7 @@ const db = require("./db");
 const crypto = require("./crypto");
 const botRouter = require("./botRouter");
 const messenger = require("./messenger");
+const { ocrImageUrl } = require("./ocr");
 const { startScheduler } = require("./cron");
 const { PAGES, hasUsableData } = require("./pages");
 
@@ -559,6 +560,27 @@ async function handleMessage(sender_psid, received_message) {
   // Ignore echo messages (sent by the bot/page itself)
   if (received_message.is_echo) {
     console.log("[server] Ignored echo message from page itself.");
+    return;
+  }
+
+  if (Array.isArray(received_message.attachments) && received_message.attachments.length) {
+    const image = received_message.attachments.find((attachment) =>
+      attachment.type === "image" && attachment.payload?.url
+    );
+    if (!image) {
+      await messenger.sendTextMessage(sender_psid, "Chỉ hỗ trợ ảnh để nhận diện chữ. Vui lòng gửi ảnh HTTPS từ Messenger.");
+      return;
+    }
+    await messenger.sendTypingAction(sender_psid, "typing_on");
+    try {
+      const text = await ocrImageUrl(image.payload.url);
+      await messenger.sendTextMessage(sender_psid, text || "Không nhận diện được chữ trong ảnh.");
+    } catch (error) {
+      console.warn("[webhook] OCR failed:", error.message);
+      await messenger.sendTextMessage(sender_psid, "Không thể đọc ảnh này. Vui lòng gửi ảnh rõ hơn (tối đa 8MB).");
+    } finally {
+      await messenger.sendTypingAction(sender_psid, "typing_off");
+    }
     return;
   }
 

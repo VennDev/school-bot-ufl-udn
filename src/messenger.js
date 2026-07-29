@@ -38,6 +38,30 @@ async function callSendAPI(sender_psid, response, messagingType, tag, customToke
   }
 }
 
+// Typing indicators are best-effort UX. Never let token, fetch, or API failures
+// break message processing.
+async function sendTypingAction(sender_psid, action) {
+  try {
+    if (!sender_psid || !["typing_on", "typing_off"].includes(action)) {
+      return { error: new Error("Invalid typing action") };
+    }
+    const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+    const url = `https://graph.facebook.com/v21.0/me/messages?access_token=${pageToken}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipient: { id: sender_psid }, sender_action: action }),
+    });
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (data.error) console.warn("[messenger] Typing action failed:", data.error.message);
+    return data;
+  } catch (error) {
+    console.warn("[messenger] Typing action unavailable:", error.message);
+    return { error };
+  }
+}
+
 // ---- Utility Message sender (replaces Message Tags) ----
 // Sends a proactive message outside 24h window using Pages Utility Messaging template.
 async function callSendUtility(sender_psid, templateName, params = []) {
@@ -320,6 +344,7 @@ async function ensurePageSubscribed() {
 
 module.exports = {
   sendTextMessage,
+  sendTypingAction,
   sendUtilityMessage,     // proactive notifications via Utility Templates
   sendOtnRequest,         // request OTN token
   ensurePageSubscribed,   // auto-subscribe Page webhooks including messaging_optins
