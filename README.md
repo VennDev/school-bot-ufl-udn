@@ -56,7 +56,9 @@ Sửa `.env`:
 ```bash
 npm start
 ```
-Server chạy tại port cấu hình (mặc định 3000), đồng thời kích hoạt cron job chạy scraper định kỳ mỗi 4 tiếng.
+Server chạy tại port cấu hình (mặc định 3000), đồng thời kích hoạt cron job chạy scraper định kỳ mỗi 4 tiếng. Khi khởi động, bot cũng cấu hình Messenger Welcome Screen và nút `Bắt đầu` (`GET_STARTED`) qua Graph API.
+
+Nếu Page có nhiều app/token, đặt thêm `FB_PAGE_ID` hoặc lưu `fb_page_id` trong phần cấu hình admin. Token cần quyền quản lý Page và quyền Messenger tương ứng. Meta có thể cache Welcome Screen; kiểm tra bằng cách hủy cuộc trò chuyện rồi mở lại.
 
 ### Test đăng nhập & Scrape thủ công
 

@@ -600,7 +600,7 @@ async function handleMessage(sender_psid, received_message) {
 async function handlePostback(sender_psid, received_postback) {
   const payload = received_postback.payload;
   if (payload === "GET_STARTED") {
-    await botRouter.handleMessage(sender_psid, "hello");
+    await botRouter.handleMessage(sender_psid, "/login");
   } else if (payload === "LOGIN_POSTBACK") {
     await botRouter.handleMessage(sender_psid, "/logout");
     await botRouter.handleMessage(sender_psid, "/login");
@@ -611,6 +611,7 @@ async function handlePostback(sender_psid, received_postback) {
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  // Automatically subscribe Page to messaging_optins webhook on startup
+  // Keep Messenger discovery settings aligned with deployed bot behavior.
+  messenger.ensureWelcomeScreen().catch(console.error);
   messenger.ensurePageSubscribed().catch(console.error);
 });

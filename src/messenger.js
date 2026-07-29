@@ -323,6 +323,41 @@ async function ensureUtilityTemplateCreated() {
   return { success: true, message: "Sẵn sàng gửi Utility Message (messaging_type: UTILITY)" };
 }
 
+const WELCOME_SCREEN_PROFILE = Object.freeze({
+  get_started: { payload: "GET_STARTED" },
+  greeting: [{
+    locale: "default",
+    text: "Chào mừng bạn đến UFL Bot! Nhấn Bắt đầu để đăng nhập và tra cứu học vụ.",
+  }],
+});
+
+// Configure Messenger Welcome Screen and Get Started button through Graph API.
+async function ensureWelcomeScreen() {
+  const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+  if (!pageToken) return { skipped: true };
+
+  const pageId = await db.getSystemSetting("fb_page_id", process.env.FB_PAGE_ID || "");
+  const target = pageId || "me";
+  const url = `https://graph.facebook.com/v21.0/${target}/messenger_profile?access_token=${pageToken}`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(WELCOME_SCREEN_PROFILE),
+    });
+    const data = await res.json();
+    if (data.error) {
+      console.warn("[messenger] Cảnh báo cấu hình Welcome Screen:", data.error.message);
+    } else {
+      console.log("[messenger] ✓ Đã cấu hình Welcome Screen và nút Bắt đầu.");
+    }
+    return data;
+  } catch (e) {
+    console.error("[messenger] Lỗi cấu hình Welcome Screen:", e.message);
+    return { error: e };
+  }
+}
+
 // Automatically force Meta to subscribe Page to messaging_optins via Graph API
 async function ensurePageSubscribed() {
   const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
@@ -347,6 +382,8 @@ module.exports = {
   sendTypingAction,
   sendUtilityMessage,     // proactive notifications via Utility Templates
   sendOtnRequest,         // request OTN token
+  ensureWelcomeScreen,    // configure Messenger Welcome Screen and Get Started
+  WELCOME_SCREEN_PROFILE,
   ensurePageSubscribed,   // auto-subscribe Page webhooks including messaging_optins
   ensureUtilityTemplateCreated,
   UTILITY_TEMPLATES,      // template name constants
