@@ -91,6 +91,11 @@ function formatCanhBao(data, showAll = false) {
   return txt;
 }
 
+function isGradeTable(table) {
+  const headers = Array.isArray(table?.headers) ? table.headers.map(normalizeScheduleHeader) : [];
+  return headers.includes("ten hoc phan") && headers.some(header => /tbchp|diem thi|diem chu|diem so/.test(header));
+}
+
 function formatKetQuaHocTap(scrapedData) {
   const rawKq = scrapedData.ket_qua_hoc_tap ? JSON.parse(scrapedData.ket_qua_hoc_tap) : null;
   const rawDrl = scrapedData.diem_ren_luyen ? JSON.parse(scrapedData.diem_ren_luyen) : null;
@@ -98,7 +103,7 @@ function formatKetQuaHocTap(scrapedData) {
   if (!rawKq || !rawKq.length) return "Chưa có dữ liệu điểm học tập.";
 
   let gpa = extractGPA(rawKq);
-  const gradeTables = rawKq.filter((t) => t.headers && t.headers.includes("Tên học phần"));
+  const gradeTables = rawKq.filter(isGradeTable);
   const targetTable = gradeTables[0];
 
   let courses = [];
@@ -259,7 +264,8 @@ function tuitionTerm(row, table, current) {
   const year = cells.find(cell => /\b\d{4}\s*[-–]\s*\d{4}\b/.test(cell)) || current.year || table.year || "";
   const term = cells.find(cell => /^(?:học\s*kỳ|ky|kỳ|đợt)\s*\d+$/i.test(cell)) ||
     cells.find(cell => /^[1-3]$/.test(cell)) || current.term || table.semester || table.semesterValue || "";
-  return { year: year.replace(/[–—]/g, "-"), term: String(term).replace(/^học\s*kỳ\s*/i, "Kỳ ").replace(/^kỳ\s*/i, "Kỳ ").replace(/^đợt\s*/i, "Đợt ") };
+  const termText = String(term).replace(/^học\s*kỳ\s*/i, "Kỳ ").replace(/^kỳ\s*/i, "Kỳ ").replace(/^đợt\s*/i, "Đợt ");
+  return { year: year.replace(/[–—]/g, "-"), term: /^[1-3]$/.test(termText) ? `Kỳ ${termText}` : termText };
 }
 
 function formatHocPhi(data) {
@@ -738,7 +744,7 @@ function formatTienDo(scrapedData) {
   if (!rawKq || !rawKq.length) return "Chưa có dữ liệu điểm để tính tiến độ.";
 
   let gpa = extractGPA(rawKq);
-  const gradeTables = rawKq.filter((t) => t.headers && t.headers.includes("Tên học phần"));
+  const gradeTables = rawKq.filter(isGradeTable);
   const targetTable = gradeTables[0];
 
   let courses = [];
@@ -1734,4 +1740,5 @@ module.exports = {
   examDetails,
   getExamRows,
   formatHocPhi,
+  formatKetQuaHocTap,
 };

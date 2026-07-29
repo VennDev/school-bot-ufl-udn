@@ -217,10 +217,10 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
 
     const { letter } = getGradePoints(score10);
     if (letter === "F") {
-      subjectsToRelearn.push(name);
+      if (!subjectsToRelearn.includes(name)) subjectsToRelearn.push(name);
     } else if (letter === "D" || (score10 >= 4.0 && score10 < 5.5)) {
       // D (điểm hệ 10 từ 4.0 đến dưới 5.5)
-      subjectsToImprove.push(name);
+      if (!subjectsToImprove.includes(name)) subjectsToImprove.push(name);
     }
   });
 
