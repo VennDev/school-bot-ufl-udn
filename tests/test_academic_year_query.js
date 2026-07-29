@@ -27,14 +27,14 @@ assert.strictEqual(filterAcademicYearTables(currentSchedule, { ordinal: 2 }).len
 
 const examData = [
   ["STT", "Tên học phần", "Ngày thi", "Năm học"],
-  ["1", "Môn cũ", "10/12/2024", "2025-2026"],
-  ["2", "Môn mới", "08/05/2026", "2025-2026"]
+  ["1", "Môn cũ", "10/12/2025", "2025-2026"],
+  ["2", "Môn mới", "08/05/2027", "2026-2027"]
 ];
 assert.deepStrictEqual(getExamRows(examData).map(row => row[1]), ["Môn mới"]);
 assert.deepStrictEqual(getExamRows([
   ["STT", "Tên học phần", "Ngày thi", "Năm học"],
   ["1", "Môn cũ", "", "2024-2025"],
-  ["2", "Môn mới", "08/05/2026", "2025-2026"]
+  ["2", "Môn mới", "08/05/2027", "2026-2027"]
 ]).map(row => row[1]), ["Môn mới"]);
 assert.deepStrictEqual(getExamRows([
   ["STT", "Tên học phần", "Ngày thi", "Năm học"],

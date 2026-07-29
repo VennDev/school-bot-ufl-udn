@@ -288,6 +288,61 @@ function scheduleColumn(headers, aliases) {
   return index === undefined ? -1 : index;
 }
 
+function scheduleTableYear(table) {
+  const value = table?.year || table?.sourceYear || table?.academicYear || table?.yearValue || table?.sourceYearValue;
+  const metadata = Number(String(value || "").match(/\d{4}/)?.[0] || 0);
+  const currentStart = currentAcademicYearStart();
+  if (metadata >= 2000 && metadata <= currentStart + 1) return metadata;
+  return academicYearStartFromTable(table) || metadata;
+}
+
+function scheduleRowDates(row, expectedYear = null) {
+  const text = Array.isArray(row) ? row.join(" ") : String(row || "");
+  return [...text.matchAll(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/g)].flatMap(match => {
+    let year = Number(match[3]);
+    if (year < 100) year += 2000;
+    const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
+    return !Number.isNaN(date.getTime()) && (expectedYear === null || academicYearStartFromDateText(match[0]) === expectedYear) ? [date] : [];
+  });
+}
+
+function scheduleTableDates(table, expectedYear = null) {
+  return (table?.rows || []).flatMap(row => scheduleRowDates(row, expectedYear));
+}
+
+function selectLatestScheduleTables(tables, now) {
+  const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(now); dayEnd.setHours(23, 59, 59, 999);
+  const windows = tables.map(table => {
+    const year = scheduleTableYear(table);
+    const dates = scheduleTableDates(table, year >= 2000 ? year : null);
+    const semester = Number(String(table.semester || "").match(/\d+/)?.[0] || table.semesterValue || 0);
+    return { table, year, semester, start: dates.length ? new Date(Math.min(...dates)) : null, end: dates.length ? new Date(Math.max(...dates)) : null };
+  });
+
+  // Active semester wins. If none active, choose nearest upcoming semester.
+  const currentStart = currentAcademicYearStart(now);
+  const active = windows.filter(item => item.start && item.start <= dayEnd && item.end >= dayStart);
+  if (active.length) {
+    const latestEnd = Math.max(...active.map(item => item.end.getTime()));
+    return active.filter(item => item.end.getTime() === latestEnd).map(item => item.table);
+  }
+  const upcoming = windows.filter(item => item.start && item.start > dayEnd && item.year === currentStart).sort((a, b) => a.start - b.start);
+  if (upcoming.length) {
+    const earliestStart = upcoming[0].start.getTime();
+    return upcoming.filter(item => item.start.getTime() === earliestStart).map(item => item.table);
+  }
+
+  // Expired tables are never returned. Date-less legacy data gets metadata-only
+  // fallback because no expiry can be proven from its payload.
+  const undated = windows.filter(item => !item.start && item.year === currentAcademicYearStart(now));
+  if (undated.length) {
+    const maxSemester = Math.max(...undated.map(item => item.semester));
+    return undated.filter(item => item.semester === maxSemester).map(item => item.table);
+  }
+  return [];
+}
+
 function getScheduleEntries(data, options = {}) {
   if (!Array.isArray(data)) return [];
   const isPeriod = (value) => /^\d+(?:\s*[-–]\s*\d+)?$/.test(String(value || "").trim());
@@ -305,39 +360,9 @@ function getScheduleEntries(data, options = {}) {
   });
   if (!tables.length) return [];
 
-  if (options.latest && tables.length > 1) {
-    const scheduleRank = table => {
-      const yearText = String(table.year || "");
-      const metadataYear = Number(yearText.match(/\d{4}/)?.[0] ||
-        (Number(table.yearValue) >= 1000 ? table.yearValue : 0));
-      const currentYear = new Date().getFullYear();
-      const sourceText = String(table.sourceYear || "");
-      const sourceYear = Number(sourceText.match(/\d{4}/)?.[0] ||
-        (Number(table.sourceYearValue) >= 1000 ? table.sourceYearValue : 0));
-      const sourceIsValid = sourceYear >= 2000 && sourceYear <= currentYear + 1;
-      const year = metadataYear > currentYear + 1 ? 0 : metadataYear;
-      const semesterText = String(table.semester || "");
-      const semester = Number(semesterText.match(/\d+/)?.[0] || table.semesterValue || 0);
-      const metadataIsValid = year >= 2000 && year <= currentYear + 1;
-      const rowYear = academicYearStartFromTable(table);
-      // Portal can label returned rows with a plausible but wrong future year.
-      // Real dates identify academic year; metadata only fills date-less tables.
-      const rankingYear = rowYear ?? (sourceIsValid || metadataIsValid ? year : 0);
-      return {
-        value: rankingYear * 10 + semester,
-        sourceIsValid,
-      };
-    };
-    const ranks = tables.map(scheduleRank);
-    const validRanks = ranks.filter(rank => rank.sourceIsValid);
-    const pool = validRanks.length ? ranks.map((rank, index) => ({ rank, table: tables[index] }))
-      .filter(item => item.rank.sourceIsValid) : tables.map((table, index) => ({ rank: ranks[index], table }));
-    const latestValue = Math.max(...pool.map(item => item.rank.value));
-    tables = pool.filter(item => item.rank.value === latestValue).map(item => item.table);
-    const targetYear = Math.max(...tables.map(academicYearStartFromTable).filter(Number.isInteger));
-    if (Number.isInteger(targetYear)) {
-      tables = tables.map(table => ({ ...table, rows: filterScheduleRowsByAcademicYear(table, targetYear) }));
-    }
+  if (options.latest) {
+    tables = selectLatestScheduleTables(tables, options.now || new Date())
+      .map(table => ({ ...table, rows: filterScheduleRowsByAcademicYear(table, scheduleTableYear(table)) }));
   }
 
   const fallback = { day: 2, period: 0, name: 1, room: 4, className: 3 };
@@ -507,7 +532,7 @@ function academicYearStartFromDateText(value) {
       let year = Number(match[3]);
       if (year < 100) year += 2000;
       if (year < 2000 || year > new Date().getFullYear() + 1) return null;
-      return month >= 7 ? year : year - 1;
+      return month >= 8 ? year : year - 1;
     }).filter(year => year !== null);
   if (!starts.length) return null;
   const counts = new Map();
@@ -515,8 +540,7 @@ function academicYearStartFromDateText(value) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
 }
 
-function currentAcademicYearStart() {
-  const now = new Date();
+function currentAcademicYearStart(now = new Date()) {
   return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
 }
 
@@ -584,13 +608,17 @@ function getExamRows(data, request = null, showAll = false) {
   }
   if (request?.ordinal || showAll) return request?.ordinal ? [] : rows;
 
-  const wantedStart = currentAcademicYearStart();
-  if (dated.length) {
-    const availableStarts = [...new Set(dated.map(row => academicYearStartFromDateText(row[columns.date])))].sort((a, b) => b - a);
-    const nearest = availableStarts.find(start => start <= wantedStart) ?? availableStarts[0];
-    return rowsForYear(nearest, true);
-  }
-  return [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcoming = rows.filter(row => {
+    const value = row[columns.date];
+    const date = parseExamDate(value);
+    return date ? date >= today : false;
+  });
+  if (!upcoming.length) return [];
+  const availableStarts = [...new Set(upcoming.map(row => academicYearStartFromDateText(row[columns.date])))].sort((a, b) => a - b);
+  const nearest = availableStarts[0];
+  return upcoming.filter(row => academicYearStartFromDateText(row[columns.date]) === nearest);
 }
 
 function academicYearLabels(table) {

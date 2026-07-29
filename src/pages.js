@@ -20,7 +20,7 @@ function inferAcademicYearFromRows(rows, headers = []) {
       let year = Number(match[3]);
       if (year < 100) year += 2000;
       return year >= 2000 && year <= new Date().getFullYear() + 2
-        ? (month >= 7 ? year : year - 1)
+        ? (month >= 8 ? year : year - 1)
         : null;
     }).filter(Boolean));
   if (!starts.length) return null;
@@ -42,7 +42,7 @@ function rowAcademicYearStart(row, headers = []) {
       let year = Number(match[3]);
       if (year < 100) year += 2000;
       if (year < 2000 || year > new Date().getFullYear() + 2) return null;
-      return Number(match[2]) >= 7 ? year : year - 1;
+      return Number(match[2]) >= 8 ? year : year - 1;
     }).filter(year => year !== null);
   return starts.length ? Math.max(...starts) : null;
 }
