@@ -93,7 +93,7 @@ function formatCanhBao(data, showAll = false) {
 
 function isGradeTable(table) {
   const headers = Array.isArray(table?.headers) ? table.headers.map(normalizeScheduleHeader) : [];
-  return headers.includes("ten hoc phan") && headers.some(header => /tbchp|diem thi|diem chu|diem so/.test(header));
+  return headers.includes("ten hoc phan") && headers.some(header => /tbchp|diem tk|diem thi|diem chu|diem so/.test(header));
 }
 
 function useGradeTableCredits(gpa, courses) {
@@ -344,6 +344,7 @@ function normalizeScheduleHeader(value) {
   return String(value || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
