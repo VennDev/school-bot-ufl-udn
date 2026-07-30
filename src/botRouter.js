@@ -96,6 +96,12 @@ function isGradeTable(table) {
   return headers.includes("ten hoc phan") && headers.some(header => /tbchp|diem thi|diem chu|diem so/.test(header));
 }
 
+function useGradeTableCredits(gpa, courses) {
+  if (!gpa || !courses.length) return gpa;
+  const calculated = calculateGPA(courses);
+  return { ...gpa, creditsAccumulated: calculated.creditsAccumulated };
+}
+
 function formatKetQuaHocTap(scrapedData) {
   const rawKq = scrapedData.ket_qua_hoc_tap ? JSON.parse(scrapedData.ket_qua_hoc_tap) : null;
   const rawDrl = scrapedData.diem_ren_luyen ? JSON.parse(scrapedData.diem_ren_luyen) : null;
@@ -120,6 +126,8 @@ function formatKetQuaHocTap(scrapedData) {
     gpa = calculateGPA(courses);
   }
 
+  // Tín chỉ tích lũy phải lấy từ bảng môn học; parser tóm tắt có thể đọc nhầm số.
+  gpa = useGradeTableCredits(gpa, courses);
   if (!gpa) return "Không thể đọc dữ liệu điểm học tập.";
 
   const drl = extractDRL(rawDrl);
@@ -785,6 +793,8 @@ function formatTienDo(scrapedData) {
     gpa = calculateGPA(courses);
   }
 
+  // Tín chỉ tích lũy phải lấy từ bảng môn học; parser tóm tắt có thể đọc nhầm số.
+  gpa = useGradeTableCredits(gpa, courses);
   if (!gpa) return "Không thể đọc thông tin tiến độ học tập.";
 
   const drl = extractDRL(rawDrl);
