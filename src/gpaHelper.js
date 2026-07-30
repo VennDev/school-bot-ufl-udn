@@ -55,6 +55,16 @@ function calculateGPA(courses) {
   };
 }
 
+// Portal đôi khi trả ô ghép/lệch cột (ví dụ "812"). Tín chỉ tích lũy phải là số
+// nguyên trong khoảng hợp lý của chương trình đại học.
+// ponytail: ngưỡng cứng 300 TC; nâng lên đọc tổng TC chương trình khi cần chính xác hơn.
+function parseCredits(value) {
+  const text = String(value ?? "").trim();
+  if (!/^\d{1,3}$/.test(text)) return 0;
+  const credits = Number(text);
+  return credits > 0 && credits <= 300 ? credits : 0;
+}
+
 function extractGPA(tables) {
   if (!tables || !tables.length) return null;
 
@@ -96,7 +106,7 @@ function extractGPA(tables) {
       gpaAccumulated = parseFloat(lastRow[idxGpaAcc4]) || null;
       gpaSemester10 = parseFloat(lastRow[idxGpaSem10]) || null;
       gpaAccumulated10 = parseFloat(lastRow[idxGpaAcc10]) || null;
-      creditsAccumulated = parseInt(lastRow[idxCreditsAcc]) || 0;
+      creditsAccumulated = parseCredits(lastRow[idxCreditsAcc]);
       if (gpaAccumulated !== null && !isNaN(gpaAccumulated)) {
         return { gpaSemester, gpaAccumulated, gpaSemester10, gpaAccumulated10, creditsAccumulated };
       }
@@ -128,12 +138,11 @@ function extractGPA(tables) {
         }
 
         if (cell.includes("tín chỉ tích lũy") || cell.includes("tổng số tín chỉ tích lũy") || cell.includes("sct tích lũy") || cell.includes("tc tích lũy")) {
-          const match = cell.match(/(\d+)/);
+          const match = cell.match(/(?:tín chỉ tích lũy|tc tích lũy)\s*[:=]?\s*(\d{1,3})\b/);
           if (match) {
-            creditsAccumulated = parseInt(match[1]);
+            creditsAccumulated = parseCredits(match[1]);
           } else if (row[i + 1]) {
-            const nextMatch = String(row[i + 1]).match(/(\d+)/);
-            if (nextMatch) creditsAccumulated = parseInt(nextMatch[1]);
+            creditsAccumulated = parseCredits(row[i + 1]);
           }
         }
       }

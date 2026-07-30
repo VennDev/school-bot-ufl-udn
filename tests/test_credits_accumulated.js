@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { formatKetQuaHocTap } = require("../src/botRouter");
+const { extractGPA } = require("../src/gpaHelper");
 
 const gradeTable = {
   headers: ["STT", "Mã học phần", "Tên học phần", "Số tín chỉ", "Lớp", "Điểm thi", "Điểm TK (10)", "Điểm chữ"],
@@ -22,4 +23,16 @@ const result = formatKetQuaHocTap({
 
 assert.match(result, /Tín chỉ tích lũy: 5 TC/);
 assert.doesNotMatch(result, /Tín chỉ tích lũy: 812 TC/);
+
+// Parser không được nhận số vô lý từ bảng tóm tắt hoặc ô text mô tả.
+assert.strictEqual(extractGPA([summaryTable]).creditsAccumulated, 0);
+assert.strictEqual(extractGPA([{
+  headers: [],
+  rows: [["ĐTBCTL hệ 4: 3.2"], ["Số tín chỉ tích lũy: 812"]]
+}]).creditsAccumulated, 0);
+assert.strictEqual(extractGPA([{
+  headers: ["ĐTBCTL hệ 4", "Tín chỉ tích lũy"],
+  rows: [["3.2", "114"]]
+}]).creditsAccumulated, 114);
+
 console.log("Credits accumulated regression test passed OK!");
