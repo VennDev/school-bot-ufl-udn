@@ -102,6 +102,21 @@ function useGradeTableCredits(gpa, courses) {
   return { ...gpa, creditsAccumulated: calculated.creditsAccumulated };
 }
 
+// Portal trả cùng bảng điểm tích lũy cho mọi năm/kỳ, nên một học phần lặp nhiều
+// lần. Giữ một bản ghi mỗi học phần, ưu tiên điểm cao nhất (trường hợp học lại).
+function gradeRows(gradeTables) {
+  const best = new Map();
+  gradeTables.flatMap(table => table.rows || []).forEach((row) => {
+    const key = `${String(row[1] || "").trim()}|${String(row[2] || "").trim()}`.toLowerCase();
+    const current = best.get(key);
+    if (!current) return void best.set(key, row);
+    const score = parseFloat(row[6]);
+    const currentScore = parseFloat(current[6]);
+    if (!isNaN(score) && (isNaN(currentScore) || score > currentScore)) best.set(key, row);
+  });
+  return [...best.values()];
+}
+
 function formatKetQuaHocTap(scrapedData) {
   const rawKq = scrapedData.ket_qua_hoc_tap ? JSON.parse(scrapedData.ket_qua_hoc_tap) : null;
   const rawDrl = scrapedData.diem_ren_luyen ? JSON.parse(scrapedData.diem_ren_luyen) : null;
@@ -114,7 +129,7 @@ function formatKetQuaHocTap(scrapedData) {
 
   let courses = [];
   if (gradeTables.length) {
-    courses = gradeTables.flatMap(table => table.rows || []).map((r) => ({
+    courses = gradeRows(gradeTables).map((r) => ({
       name: r[2],
       credits: r[3],
       score10: r[6]
@@ -168,7 +183,7 @@ function formatKetQuaHocTap(scrapedData) {
 
   if (gradeTables.length) {
     txt += `\n📝 Chi tiết điểm môn gần đây:`;
-    gradeTables.flatMap(table => table.rows || []).slice(0, 5).forEach((r) => {
+    gradeRows(gradeTables).slice(0, 5).forEach((r) => {
       txt += `\n- ${r[2]}: ${r[6]} (${r[8]})`;
     });
   }
@@ -783,7 +798,7 @@ function formatTienDo(scrapedData) {
 
   let courses = [];
   if (gradeTables.length) {
-    courses = gradeTables.flatMap(table => table.rows || []).map((r) => ({
+    courses = gradeRows(gradeTables).map((r) => ({
       name: r[2],
       credits: r[3],
       score10: r[6]
@@ -802,7 +817,7 @@ function formatTienDo(scrapedData) {
   const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester, courses);
   const advice = getScholarshipAndActivityAdvice(gpa.gpaSemester10 || null, gpa.gpaAccumulated, drl ? drl.score : null, gpa.creditsAccumulated);
 
-  const rows = gradeTables.flatMap(table => table.rows || []);
+  const rows = gradeRows(gradeTables);
   const earned = rows.filter((r) => {
     const grade = (r[8] || "").toLowerCase();
     return grade && !["f", "chưa đạt"].includes(grade) && r[6] !== "0";

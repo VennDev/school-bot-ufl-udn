@@ -35,4 +35,15 @@ assert.strictEqual(extractGPA([{
   rows: [["3.2", "114"]]
 }]).creditsAccumulated, 114);
 
+// Portal trả lại cùng bảng tích lũy cho mỗi năm/kỳ. Không được cộng tín chỉ nhiều lần.
+const duplicated = formatKetQuaHocTap({
+  ket_qua_hoc_tap: JSON.stringify([
+    { ...gradeTable, year: "2023-2024", semester: "Kỳ 1" },
+    { ...gradeTable, year: "2024-2025", semester: "Kỳ 1" },
+    { ...gradeTable, year: "2025-2026", semester: "Kỳ 2" }
+  ]),
+  diem_ren_luyen: "[]"
+});
+assert.match(duplicated, /Tín chỉ tích lũy: 5 TC/);
+
 console.log("Credits accumulated regression test passed OK!");
