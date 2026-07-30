@@ -77,15 +77,40 @@ function detectExams(oldData, newData) {
 
   const alerts = [];
   const examHeaders = newData[0] || [];
-  const yearIdx = examHeaders.findIndex(cell => /năm học/i.test(String(cell)));
-  const semesterIdx = examHeaders.findIndex(cell => /học kỳ/i.test(String(cell)));
-  const examKey = row => [row[1], yearIdx >= 0 ? row[yearIdx] : "", semesterIdx >= 0 ? row[semesterIdx] : ""].join("|");
-  const oldExams = new Map(oldData.slice(1).map((r) => [examKey(r), r]));
+  const headerIdx = pattern => examHeaders.findIndex(cell => pattern.test(String(cell)));
+  const yearIdx = headerIdx(/năm học/i);
+  const semesterIdx = headerIdx(/học kỳ/i);
+  // One subject can be examined twice in a semester (lần thi / đợt thi).
+  // Without those columns both rows share a key and every sync reports a
+  // phantom reschedule between them.
+  const attemptIdx = headerIdx(/lần thi/i);
+  const roundIdx = headerIdx(/đợt thi/i);
+  const at = (row, idx) => (idx >= 0 ? String(row[idx] ?? "").trim() : "");
+  const examKey = row => [row[1], at(row, yearIdx), at(row, semesterIdx), at(row, attemptIdx), at(row, roundIdx)].join("|");
+  const slot = row => `${String(row[3] ?? "").trim()}|${String(row[9] ?? "").trim()}`;
+  const oldSlots = new Map();
+  oldData.slice(1).forEach((r) => {
+    const key = examKey(r);
+    if (!oldSlots.has(key)) oldSlots.set(key, new Set());
+    oldSlots.get(key).add(slot(r));
+  });
+
+  // Past exams cannot change in a way the student can act on. Skip them so a
+  // historical row never resurfaces as a notification.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isPast = (value) => {
+    const parts = String(value || "").trim().split(/[\/\-]/).map(Number);
+    if (parts.length !== 3 || parts.some(part => !part)) return false;
+    return new Date(parts[2], parts[1] - 1, parts[0]) < today;
+  };
+
   newData.slice(1).forEach((r) => {
-    const oldExam = oldExams.get(examKey(r));
-    if (!oldExam) {
+    if (isPast(r[3])) return;
+    const known = oldSlots.get(examKey(r));
+    if (!known) {
       alerts.push(`[~] Lịch thi mới môn: ${r[2]} ngày ${r[3]} phòng ${r[9]}`);
-    } else if (oldExam[3] !== r[3] || oldExam[9] !== r[9]) {
+    } else if (!known.has(slot(r))) {
       alerts.push(`(->) Thay đổi lịch thi môn: ${r[2]} -> Ngày: ${r[3]} phòng: ${r[9]}`);
     }
   });
