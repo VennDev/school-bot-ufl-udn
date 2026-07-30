@@ -577,7 +577,7 @@ function formatLichHoc(data, dayFilter, options = {}) {
     : "[~] LỊCH HỌC TUẦN NÀY:\n";
   if (!filtered.length) return txt + "Không có tiết học nào.";
 
-  filtered.slice(0, 7).forEach((entry) => {
+  filtered.slice(0, 30).forEach((entry) => {
     const details = [entry.day && `Thứ ${entry.day.replace(/^thứ\s*/i, "")}`, entry.dateStart && `Từ ${entry.dateStart}`, entry.dateEnd && `Đến ${entry.dateEnd}`, entry.period && `Tiết ${entry.period}`];
     if (entry.room) details.push(`Phòng ${entry.room}`);
     if (entry.className) details.push(`Lớp ${entry.className}`);
@@ -1403,7 +1403,7 @@ async function processMessage(senderPsid, messageText) {
       subtitle: [formatScheduleDay(entry.day), entry.dateStart && `Từ: ${entry.dateStart}`, entry.dateEnd && `Đến: ${entry.dateEnd}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | ")
     }));
-    return sendCardsOrText(senderPsid, elements, formatLichHoc(matchingTables));
+    return sendCardBatchesOrText(senderPsid, elements, formatLichHoc(matchingTables));
   }
 
   if (isScheduleQuery(normalizedLowerText)) {
@@ -1418,7 +1418,7 @@ async function processMessage(senderPsid, messageText) {
       subtitle: [formatScheduleDay(entry.day), entry.dateStart && `Từ: ${entry.dateStart}`, entry.dateEnd && `Đến: ${entry.dateEnd}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | ")
     }));
-    return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, null, { latest: true }));
+    return sendCardBatchesOrText(senderPsid, elements, formatLichHoc(raw, null, { latest: true }));
   }
 
   if (normalizedLowerText.startsWith("lịch học thứ") || normalizedLowerText.startsWith("lịch học t") || normalizedLowerText.startsWith("lịch học cn") || normalizedLowerText.startsWith("lịch học chủ nhật") || normalizedLowerText.startsWith("lich hoc thu") || normalizedLowerText.startsWith("lich hoc t") || normalizedLowerText.startsWith("lich hoc cn") || normalizedLowerText.startsWith("lich hoc chu nhat")) {
@@ -1441,7 +1441,7 @@ async function processMessage(senderPsid, messageText) {
       subtitle: [formatScheduleDay(entry.day), entry.dateStart && `Từ: ${entry.dateStart}`, entry.dateEnd && `Đến: ${entry.dateEnd}`, entry.period && `Tiết ${entry.period}`, entry.room && `Phòng ${entry.room}`, entry.className && `Lớp ${entry.className}`]
         .filter(Boolean).join(" | "),
     }));
-    return sendCardsOrText(senderPsid, elements, formatLichHoc(raw, dayPart, { latest: true }));
+    return sendCardBatchesOrText(senderPsid, elements, formatLichHoc(raw, dayPart, { latest: true }));
   }
 
   if (normalizedLowerText === "điểm số" || normalizedLowerText === "gpa" || normalizedLowerText === "diem so" || normalizedLowerText === "diem") {
