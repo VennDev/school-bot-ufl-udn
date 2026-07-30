@@ -519,15 +519,20 @@ function getScheduleEntries(data, options = {}) {
     });
   });
 
-  const seen = new Set();
-  return entries.filter((entry) => {
-    if (!entry.name || !(isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day) || entry.period || entry.date)) return false;
+  // Portal emits one row per room for the same slot. Room is kept out of the
+  // identity key and merged instead, so one slot renders as one card.
+  const seen = new Map();
+  const merged = [];
+  entries.forEach((entry) => {
+    if (!entry.name || !(isDay(entry.day) || entry.day.toLowerCase().startsWith("thứ") || /^\d+$/.test(entry.day) || entry.period || entry.date)) return;
     const date = String(entry.date || "").replace(/\s+00:00:00$/, "");
-    const key = JSON.stringify([entry.day, date, entry.period, entry.name, entry.room, entry.className]);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    const key = JSON.stringify([entry.day, date, entry.period, entry.name, entry.className]);
+    const existing = seen.get(key);
+    if (!existing) { seen.set(key, entry); merged.push(entry); return; }
+    const rooms = String(existing.room || "").split(", ").filter(Boolean);
+    if (entry.room && !rooms.includes(entry.room)) existing.room = [...rooms, entry.room].join(", ");
   });
+  return merged;
 }
 
 function formatScheduleDay(day) {

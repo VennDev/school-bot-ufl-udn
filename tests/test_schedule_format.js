@@ -106,3 +106,17 @@ assert.deepStrictEqual(detectSchedule(stableOld, JSON.parse(JSON.stringify(stabl
 assert.deepStrictEqual(detectSchedule(stableOld, [{ ...stableOld[0], rows: [["1", "Văn học Anh", "2", "Văn học Anh-09", "", "", "24/08/2026-06/12/2026", "6", "7-8", "B503(LNH)", "GV"]]}]), []);
 
 console.log("Schedule format test passed OK!");
+
+// Portal splits one slot across rooms; cards must merge instead of repeating.
+const multiRoom = getScheduleEntries([{
+  year: "2026-2027", semester: "Kỳ 1",
+  headers: ["STT", "Tên lớp học phần", "Tên môn", "Thời gian học", "Phòng"],
+  rows: [
+    ["1", "GTLVH-01", "Giao tiếp liên văn hóa", "Thứ 3;Ngày: 24/08/2026-27/09/2026;Tiết: 7 - 9", "A403(LNH)"],
+    ["2", "GTLVH-01", "Giao tiếp liên văn hóa", "Thứ 3;Ngày: 24/08/2026-27/09/2026;Tiết: 7 - 9", "Phòng-Dạy Online"],
+    ["3", "GTLVH-01", "Giao tiếp liên văn hóa", "Thứ 3;Ngày: 24/08/2026-27/09/2026;Tiết: 7 - 9", "D302(LNH)"]
+  ]
+}]);
+assert.strictEqual(multiRoom.length, 1);
+assert.strictEqual(multiRoom[0].room, "A403(LNH), Phòng-Dạy Online, D302(LNH)");
+console.log("Multi-room merge test passed OK!");
