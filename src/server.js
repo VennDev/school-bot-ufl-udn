@@ -18,7 +18,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
 
 app.get("/", (req, res) => {
-  res.redirect("/admin.html");
+  res.sendFile(path.join(__dirname, "../public/terms.html"));
 });
 
 app.get("/privacy", (req, res) => {
