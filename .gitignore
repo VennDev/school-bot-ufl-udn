@@ -4,3 +4,4 @@ accounts.json
 tests/data.json
 .tor-instances/
 .env
+.pi/
