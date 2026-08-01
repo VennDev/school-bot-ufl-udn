@@ -354,6 +354,31 @@ app.post("/api/admin/delete-user", requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
+// Nuke all scraped data for a user then re-sync silently (no notifications).
+// First-sync guard in changeDetector: old data is null → no alerts fire.
+app.post("/api/admin/nuke-and-resync", requireAdmin, async (req, res) => {
+  const fbId = requireFbId(req.query.fb_id);
+  if (!fbId) return res.status(400).json({ error: "A valid numeric fb_id is required" });
+
+  const users = await db.getAllUsers();
+  const user = users.find(u => u.fb_id === fbId);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  // Wipe all scraped data fields to null — first-sync guard blocks notifications
+  await db.saveScrapedData(fbId, {
+    canh_bao: null, thong_tin_sv: null, ket_qua_hoc_tap: null,
+    diem_ren_luyen: null, lich_thi: null, hoc_bong_ktkl: null,
+    lich_hoc: null, hoc_phi: null,
+  });
+
+  const scraperPath = path.resolve(__dirname, "./scrape.js");
+  exec(`node ${scraperPath} --silent --fb-id=${fbId}`, (err) => {
+    if (err) console.error(`[admin-nuke] Re-sync for ${user.username} (${fbId}) failed:`, err.message);
+  });
+
+  res.json({ success: true, message: `Đã xóa toàn bộ dữ liệu scrape của ${user.username}. Đang đồng bộ lại (không gửi thông báo)...` });
+});
+
 app.post("/api/admin/delete-record", requireAdmin, async (req, res) => {
   const { model, id } = req.body;
   if (!model || !id) return res.status(400).json({ error: "Missing model or id" });

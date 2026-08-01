@@ -727,6 +727,7 @@
             <button onclick="viewUserDetail('${u.fb_id}')" class="rounded-lg bg-teal-50 px-2.5 py-1.5 text-teal-700 hover:bg-teal-100 mr-3 font-semibold">Xem dữ liệu DB</button>
             <button onclick="testNotifyUser('${u.username}', this, '${u.fb_id}')" class="text-orange-500 hover:text-orange-700 mr-3" title="Sửa nhẹ điểm, sync, kiểm tra có alert không">Test Notify</button>
             <button onclick="syncSingleUser('${u.username}', '${u.fb_id}')" class="text-blue-600 hover:text-blue-900 mr-3">Sync</button>
+            <button onclick="nukeAndResync('${u.username}', '${u.fb_id}')" class="text-purple-600 hover:text-purple-900 mr-3" title="Xóa hết dữ liệu scrape rồi sync lại, không gửi thông báo">Nuke & Sync</button>
             <button onclick="deleteUser('${u.fb_id}')" class="text-red-600 hover:text-red-900">Xóa</button>
           </td>
         `;
@@ -811,6 +812,17 @@
       });
       const data = await res.json();
       alert(data.message);
+    }
+
+    async function nukeAndResync(username, fbId = '') {
+      if (!confirm(`XÓA TOÀN BỘ dữ liệu scrape của ${username} rồi đồng bộ lại?\n\nSẽ KHÔNG gửi thông báo cho user này.`)) return;
+      const res = await fetch(`/api/admin/nuke-and-resync?fb_id=${encodeURIComponent(fbId)}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      alert(data.message || data.error || 'Done');
+      if (data.success) loadStats();
     }
 
     async function testNotifyUser(username, btnEl, fbId = '') {
