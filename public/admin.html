@@ -33,6 +33,7 @@
         <nav class="flex space-x-4">
           <button onclick="switchTab('users')" id="tab-users" class="px-3 py-1 rounded bg-blue-800 font-medium">Người dùng</button>
           <button onclick="switchTab('data')" id="tab-data" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Dữ liệu MongoDB</button>
+          <button onclick="switchTab('stats')" id="tab-stats" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Thống kê</button>
           <button onclick="switchTab('settings')" id="tab-settings" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Cài đặt hệ thống</button>
         </nav>
       </div>
@@ -144,6 +145,8 @@
               <option value="ChangeLog">ChangeLog (Lịch sử thay đổi)</option>
               <option value="StudyGoal">StudyGoal (Mục tiêu học tập)</option>
               <option value="StudySession">StudySession (Phiên tự học)</option>
+              <option value="Interaction">Interaction (Tương tác người dùng)</option>
+              <option value="RegNode">RegNode (Quy chế đào tạo)</option>
               <option value="SystemSetting">SystemSetting (Cấu hình hệ thống)</option>
             </select>
           </div>
@@ -299,6 +302,51 @@
       </div>
     </main>
 
+    <!-- Stats Tab Content -->
+    <main id="content-stats" class="max-w-7xl w-full mx-auto p-4 md:p-6 hidden flex-1 flex flex-col space-y-6">
+      <div class="bg-white p-6 rounded-lg shadow-md flex flex-col flex-1">
+        <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+          <h3 class="text-lg font-bold text-gray-800">[📊] Thống kê tần suất sử dụng</h3>
+          <div class="flex items-center space-x-3">
+            <select id="stats-days" onchange="loadUsageStats()" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
+              <option value="7">7 ngày</option>
+              <option value="14">14 ngày</option>
+              <option value="30" selected>30 ngày</option>
+              <option value="90">90 ngày</option>
+            </select>
+            <button onclick="exportUsageCSV()" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded transition shadow">
+              Xuất CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Summary cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
+            <div class="text-2xl font-bold text-blue-700" id="stat-total-msgs">0</div>
+            <div class="text-xs text-blue-600 mt-1">Tổng tin nhắn</div>
+          </div>
+          <div class="bg-green-50 rounded-lg p-4 text-center border border-green-200">
+            <div class="text-2xl font-bold text-green-700" id="stat-active-users">0</div>
+            <div class="text-xs text-green-600 mt-1">Người dùng hoạt động</div>
+          </div>
+          <div class="bg-orange-50 rounded-lg p-4 text-center border border-orange-200">
+            <div class="text-2xl font-bold text-orange-700" id="stat-total-syncs">0</div>
+            <div class="text-xs text-orange-600 mt-1">Lần đồng bộ</div>
+          </div>
+          <div class="bg-red-50 rounded-lg p-4 text-center border border-red-200">
+            <div class="text-2xl font-bold text-red-700" id="stat-total-alerts">0</div>
+            <div class="text-xs text-red-600 mt-1">Cảnh báo đã gửi</div>
+          </div>
+        </div>
+
+        <!-- SVG Chart -->
+        <div class="flex-1 min-h-[300px] border rounded-lg bg-gray-50 p-4 overflow-x-auto">
+          <svg id="usage-chart" class="w-full" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </div>
+    </main>
+
     <!-- User Detail Modal -->
     <div id="user-detail-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden z-50 flex items-center justify-center p-4">
       <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden">
@@ -338,32 +386,16 @@
     const itemsPerPage = 10;
 
     function switchTab(tab) {
-      if (tab === 'users') {
-        document.getElementById('tab-users').classList.add('bg-blue-800');
-        document.getElementById('tab-data').classList.remove('bg-blue-800');
-        document.getElementById('tab-settings').classList.remove('bg-blue-800');
-        document.getElementById('content-users').classList.remove('hidden');
-        document.getElementById('content-data').classList.add('hidden');
-        document.getElementById('content-settings').classList.add('hidden');
-        loadStats();
-      } else if (tab === 'data') {
-        document.getElementById('tab-users').classList.remove('bg-blue-800');
-        document.getElementById('tab-data').classList.add('bg-blue-800');
-        document.getElementById('tab-settings').classList.remove('bg-blue-800');
-        document.getElementById('content-users').classList.add('hidden');
-        document.getElementById('content-data').classList.remove('hidden');
-        document.getElementById('content-settings').classList.add('hidden');
-        currentDataPage = 1;
-        loadDataView();
-      } else {
-        document.getElementById('tab-users').classList.remove('bg-blue-800');
-        document.getElementById('tab-data').classList.remove('bg-blue-800');
-        document.getElementById('tab-settings').classList.add('bg-blue-800');
-        document.getElementById('content-users').classList.add('hidden');
-        document.getElementById('content-data').classList.add('hidden');
-        document.getElementById('content-settings').classList.remove('hidden');
-        loadSettings();
-      }
+      ['users','data','stats','settings'].forEach(id => {
+        document.getElementById('tab-' + id).classList.remove('bg-blue-800');
+        document.getElementById('content-' + id).classList.add('hidden');
+      });
+      document.getElementById('tab-' + tab).classList.add('bg-blue-800');
+      document.getElementById('content-' + tab).classList.remove('hidden');
+      if (tab === 'users') loadStats();
+      else if (tab === 'data') { currentDataPage = 1; loadDataView(); }
+      else if (tab === 'stats') loadUsageStats();
+      else if (tab === 'settings') loadSettings();
     }
 
     function showDashboard() {
@@ -524,9 +556,132 @@
       }
     }
 
-    function exportCSV() {
+    async function exportCSV() {
       const model = document.getElementById('data-model-select').value;
-      window.open(`/api/admin/data-export?model=${model}`, '_blank');
+      // window.open can't send Authorization header → backend rejects 401.
+      // Fetch with auth then trigger Blob download instead.
+      try {
+        const res = await fetch(`/api/admin/data-export?model=${model}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || 'Không thể xuất file (mã lỗi ' + res.status + ')');
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = model + '_export.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('Lỗi kết nối khi xuất file: ' + e.message);
+      }
+    }
+
+    // ---------- Usage Stats & Chart ----------
+    let cachedUsageStats = [];
+
+    async function loadUsageStats() {
+      const days = document.getElementById('stats-days').value || 30;
+      try {
+        const res = await fetch('/api/admin/usage-stats?days=' + days, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.status === 401 || res.status === 403) { logout(); return; }
+        const data = await res.json();
+        cachedUsageStats = data.stats || [];
+        // Summary cards
+        let totalMsgs = 0, totalSyncs = 0, totalAlerts = 0;
+        const activeUsers = new Set();
+        // activeUsers per day is already aggregated; sum unique is not useful.
+        // Instead show total unique users across the period.
+        // But the API gives daily activeUsers count — sum for display.
+        let maxDailyUsers = 0;
+        cachedUsageStats.forEach(s => {
+          totalMsgs += s.messages;
+          totalSyncs += s.syncs;
+          totalAlerts += s.alerts;
+          if (s.activeUsers > maxDailyUsers) maxDailyUsers = s.activeUsers;
+        });
+        document.getElementById('stat-total-msgs').innerText = totalMsgs;
+        document.getElementById('stat-active-users').innerText = maxDailyUsers;
+        document.getElementById('stat-total-syncs').innerText = totalSyncs;
+        document.getElementById('stat-total-alerts').innerText = totalAlerts;
+        renderUsageChart(cachedUsageStats);
+      } catch (e) {
+        console.error('loadUsageStats:', e);
+      }
+    }
+
+    function renderUsageChart(stats) {
+      const svg = document.getElementById('usage-chart');
+      if (!stats.length) {
+        svg.innerHTML = '<text x="400" y="150" text-anchor="middle" fill="#999" font-size="14">Chưa có dữ liệu thống kê</text>';
+        return;
+      }
+      const W = 800, H = 300, pad = { top: 20, right: 20, bottom: 50, left: 50 };
+      const plotW = W - pad.left - pad.right;
+      const plotH = H - pad.top - pad.bottom;
+      const maxVal = Math.max(1, ...stats.flatMap(s => [s.messages, s.activeUsers]));
+      const barW = Math.max(2, Math.min(20, (plotW / stats.length) / 2.5));
+      const gap = barW * 0.6;
+
+      const xScale = i => pad.left + (plotW / stats.length) * i + (plotW / stats.length) / 2;
+      const yScale = v => pad.top + plotH - (v / maxVal) * plotH;
+
+      let html = '';
+      // Grid lines
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH / 4) * i;
+        const val = Math.round(maxVal * (1 - i / 4));
+        html += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="#e5e7eb" stroke-dasharray="4,4"/>`;
+        html += `<text x="${pad.left - 8}" y="${y + 4}" text-anchor="end" fill="#6b7280" font-size="11">${val}</text>`;
+      }
+      // Bars
+      stats.forEach((s, i) => {
+        const cx = xScale(i);
+        // Messages bar (blue)
+        const msgH = Math.max(0, (s.messages / maxVal) * plotH);
+        html += `<rect x="${cx - barW - gap / 2}" y="${yScale(s.messages)}" width="${barW}" height="${msgH}" fill="#3b82f6" rx="2"><title>${s.date}: ${s.messages} tin nhắn</title></rect>`;
+        // Active users bar (green)
+        const usrH = Math.max(0, (s.activeUsers / maxVal) * plotH);
+        html += `<rect x="${cx + gap / 2}" y="${yScale(s.activeUsers)}" width="${barW}" height="${usrH}" fill="#22c55e" rx="2"><title>${s.date}: ${s.activeUsers} người dùng</title></rect>`;
+      });
+      // X-axis labels (every Nth day)
+      const step = Math.max(1, Math.floor(stats.length / 14));
+      stats.forEach((s, i) => {
+        if (i % step !== 0 && i !== stats.length - 1) return;
+        const cx = xScale(i);
+        const label = s.date.slice(5); // MM-DD
+        html += `<text x="${cx}" y="${H - pad.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="10">${label}</text>`;
+      });
+      // Axis lines
+      html += `<line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="#d1d5db"/>`;
+      html += `<line x1="${pad.left}" y1="${pad.top + plotH}" x2="${W - pad.right}" y2="${pad.top + plotH}" stroke="#d1d5db"/>`;
+      // Legend
+      html += `<rect x="${W - 180}" y="8" width="12" height="12" fill="#3b82f6" rx="2"/>`;
+      html += `<text x="${W - 164}" y="18" fill="#374151" font-size="11">Tin nhắn</text>`;
+      html += `<rect x="${W - 100}" y="8" width="12" height="12" fill="#22c55e" rx="2"/>`;
+      html += `<text x="${W - 84}" y="18" fill="#374151" font-size="11">Người dùng</text>`;
+      svg.innerHTML = html;
+    }
+
+    function exportUsageCSV() {
+      if (!cachedUsageStats.length) { alert('Không có dữ liệu để xuất.'); return; }
+      const rows = ['date,messages,active_users,syncs,alerts'];
+      cachedUsageStats.forEach(s => rows.push([s.date, s.messages, s.activeUsers, s.syncs, s.alerts].join(',')));
+      const csv = '\uFEFF' + rows.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'usage_stats_export.csv';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
     }
 
     async function loadStats() {

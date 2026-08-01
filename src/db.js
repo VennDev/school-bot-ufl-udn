@@ -462,4 +462,64 @@ module.exports = {
       .select("role content -_id")
       .lean();
   },
+
+  // Aggregate usage stats from Interaction + ChangeLog for the last N days.
+  // Returns daily buckets: { date, messages, activeUsers, syncs, alerts }.
+  async getUsageStats(days = 30) {
+    await ensureInit();
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    since.setHours(0, 0, 0, 0);
+
+    // Messages + unique users + syncs per day (from Interaction)
+    const interactionPipeline = [
+      { $match: { createdAt: { $gte: since } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          messages: { $sum: 1 },
+          uniqueUsers: { $addToSet: "$fb_id" },
+          syncs: { $sum: { $cond: [{ $or: [
+            { $eq: ["$action", "sync"] },
+            { $regexMatch: { input: "$payload", regex: /^(?:\/sync|SYNC_POSTBACK|sync_postback)$/i } },
+          ] }, 1, 0] } },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ];
+    const interactionRows = await Interaction.aggregate(interactionPipeline);
+
+    // Alerts per day (from ChangeLog)
+    const alertPipeline = [
+      { $match: { createdAt: { $gte: since }, type: "alert" } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          alerts: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ];
+    const alertRows = await ChangeLog.aggregate(alertPipeline);
+
+    // Merge into daily buckets
+    const alertMap = new Map(alertRows.map(r => [r._id, r.alerts]));
+    const stats = interactionRows.map(r => ({
+      date: r._id,
+      messages: r.messages,
+      activeUsers: r.uniqueUsers.length,
+      syncs: r.syncs,
+      alerts: alertMap.get(r._id) || 0,
+    }));
+
+    // Fill in alert-only days that had zero interactions
+    for (const [date, alerts] of alertMap) {
+      if (!stats.some(s => s.date === date)) {
+        stats.push({ date, messages: 0, activeUsers: 0, syncs: 0, alerts });
+      }
+    }
+    stats.sort((a, b) => a.date.localeCompare(b.date));
+
+    return stats;
+  },
 };

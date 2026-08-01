@@ -419,6 +419,18 @@ app.get("/api/admin/data-export", requireAdmin, async (req, res) => {
   }
 });
 
+// Usage statistics: daily message/active-user/sync/alert counts.
+// Aggregates from Interaction + ChangeLog collections.
+app.get("/api/admin/usage-stats", requireAdmin, async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 365);
+    const stats = await db.getUsageStats(days);
+    res.json({ days, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/admin/settings", requireAdmin, async (req, res) => {
   res.json({
     ai_provider: await db.getSystemSetting("ai_provider", process.env.AI_PROVIDER || "opencode"),
