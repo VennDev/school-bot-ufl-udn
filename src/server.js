@@ -574,7 +574,12 @@ async function handleMessage(sender_psid, received_message) {
     await messenger.sendTypingAction(sender_psid, "typing_on");
     try {
       const text = await ocrImageUrl(image.payload.url);
-      await messenger.sendTextMessage(sender_psid, text || "Không nhận diện được chữ trong ảnh.");
+      if (!text) {
+        await messenger.sendTextMessage(sender_psid, "Không nhận diện được chữ trong ảnh.");
+        return;
+      }
+      const combinedPrompt = received_message.text ? `${received_message.text}\n[Nội dung từ ảnh]: ${text}` : text;
+      await botRouter.handleMessage(sender_psid, combinedPrompt);
     } catch (error) {
       console.warn("[webhook] OCR failed:", error.message);
       await messenger.sendTextMessage(sender_psid, "Không thể đọc ảnh này. Vui lòng gửi ảnh rõ hơn (tối đa 8MB).");
