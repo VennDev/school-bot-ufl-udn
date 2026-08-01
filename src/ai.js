@@ -40,10 +40,9 @@ async function callOpenCode(systemPrompt, userPrompt) {
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  if (data.choices && data.choices[0] && data.choices[0].message) {
-    return data.choices[0].message.content.trim();
-  }
-  throw new Error("Invalid response structure");
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content === "string" && content.trim()) return content.trim();
+  throw new Error("Empty or invalid response structure");
 }
 
 async function callOpenAI(systemPrompt, userPrompt) {
@@ -68,10 +67,9 @@ async function callOpenAI(systemPrompt, userPrompt) {
 
   if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
   const data = await res.json();
-  if (data.choices && data.choices[0] && data.choices[0].message) {
-    return data.choices[0].message.content.trim();
-  }
-  throw new Error("Invalid OpenAI response");
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content === "string" && content.trim()) return content.trim();
+  throw new Error("Empty or invalid OpenAI response");
 }
 
 async function callGemini(systemPrompt, userPrompt) {
@@ -98,10 +96,9 @@ async function callGemini(systemPrompt, userPrompt) {
 
   if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
   const data = await res.json();
-  if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
-    return data.candidates[0].content.parts[0].text.trim();
-  }
-  throw new Error("Invalid Gemini response");
+  const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof content === "string" && content.trim()) return content.trim();
+  throw new Error("Empty or invalid Gemini response");
 }
 
 function stripMarkdown(text) {
@@ -135,12 +132,16 @@ async function askAI(systemPrompt, userPrompt) {
     }
   }
   const cleanReply = stripMarkdown(reply);
+  if (!cleanReply) return "Trợ lý AI đang bận, vui lòng thử lại sau.";
   if (cleanReply.startsWith("{") && cleanReply.endsWith("}")) {
     try {
       const parsed = JSON.parse(cleanReply);
-      if (parsed.response) return stripMarkdown(parsed.response);
-      if (parsed.content) return stripMarkdown(parsed.content);
-      if (parsed.message) return stripMarkdown(parsed.message);
+      for (const value of [parsed.response, parsed.content, parsed.message]) {
+        if (typeof value !== "string") continue;
+        const parsedReply = stripMarkdown(value);
+        if (parsedReply) return parsedReply;
+      }
+      return "Trợ lý AI đang bận, vui lòng thử lại sau.";
     } catch (e) {
       // not a valid JSON or parsing error, fallback to raw text
     }

@@ -438,8 +438,10 @@ module.exports = {
 
   // ---------- Conversation History ----------
   async saveConversation(fbId, role, content) {
+    const normalizedContent = typeof content === "string" ? content.trim() : String(content ?? "").trim();
+    if (!fbId || !["user", "assistant"].includes(role) || !normalizedContent) return false;
     await ensureInit();
-    await Conversation.create({ fb_id: fbId, role, content });
+    await Conversation.create({ fb_id: fbId, role, content: normalizedContent });
     // Keep only last 10 entries (5 pairs) per user
     const count = await Conversation.countDocuments({ fb_id: fbId });
     if (count > 10) {
