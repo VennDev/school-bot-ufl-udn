@@ -1543,7 +1543,9 @@ async function processMessage(senderPsid, messageText) {
   const targetGradeTable = rawGrades ? rawGrades.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
   const gradesRows = targetGradeTable ? (targetGradeTable.rows || []) : [];
 
-  // Compact grade data to reduce token load and prevent AI timeout/refusal
+  // Build GPA summary and grade list for AI context.
+  // Use extractGPA first (summary tables) like formatKetQuaHocTap does;
+  // fall back to calculating from grade-table rows only when no summary row exists.
   let gpaSummary = null;
   let recentGradesFiltered = [];
   if (gradesRows && gradesRows.length > 0) {
@@ -1552,19 +1554,29 @@ async function processMessage(senderPsid, messageText) {
       credits: r[3],
       score10: r[6]
     }));
-    const calculated = calculateGPA(courses);
-    const evalResult = getAcademicEvaluation(calculated.gpaAccumulated, calculated.gpaSemester, courses);
-    
+
+    let gpa = extractGPA(rawGrades);
+    if (!gpa) {
+      gpa = calculateGPA(courses);
+    } else {
+      // Merge credits accumulated from actual course rows (more reliable than summary parser)
+      const calculated = calculateGPA(courses);
+      gpa = { ...gpa, creditsAccumulated: calculated.creditsAccumulated };
+    }
+
+    const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester, courses);
+
     gpaSummary = {
-      gpaSemester: calculated.gpaSemester,
-      gpaAccumulated: calculated.gpaAccumulated,
-      creditsAccumulated: calculated.creditsAccumulated,
+      gpaSemester: gpa.gpaSemester,
+      gpaAccumulated: gpa.gpaAccumulated,
+      creditsAccumulated: gpa.creditsAccumulated,
       rank: evalResult.rank,
       subjectsToRelearn: evalResult.subjectsToRelearn,
       subjectsToImprove: evalResult.subjectsToImprove
     };
-    // Only send the 8 most recent courses to prevent system overload
-    recentGradesFiltered = gradesRows.slice(0, 8).map(r => ({
+    // Send all courses so AI has full context; gradeRows already deduplicates.
+    // ponytail: if token limit becomes issue, compact to {name,grade} only for older courses.
+    recentGradesFiltered = gradesRows.map(r => ({
       name: r[2],
       credits: r[3],
       score10: r[6],
@@ -1688,7 +1700,7 @@ async function processMessage(senderPsid, messageText) {
 }
 
 // Short fragments need wider quiet window: users often send next Messenger bubble after >1.2s.
-const MESSAGE_BATCH_DELAY = 5000;
+const MESSAGE_BATCH_DELAY = 3000;
 
 function createMessageBatcher(processBatch, delayMs = MESSAGE_BATCH_DELAY) {
   const states = new Map();
