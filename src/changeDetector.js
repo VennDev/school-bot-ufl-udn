@@ -43,6 +43,14 @@ function detectGrades(oldData, newData) {
   const oldRows = new Map();
   const oldBaseRows = new Map();
   const baseKey = row => [row[keyIdx], row[nameIdx]].join("|");
+  // Portal renders the same numeric grade with varying string forms between
+  // page loads ("6.5" vs "6.50", trailing spaces, comma decimals). Compare
+  // numerically so formatting churn never looks like a new/changed grade.
+  const normScore = value => {
+    const text = String(value ?? "").trim().replace(/,/g, ".");
+    const numeric = parseFloat(text);
+    return Number.isFinite(numeric) ? numeric : text;
+  };
   oldTables.flatMap(t => t.rows || []).forEach(row => {
     oldRows.set(rowKey(row), row);
     oldBaseRows.set(baseKey(row), row);
@@ -58,7 +66,7 @@ function detectGrades(oldData, newData) {
     let alert = null;
     if (!oldRow) {
       alert = `[=] Điểm mới môn: ${name} - TBCHP: ${row[scoreIdx]} (${row[charIdx] || "?"})`;
-    } else if (oldRow[scoreIdx] !== row[scoreIdx]) {
+    } else if (normScore(oldRow[scoreIdx]) !== normScore(row[scoreIdx])) {
       alert = `(->) Thay đổi điểm môn: ${name} -> TBCHP mới: ${row[scoreIdx]} (${row[charIdx] || "?"})`;
     }
     if (alert && !seenAlerts.has(alert)) {
@@ -220,8 +228,13 @@ function detectSchedule(oldData, newData) {
 
   // Same course/class can appear multiple times in one semester. Include
   // schedule date range so Map does not overwrite one session with another.
-  const key = entry => [norm(entry.name), norm(entry.className), group(entry), norm(entry.time)].join("|");
-  const value = entry => [norm(entry.day), norm(entry.period), norm(entry.room), norm(entry.time)].join("|");
+  // The portal renders date ranges with inconsistent dash/space formatting
+  // ("18/09/2023- 31/12/2023" vs "18/09/2023 - 31/12/2023") between loads;
+  // normalize before using as identity/value so formatting churn never
+  // looks like a new or changed schedule.
+  const normTime = value => norm(value).replace(/\s*-\s*/g, "-").replace(/\s*[/.,;|]\s*/g, " ").replace(/\s+/g, " ");
+  const key = entry => [norm(entry.name), norm(entry.className), group(entry), normTime(entry.time)].join("|");
+  const value = entry => [norm(entry.day), norm(entry.period), norm(entry.room), normTime(entry.time)].join("|");
   const oldRows = new Map(oldEntries.map(entry => [key(entry), entry]));
   const alerts = [];
   newEntries.forEach(entry => {
