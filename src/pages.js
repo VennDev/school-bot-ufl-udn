@@ -424,10 +424,23 @@ const PAGES = [
       // If major not found, attempt to parse from class name (e.g., 23CNA13 -> CNA)
       if (!normalized["Ngành"]) {
         const className = normalized["Lớp"] || "";
-        const majorFromClass = parseMajorFromClassName(className);
-        if (majorFromClass) {
-          normalized["Ngành"] = majorFromClass;
-          normalized["_nganh_source"] = "parsed_from_class";
+        const m = String(className).trim().match(/^\d{2}([A-Z]+)/i);
+        if (m) {
+          const code = m[1].toUpperCase();
+          const majorMap = {
+            CNA: "Cử nhân Anh", SPA: "Sư phạm tiếng Anh",
+            CNP: "Cử nhân Pháp", SPP: "Sư phạm tiếng Pháp",
+            CNT: "Cử nhân Trung Quốc", SPT: "Sư phạm tiếng Trung Quốc",
+            CNN: "Cử nhân Nga", SPN: "Sư phạm tiếng Nga",
+            CNH: "Cử nhân Hàn Quốc", SPH: "Sư phạm tiếng Hàn Quốc",
+            CNJ: "Cử nhân Nhật Bản", SPJ: "Sư phạm tiếng Nhật",
+            QTH: "Quốc tế học", KTD: "Kinh tế đối ngoại",
+            VHH: "Tiếng Việt và văn hóa Việt Nam",
+          };
+          if (majorMap[code]) {
+            normalized["Ngành"] = majorMap[code];
+            normalized["_nganh_source"] = "parsed_from_class";
+          }
         }
       }
 
