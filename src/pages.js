@@ -211,10 +211,39 @@ function _extractScheduleTables() {
   return tables;
 }
 
+function parseMajorFromClassName(className) {
+  // Extract major code from class name like "23CNA13" -> "CNA"
+  const text = String(className || "").trim();
+  // Match pattern: digits + letters + digits (e.g., 23CNA13, 20SPA01)
+  const match = text.match(/^\d{2}([A-Z]+)\d{1,2}$/i);
+  if (!match) return null;
+  const code = match[1].toUpperCase();
+  const majorMap = {
+    "CNA": "Cử nhân Anh",
+    "SPA": "Sư phạm tiếng Anh",
+    "SPP": "Sư phạm tiếng Pháp",
+    "SPT": "Sư phạm tiếng Trung Quốc",
+    "SPN": "Sư phạm tiếng Nga",
+    "SPH": "Sư phạm tiếng Hàn Quốc",
+    "SPNH": "Sư phạm tiếng Nhật",
+    "CNP": "Cử nhân Pháp",
+    "CNT": "Cử nhân Trung Quốc",
+    "CNN": "Cử nhân Nga",
+    "CNH": "Cử nhân Hàn Quốc",
+    "CNNH": "Cử nhân Nhật Bản",
+    "CNTL": "Cử nhân Thái Lan",
+    "QT": "Quốc tế học",
+    "QTH": "Quốc tế học",
+    "TV": "Tiếng Việt và Văn hóa Việt Nam",
+    "TVVH": "Tiếng Việt và Văn hóa Việt Nam",
+  };
+  return majorMap[code] || code;
+}
+
 function hasUsableData(key, value) {
   if (value == null) return false;
   if (key === "thongTinSV") return typeof value === "object" && Object.entries(value).some(([field, fieldValue]) =>
-    !field.startsWith("_") && String(fieldValue ?? "").trim()
+    !field.startsWith("_") && /ngành|mã số|họ và tên|mssv|lớp|khóa|trạng thái/i.test(field) && String(fieldValue ?? "").trim()
   );
   if (key === "canhBao") return Array.isArray(value) && value.length > 0;
   if (key === "lichThi" || key === "diemRenLuyen") {
@@ -277,6 +306,7 @@ const PAGES = [
       const info = {};
       const controls = "input:not([type=file]):not([type=password]):not([type=hidden]), select, textarea";
       const cleanKey = value => String(value || "").replace(/[:：]\s*$/, "").replace(/\s+/g, " ").trim();
+      const skipKeys = /mật khẩu|password|mã xác nhận|captcha|nhập lại/i;
       const readControl = control => {
         if (!control) return "";
         if (control.matches("select")) {
@@ -294,23 +324,115 @@ const PAGES = [
         }
         return label.parentElement?.querySelector(controls);
       };
-      const addField = (key, control) => {
+      const addField = (key, value) => {
         const clean = cleanKey(key);
-        const value = readControl(control);
-        if (clean && value) info[clean] = value;
+        const val = String(value ?? "").trim();
+        if (!clean || skipKeys.test(clean)) return;
+        if (val) info[clean] = val;
       };
 
-      // Portal uses span.NoiDungHoSo + sibling control, not label/form-group.
-      document.querySelectorAll(".NoiDungHoSo").forEach(label => {
-        addField(label.innerText, findControl(label));
+      // Strategy 1: .NoiDungHoSo elements may contain "Label: Value" as plain text
+      document.querySelectorAll(".NoiDungHoSo").forEach(el => {
+        const text = (el.innerText || "").trim();
+        if (!text) return;
+        // Try "Label: Value" pattern within the text content itself
+        const colonIdx = text.indexOf(":");
+        if (colonIdx > 0) {
+          const key = text.slice(0, colonIdx);
+          const value = text.slice(colonIdx + 1);
+          addField(key, value);
+          return;
+        }
+        // Otherwise look for sibling control (old behavior)
+        const control = findControl(el);
+        if (control) {
+          addField(el.innerText, readControl(control));
+        } else {
+          // No colon, no control — try splitting by whitespace as key-value
+          const parts = text.split(/\s{2,}/);
+          if (parts.length >= 2) {
+            addField(parts[0], parts.slice(1).join(" "));
+          }
+        }
       });
 
-      // Keep support for older portal markup.
+      // Strategy 2: form-group with label + control
       document.querySelectorAll(".form-group").forEach(group => {
         const label = group.querySelector("label");
-        addField(label?.innerText, group.querySelector(controls));
+        const key = label?.innerText || "";
+        if (skipKeys.test(cleanKey(key))) return;
+        const control = group.querySelector(controls);
+        if (control) {
+          addField(key, readControl(control));
+        }
       });
-      return info;
+
+      // Strategy 3: Read tables on the page (portal may show info in <table>)
+      if (!Object.keys(info).length || Object.keys(info).filter(k => !skipKeys.test(k)).length <= 2) {
+        document.querySelectorAll("table tr").forEach(tr => {
+          const cells = [...tr.querySelectorAll("td, th")].map(c => (c.innerText || "").trim()).filter(Boolean);
+          if (cells.length >= 2) {
+            for (let i = 0; i < cells.length - 1; i += 2) {
+              addField(cells[i], cells[i + 1]);
+            }
+          }
+        });
+      }
+
+      // Strategy 4: Try reading from any element with class containing "info" or "profile"
+      if (!Object.keys(info).length || Object.keys(info).filter(k => !skipKeys.test(k)).length <= 2) {
+        document.querySelectorAll("[class*=info], [class*=profile], [class*=detail], [class*=detail]").forEach(section => {
+          const rows = section.querySelectorAll("tr, .row, .item");
+          rows.forEach(row => {
+            const label = row.querySelector("label, .label, .key, th, strong");
+            const value = row.querySelector("input, select, textarea, .value, td:last-child, span:last-child");
+            if (label && value) {
+              addField(label.innerText, value.innerText || value.value || "");
+            }
+          });
+        });
+      }
+
+      // Normalize known field names to consistent keys for downstream use
+      const keyMap = {
+        "ho va ten": "Họ và tên", "ho ten": "Họ và tên", "họ và tên": "Họ và tên", "họ tên": "Họ và tên",
+        "ma so sinh vien": "Mã số sinh viên", "ma sinh vien": "Mã số sinh viên", "mssv": "Mã số sinh viên", "mã số sinh viên": "Mã số sinh viên", "mã sinh viên": "Mã số sinh viên",
+        "nganh": "Ngành", "nganh hoc": "Ngành", "ngành học": "Ngành", "ngành đào tạo": "Ngành", "nganh dao tao": "Ngành", "chuyen nganh": "Ngành", "chuyên ngành": "Ngành",
+        "lop": "Lớp", "lop sinh hoat": "Lớp", "lớp": "Lớp", "lớp sinh hoạt": "Lớp",
+        "khoa": "Khóa", "khoa hoc": "Khóa", "khóa học": "Khóa", "khoa tuyen sinh": "Khóa", "khóa tuyển sinh": "Khóa",
+        "he dao tao": "Hệ đào tạo", "he": "Hệ đào tạo", "hệ đào tạo": "Hệ đào tạo",
+        "trang thai": "Trạng thái", "trạng thái": "Trạng thái", "tinh trang": "Trạng thái", "tình trạng": "Trạng thái",
+        "ngay sinh": "Ngày sinh", "ngày sinh": "Ngày sinh",
+        "gioi tinh": "Giới tính", "giới tính": "Giới tính",
+        "email": "Email", "thu dien tu": "Email", "thư điện tử": "Email",
+        "so dien thoai": "Số điện thoại", "dien thoai": "Số điện thoại", "số điện thoại": "Số điện thoại", "điện thoại": "Số điện thoại",
+        "cmnd": "CMND/CCCD", "cccd": "CMND/CCCD", "so cmnd": "CMND/CCCD", "số cmnd": "CMND/CCCD",
+        "dia chi": "Địa chỉ", "địa chỉ": "Địa chỉ",
+        "nien khoa": "Niên khóa", "niên khóa": "Niên khóa", "năm học": "Niên khóa",
+      };
+      const normalized = {};
+      for (const [rawKey, value] of Object.entries(info)) {
+        const lower = rawKey
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[đĐ]/g, "d").toLowerCase();
+        const mapped = keyMap[lower] || rawKey;
+        // Keep first occurrence (most specific) or overwrite with non-empty
+        if (!normalized[mapped] || (value && !normalized[mapped])) {
+          normalized[mapped] = value;
+        }
+      }
+
+      // If major not found, attempt to parse from class name (e.g., 23CNA13 -> CNA)
+      if (!normalized["Ngành"]) {
+        const className = normalized["Lớp"] || "";
+        const majorFromClass = parseMajorFromClassName(className);
+        if (majorFromClass) {
+          normalized["Ngành"] = majorFromClass;
+          normalized["_nganh_source"] = "parsed_from_class";
+        }
+      }
+
+      return normalized;
     },
   },
   {
@@ -432,4 +554,4 @@ const PAGES = [
   },
 ];
 
-module.exports = { BASE, PAGES, hasUsableData, normalizeAcademicYearSelection, filterRowsByAcademicYear };
+module.exports = { BASE, PAGES, hasUsableData, parseMajorFromClassName, normalizeAcademicYearSelection, filterRowsByAcademicYear };

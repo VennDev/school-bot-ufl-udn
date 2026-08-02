@@ -3,7 +3,8 @@ const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { askAI } = require("./ai");
 const { calculateGPA, extractGPA, extractDRL, getAcademicEvaluation, getScholarshipAndActivityAdvice } = require("./gpaHelper");
-const { PAGES, hasUsableData } = require("./pages");
+const { lookupProgramFramework, findKnownProgram } = require("./programFramework");
+const { PAGES, hasUsableData, parseMajorFromClassName } = require("./pages");
 const { exec } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -153,6 +154,23 @@ function formatKetQuaHocTap(scrapedData) {
   txt += `- GPA Học kỳ: ${gpa.gpaSemester}/4.0\n`;
   txt += `- GPA Tích lũy: ${gpa.gpaAccumulated}/4.0\n`;
   txt += `- Tín chỉ tích lũy: ${gpa.creditsAccumulated} TC\n`;
+
+  // Look up program total credits from student profile
+  const rawProfile = scrapedData.thong_tin_sv ? JSON.parse(scrapedData.thong_tin_sv) : null;
+  const profile = rawProfile || {};
+  let majorName = profile["Ngành"] || profile["ngành"] || profile["nganh"] || "";
+  if (!majorName && profile["Lớp"]) {
+    majorName = parseMajorFromClassName(profile["Lớp"]) || "";
+  }
+  const program = majorName ? findKnownProgram(majorName) : null;
+  if (program) {
+    const creditsRemaining = Math.max(0, program.totalCredits - gpa.creditsAccumulated);
+    const progressPercent = program.totalCredits > 0
+      ? Math.round((gpa.creditsAccumulated / program.totalCredits) * 100)
+      : 0;
+    txt += `- Ngành: ${majorName} (${program.totalCredits} TC toàn khóa, còn ${creditsRemaining} TC = ${progressPercent}%)\n`;
+  }
+
   txt += `- Xếp loại học lực: ${evalResult.rank}\n`;
   if (drl) {
     txt += `- Điểm rèn luyện: ${drl.score}/100 (${drl.rank})\n`;
@@ -854,6 +872,27 @@ function formatTienDo(scrapedData) {
   let txt = `📈 TIẾN ĐỘ HỌC TẬP (Quy chế UFLS):\n`;
   txt += `- GPA Tích lũy: ${gpa.gpaAccumulated}/4.0 (${evalResult.rank})\n`;
   txt += `- Tín chỉ đã tích lũy: ${gpa.creditsAccumulated} TC\n`;
+
+  // Look up program total credits from student profile
+  const rawProfile = scrapedData.thong_tin_sv ? JSON.parse(scrapedData.thong_tin_sv) : null;
+  const profile = rawProfile || {};
+  let majorName = profile["Ngành"] || profile["ngành"] || profile["nganh"] || "";
+  if (!majorName && profile["Lớp"]) {
+    majorName = parseMajorFromClassName(profile["Lớp"]) || "";
+  }
+  const program = majorName ? findKnownProgram(majorName) : null;
+  if (program) {
+    const creditsRemaining = Math.max(0, program.totalCredits - gpa.creditsAccumulated);
+    const progressPercent = program.totalCredits > 0
+      ? Math.round((gpa.creditsAccumulated / program.totalCredits) * 100)
+      : 0;
+    txt += `- Ngành: ${majorName} (Tổng ${program.totalCredits} TC toàn khóa)\n`;
+    txt += `- Tín chỉ còn lại: ${creditsRemaining} TC (Đã hoàn thành ${progressPercent}%)\n`;
+    // Estimate remaining semesters (avg 15-18 TC/semester)
+    const estSemesters = Math.ceil(creditsRemaining / 16);
+    txt += `- Dự kiến: ~${estSemesters} học kỳ còn lại (nếu học ~16 TC/kỳ)\n`;
+  }
+
   txt += `- Số môn hoàn thành: ${earned.length} môn\n`;
   txt += `- Số tín chỉ nợ/chưa hoàn thành: ${remainingCredits} TC\n`;
   if (drl) {
@@ -1669,6 +1708,36 @@ async function processMessage(senderPsid, messageText) {
     schedule: requestedSchedule
   };
 
+  // Look up program framework from student's major
+  const studentProfile = cleanData.student_profile || {};
+  let majorName = studentProfile["Ngành"] || studentProfile["ngành"] || studentProfile["nganh"] || "";
+  // Fallback: parse major from class name if not in profile
+  if (!majorName && studentProfile["Lớp"]) {
+    majorName = parseMajorFromClassName(studentProfile["Lớp"]) || "";
+  }
+  if (majorName) {
+    const framework = await lookupProgramFramework(majorName);
+    if (framework) {
+      const creditsAccumulated = gpaSummary?.creditsAccumulated || 0;
+      cleanData.program = {
+        name: majorName,
+        total_credits: framework.totalCredits,
+        duration_years: framework.durationYears,
+        credits_accumulated: creditsAccumulated,
+        credits_remaining: Math.max(0, framework.totalCredits - creditsAccumulated),
+        progress_percent: framework.totalCredits > 0
+          ? Math.round((creditsAccumulated / framework.totalCredits) * 100)
+          : 0,
+        source: framework.source,
+      };
+      // Also update gpa_summary with program context
+      if (gpaSummary) {
+        gpaSummary.program_total_credits = framework.totalCredits;
+        gpaSummary.credits_remaining = cleanData.program.credits_remaining;
+      }
+    }
+  }
+
   // Classify query intent to scope RAG search to correct category in hdsd site content
   let detectedCategory = null;
   const lowerQuery = messageText.toLowerCase();
@@ -1686,14 +1755,36 @@ async function processMessage(senderPsid, messageText) {
     detectedCategory = "tuition";
   } else if (lowerQuery.includes("vstep") || lowerQuery.includes("nlnn") || lowerQuery.includes("chuẩn đầu ra")) {
     detectedCategory = "vstep";
+  } else if (lowerQuery.includes("kế hoạch giảng dạy") || lowerQuery.includes("khung chương trình") || lowerQuery.includes("chương trình đào tạo") || lowerQuery.includes("môn học") || lowerQuery.includes("học phần")) {
+    detectedCategory = "teaching_plan";
   }
 
-  // RAG: Query matching regulation nodes from DB and hdsd crawl file
+  // RAG: Query matching regulation nodes from DB and hdsd crawl file.
+  // When student's major is known, also search for program-specific teaching plan.
   const regs = await db.searchRegNodes(messageText, 4, detectedCategory);
+  let majorRegs = [];
+  if (majorName) {
+    majorRegs = await db.searchRegNodes(`${majorName} kế hoạch giảng dạy`, 3, "teaching_plan");
+    // Also try without category filter if nothing found
+    if (!majorRegs.length) {
+      majorRegs = await db.searchRegNodes(`${majorName} tổng số tín chỉ`, 2);
+    }
+  }
+  // Merge: program-specific results first, then general results (deduplicated by content)
+  const seenContents = new Set();
+  const allRegs = [];
+  for (const r of [...majorRegs, ...regs]) {
+    const key = (r.content || "").slice(0, 100);
+    if (!seenContents.has(key)) {
+      seenContents.add(key);
+      allRegs.push(r);
+    }
+  }
+  const finalRegs = allRegs.slice(0, 6);
   let regContextText = "";
-  if (regs && regs.length > 0) {
+  if (finalRegs && finalRegs.length > 0) {
     regContextText = "\n[!] QUY CHẾ ĐÀO TẠO & HƯỚNG DẪN THAM KHẢO (Được trích xuất từ tài liệu UFLS):\n";
-    regs.forEach((r, idx) => {
+    finalRegs.forEach((r, idx) => {
       regContextText += `\nĐoạn ${idx + 1} (Nguồn: ${r.title || "Sổ tay sinh viên"} - ${r.source_url || "UFLS"}):\n${r.content}\n`;
     });
   }
