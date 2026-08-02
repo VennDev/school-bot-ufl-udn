@@ -67,6 +67,16 @@ const realAlerts = detectSchedule(scheduleTable(), movedRoom);
 assert.strictEqual(realAlerts.length, 1, "Real room change must still alert");
 assert.ok(realAlerts[0].includes("X999(LD)"), "Alert must mention the new room");
 
+// Historical schedules must not notify as newly added when current term exists.
+const historicalOld = scheduleTable();
+const currentTerm = {
+  year: "2026-2027", semester: "Kỳ 1",
+  headers: ["STT", "Tên học phần", "Số tín chỉ", "Tên lớp tín chỉ", "Thời gian", "Thứ", "Tiết", "Phòng"],
+  rows: [["1", "Văn học Anh", "2", "Văn học Anh-09", "24/08/2026-06/12/2026", "6", "7-8", "B503(LNH)"]]
+};
+assert.deepStrictEqual(detectSchedule(historicalOld, [currentTerm]), [],
+  "Historical courses must not be announced as new when only current term is relevant");
+
 // ---- detectGrades: score numeric formatting ----
 const gradeTable = () => [{
   headers: ["STT", "Ký hiệu", "Tên học phần", "Số tín chỉ", "Điểm thành phần", "Điểm thi", "TBCHP", "Điểm số", "Điểm chữ", "Ghi chú", "Năm học", "Học kỳ"],

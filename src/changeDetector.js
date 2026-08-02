@@ -241,12 +241,79 @@ function detectSchedule(oldData, newData) {
     .find(index => index !== -1);
   const isScheduleTable = table => {
     const headers = (table?.headers || []).map(norm);
-    return headers.includes("ten hoc phan") || headers.includes("ten mon hoc") ||
+    const hasSubject = headers.includes("ten hoc phan") || headers.includes("ten mon hoc") ||
       headers.includes("ten mon") || headers.includes("mon hoc") || headers.includes("hoc phan");
+    const hasRegistrationColumns = headers.some(header =>
+      /so tin chi|ten lop tin chi|duong dan/.test(header)
+    );
+    return hasSubject && hasRegistrationColumns;
   };
-  const tables = data => Array.isArray(data) ? data.filter(isScheduleTable) : [];
-  const oldTables = tables(oldData);
-  const newTables = tables(newData);
+  const tableDates = table => {
+    const headers = (table?.headers || []).map(norm);
+    const timeIndex = ["thoi gian", "thoi gian hoc", "ngay hoc"].map(alias => headers.indexOf(alias)).find(index => index !== -1);
+    const text = (table?.rows || []).map(row => {
+      if (!Array.isArray(row)) return "";
+      return timeIndex === undefined ? row.join(" ") : String(row[timeIndex] || "");
+    }).join(" ");
+    return [...text.matchAll(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/g)].map(match => {
+      let year = Number(match[3]);
+      if (year < 100) year += 2000;
+      const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }).filter(Boolean);
+  };
+  const tableYear = table => {
+    const value = table?.year || table?.sourceYear || table?.yearValue || "";
+    const match = String(value).match(/\d{4}/);
+    return match ? Number(match[0]) : null;
+  };
+  const tableSemester = table => {
+    const value = table?.semester || table?.semesterValue || "";
+    const match = String(value).match(/\d+/);
+    return match ? Number(match[0]) : null;
+  };
+  const relevantTables = data => {
+    const source = Array.isArray(data) ? data.filter(isScheduleTable) : [];
+    if (!source.length) return [];
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const currentYear = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+    const windows = source.map(table => {
+      const dates = tableDates(table);
+      return {
+        table,
+        dates,
+        year: tableYear(table) || (dates[0] && (dates[0].getMonth() + 1 >= 8 ? dates[0].getFullYear() : dates[0].getFullYear() - 1)),
+        semester: tableSemester(table),
+        start: dates.length ? new Date(Math.min(...dates.map(date => date.getTime()))) : null,
+        end: dates.length ? new Date(Math.max(...dates.map(date => date.getTime()))) : null,
+      };
+    });
+    const active = windows.filter(item => item.start && item.end && item.start <= today && item.end >= today);
+    if (active.length) {
+      const latestEnd = Math.max(...active.map(item => item.end.getTime()));
+      return active.filter(item => item.end.getTime() === latestEnd).map(item => item.table);
+    }
+    const upcoming = windows
+      .filter(item => item.start && item.start > today && item.year === currentYear)
+      .sort((a, b) => a.start - b.start);
+    if (upcoming.length) {
+      const earliestStart = upcoming[0].start.getTime();
+      return upcoming.filter(item => item.start.getTime() === earliestStart).map(item => item.table);
+    }
+    // Historical-only fixtures and old snapshots: compare latest stored term,
+    // never every historical table. This prevents old courses being announced.
+    const datedOrMeta = windows.filter(item => item.year !== null);
+    if (!datedOrMeta.length) return source;
+    const latestYear = Math.max(...datedOrMeta.map(item => item.year));
+    const latestYearItems = datedOrMeta.filter(item => item.year === latestYear);
+    const semesters = latestYearItems.map(item => item.semester).filter(Number.isFinite);
+    if (!semesters.length) return latestYearItems.map(item => item.table);
+    const latestSemester = Math.max(...semesters);
+    return latestYearItems.filter(item => item.semester === latestSemester).map(item => item.table);
+  };
+  const oldTables = relevantTables(oldData);
+  const newTables = relevantTables(newData);
   if (!newTables.length || !oldTables.length) return []; // First sync: no notification.
 
   const hasMeta = list => list.some(table => (table.headers || []).some(header =>

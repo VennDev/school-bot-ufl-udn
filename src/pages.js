@@ -317,7 +317,7 @@ const PAGES = [
       const info = {};
       const controls = "input:not([type=file]):not([type=password]):not([type=hidden]), select, textarea";
       const cleanKey = value => String(value || "").replace(/[:：]\s*$/, "").replace(/\s+/g, " ").trim();
-      const skipKeys = /mật khẩu|password|mã xác nhận|captcha|nhập lại/i;
+      const skipKeys = /mật khẩu|password|mã xác nhận|captcha|nhập lại|\bmsbm\b/i;
       const readControl = control => {
         if (!control) return "";
         if (control.matches("select")) {
@@ -346,24 +346,23 @@ const PAGES = [
       document.querySelectorAll(".NoiDungHoSo").forEach(el => {
         const text = (el.innerText || "").trim();
         if (!text) return;
-        // Try "Label: Value" pattern within the text content itself
+        // A portal label often ends with ':' while value lives in next input.
+        // Only stop after inline value is non-empty; otherwise read sibling control.
         const colonIdx = text.indexOf(":");
         if (colonIdx > 0) {
           const key = text.slice(0, colonIdx);
-          const value = text.slice(colonIdx + 1);
-          addField(key, value);
-          return;
+          const value = text.slice(colonIdx + 1).trim();
+          if (value) {
+            addField(key, value);
+            return;
+          }
         }
-        // Otherwise look for sibling control (old behavior)
         const control = findControl(el);
         if (control) {
-          addField(el.innerText, readControl(control));
+          addField(text.replace(/[:：]\s*$/, ""), readControl(control));
         } else {
-          // No colon, no control — try splitting by whitespace as key-value
           const parts = text.split(/\s{2,}/);
-          if (parts.length >= 2) {
-            addField(parts[0], parts.slice(1).join(" "));
-          }
+          if (parts.length >= 2) addField(parts[0], parts.slice(1).join(" "));
         }
       });
 
@@ -408,7 +407,7 @@ const PAGES = [
       const keyMap = {
         "ho va ten": "Họ và tên", "ho ten": "Họ và tên", "họ và tên": "Họ và tên", "họ tên": "Họ và tên",
         "ma so sinh vien": "Mã số sinh viên", "ma sinh vien": "Mã số sinh viên", "mssv": "Mã số sinh viên", "mã số sinh viên": "Mã số sinh viên", "mã sinh viên": "Mã số sinh viên",
-        "nganh": "Ngành", "nganh hoc": "Ngành", "ngành học": "Ngành", "ngành đào tạo": "Ngành", "nganh dao tao": "Ngành", "chuyen nganh": "Ngành", "chuyên ngành": "Ngành",
+        "nganh": "Ngành", "nganh hoc": "Ngành", "ngành học": "Ngành", "ngành đào tạo": "Ngành", "nganh dao tao": "Ngành", "chuyen nganh": "Chuyên ngành", "chuyên ngành": "Chuyên ngành",
         "lop": "Lớp", "lop sinh hoat": "Lớp", "lớp": "Lớp", "lớp sinh hoạt": "Lớp",
         "khoa": "Khóa", "khoa hoc": "Khóa", "khóa học": "Khóa", "khoa tuyen sinh": "Khóa", "khóa tuyển sinh": "Khóa",
         "he dao tao": "Hệ đào tạo", "he": "Hệ đào tạo", "hệ đào tạo": "Hệ đào tạo",
@@ -431,6 +430,12 @@ const PAGES = [
         if (!normalized[mapped] || (value && !normalized[mapped])) {
           normalized[mapped] = value;
         }
+      }
+
+      // Portal shows class code in the page header, not in a labeled field.
+      if (!normalized["Lớp"]) {
+        const classMatch = (document.body.innerText || "").match(/\b\d{2}[A-Z]{2,}\d{1,2}\b/i);
+        if (classMatch) normalized["Lớp"] = classMatch[0].toUpperCase();
       }
 
       // If major not found, attempt to parse from class name (e.g., 23CNA13 -> CNA)
