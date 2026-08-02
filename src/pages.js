@@ -254,18 +254,8 @@ function hasUsableData(key, value) {
     });
     return hasProfileField || validEntries.length >= 2;
   }
-  if (key === "canhBao") return Array.isArray(value) && value.length > 0;
-  if (key === "lichThi" || key === "diemRenLuyen") {
-    return Array.isArray(value) && value.length > 1 && value.slice(1).some(row =>
-      Array.isArray(row) && row.some(cell => String(cell ?? "").trim())
-    );
-  }
-  if (key === "hocBongKTKL") {
-    // Header-only tables mean portal responded successfully with no records.
-    return value && typeof value === "object" && Object.values(value).some(rows =>
-      Array.isArray(rows) && rows.length > 0
-    );
-  }
+  if (key === "canhBao") return Array.isArray(value);
+  if (key === "hocBongKTKL") return value != null && typeof value === "object";
   if (Array.isArray(value)) {
     return value.some(item => {
       if (item && typeof item === "object" && !Array.isArray(item)) {
