@@ -218,6 +218,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
           : await fastPage.evaluate(p.extract);
         delete fastPage._collectedData;
         if (!hasUsableData(p.key, pageData)) {
+          console.warn(`  [${account.username}] ${p.key}: EMPTY_DATA validation failed. Extracted raw:`, JSON.stringify(pageData));
           throw new Error("EMPTY_DATA");
         }
         scraped[p.key] = pageData;

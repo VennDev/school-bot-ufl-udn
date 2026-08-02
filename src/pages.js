@@ -242,9 +242,18 @@ function parseMajorFromClassName(className) {
 
 function hasUsableData(key, value) {
   if (value == null) return false;
-  if (key === "thongTinSV") return typeof value === "object" && Object.entries(value).some(([field, fieldValue]) =>
-    !field.startsWith("_") && /ngành|mã số|họ và tên|mssv|lớp|khóa|trạng thái/i.test(field) && String(fieldValue ?? "").trim()
-  );
+  if (key === "thongTinSV") {
+    if (!value || typeof value !== "object") return false;
+    const validEntries = Object.entries(value).filter(([f, v]) => !f.startsWith("_") && String(v ?? "").trim().length > 0);
+    if (validEntries.length === 0) return false;
+    // Check if any key matches student profile fields (flexible matching with/without accents)
+    const profileFieldRegex = /nganh|ngành|ma|mã|mssv|ho|họ|ten|tên|lop|lớp|khoa|khóa|trang thai|trạng thái|he|hệ|email|phone|sdt|sđt|dia chi|địa chỉ|cmnd|cccd/i;
+    const hasProfileField = validEntries.some(([field]) => {
+      const normField = field.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d");
+      return profileFieldRegex.test(field) || profileFieldRegex.test(normField);
+    });
+    return hasProfileField || validEntries.length >= 2;
+  }
   if (key === "canhBao") return Array.isArray(value) && value.length > 0;
   if (key === "lichThi" || key === "diemRenLuyen") {
     return Array.isArray(value) && value.length > 1 && value.slice(1).some(row =>
