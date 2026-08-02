@@ -182,9 +182,27 @@ function formatKetQuaHocTap(scrapedData) {
   }
 
   if (gradeTables.length) {
+    // Detect component score and exam score columns from headers
+    const norm = value => String(value || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d")
+      .toLowerCase().replace(/\s+/g, " ").trim();
+    const sampleHeaders = gradeTables.find(t => t.headers?.length)?.headers || [];
+    const normalizedHeaders = sampleHeaders.map(norm);
+    const findHeader = pattern => normalizedHeaders.findIndex(h => pattern.test(h));
+    const componentIdx = findHeader(/diem thanh phan|diem chuyen can|diem giua ky|diem thuc hanh|diem bai tap|diem thuong xuyen|diem tieu luan/);
+    const examIdx = findHeader(/^diem thi$|diem thi(?!.*tk)|diem cuoi ky/);
+
     txt += `\n📝 Chi tiết điểm môn gần đây:`;
     gradeRows(gradeTables).slice(0, 5).forEach((r) => {
-      txt += `\n- ${r[2]}: ${r[6]} (${r[8]})`;
+      const parts = [`${r[2]}: TBCHP ${r[6]} (${r[8] || "?"})`];
+      if (componentIdx >= 0 && r[componentIdx]) {
+        const tp = String(r[componentIdx]).trim().split(/\s*[-–]\s*/).filter(Boolean).join(" | ");
+        parts.push(`TP: ${tp}`);
+      }
+      if (examIdx >= 0 && r[examIdx]) {
+        parts.push(`Thi: ${String(r[examIdx]).trim()}`);
+      }
+      txt += `\n- ${parts.join(" | ")}`;
     });
   }
 

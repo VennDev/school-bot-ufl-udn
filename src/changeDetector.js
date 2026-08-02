@@ -2,6 +2,34 @@ const messenger = require("./messenger");
 const db = require("./db");
 const mailer = require("./mailer");
 
+// Parse component score text like "TP1 : 8 - TP2 : 8" or "CC:8, GK:7.5"
+// into a stable, comparable key-sorted string: "TP1:8|TP2:8"
+function _normComponentScores(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  // Split on common delimiters: - ; / (NOT comma — it's a decimal separator in Vietnamese)
+  const parts = text.split(/\s*[-–;\/]\s*/).filter(Boolean);
+  const pairs = [];
+  parts.forEach(part => {
+    const match = part.match(/^([^:]+)\s*:\s*(.+)$/);
+    if (match) {
+      const key = match[1].trim().toLowerCase().replace(/\s+/g, "");
+      const score = parseFloat(String(match[2]).trim().replace(/,/g, "."));
+      pairs.push([key, Number.isFinite(score) ? score : match[2].trim()]);
+    }
+  });
+  if (!pairs.length) return text.toLowerCase().replace(/\s+/g, "");
+  pairs.sort((a, b) => a[0].localeCompare(b[0]));
+  return pairs.map(([k, v]) => `${k}:${v}`).join("|");
+}
+
+function _normComponentScoreForDisplay(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const parts = text.split(/\s*[-–]\s*/).filter(Boolean);
+  return parts.map(p => p.trim()).join(" | ");
+}
+
 function detectGrades(oldData, newData) {
   if (!Array.isArray(newData)) return [];
   const norm = value => String(value || "")
@@ -36,6 +64,10 @@ function detectGrades(oldData, newData) {
   const nameIdx = findHeader(/ten hoc phan/) !== -1 ? findHeader(/ten hoc phan/) : 2;
   const scoreIdx = findHeader(/tbchp|diem tk|diem tong ket/) !== -1 ? findHeader(/tbchp|diem tk|diem tong ket/) : 6;
   const charIdx = findHeader(/diem chu|diem tk \(ch\)/) !== -1 ? findHeader(/diem chu|diem tk \(ch\)/) : 8;
+  // Component scores: "Điểm thành phần", "Điểm chuyên cần", "Điểm giữa kỳ", etc.
+  const componentIdx = findHeader(/diem thanh phan|diem chuyen can|diem giua ky|diem thuc hanh|diem bai tap|diem thuong xuyen|diem tieu luan/);
+  // Final exam score: "Điểm thi" (separate from TBCHP)
+  const examIdx = findHeader(/^diem thi$|diem thi(?!.*tk)|diem cuoi ky/);
   const yearIdx = findHeader(/nam hoc/);
   const semesterIdx = findHeader(/hoc ky/);
   const rowKey = row => [row[keyIdx], row[nameIdx], yearIdx >= 0 ? row[yearIdx] : "", semesterIdx >= 0 ? row[semesterIdx] : ""].join("|");
@@ -65,9 +97,52 @@ function detectGrades(oldData, newData) {
     const oldRow = oldRows.get(rowKey(row)) || (!hasComparableSemesterMetadata ? oldBaseRows.get(baseKey(row)) : null);
     let alert = null;
     if (!oldRow) {
-      alert = `[=] Điểm mới môn: ${name} - TBCHP: ${row[scoreIdx]} (${row[charIdx] || "?"})`;
-    } else if (normScore(oldRow[scoreIdx]) !== normScore(row[scoreIdx])) {
-      alert = `(->) Thay đổi điểm môn: ${name} -> TBCHP mới: ${row[scoreIdx]} (${row[charIdx] || "?"})`;
+      const parts = [`[=] Điểm mới môn: ${name}`];
+      if (componentIdx >= 0 && row[componentIdx]) parts.push(`TP: ${_normComponentScoreForDisplay(row[componentIdx])}`);
+      if (examIdx >= 0 && row[examIdx]) parts.push(`Thi: ${row[examIdx]}`);
+      parts.push(`TBCHP: ${row[scoreIdx]} (${row[charIdx] || "?"})`);
+      alert = parts.join(" | ");
+    } else {
+      const changes = [];
+      // Detect TBCHP change
+      if (normScore(oldRow[scoreIdx]) !== normScore(row[scoreIdx])) {
+        const oldVal = String(oldRow[scoreIdx] || "").trim() || "(trống)";
+        const newVal = String(row[scoreIdx] || "").trim() || "(trống)";
+        changes.push(`TBCHP: ${oldVal} -> ${newVal}`);
+      }
+      // Detect component score change
+      if (componentIdx >= 0) {
+        const oldComp = _normComponentScores(oldRow[componentIdx]);
+        const newComp = _normComponentScores(row[componentIdx]);
+        if (oldComp !== newComp) {
+          const oldDisplay = _normComponentScoreForDisplay(oldRow[componentIdx]);
+          const newDisplay = _normComponentScoreForDisplay(row[componentIdx]);
+          if (!oldComp && newComp) {
+            changes.push(`Điểm TP mới: ${newDisplay}`);
+          } else if (oldComp && !newComp) {
+            changes.push(`Điểm TP đã bị xóa (trước: ${oldDisplay})`);
+          } else {
+            changes.push(`Điểm TP: ${oldDisplay || "(trống)"} -> ${newDisplay}`);
+          }
+        }
+      }
+      // Detect exam score change
+      if (examIdx >= 0) {
+        const oldExam = normScore(oldRow[examIdx]);
+        const newExam = normScore(row[examIdx]);
+        if (oldExam !== newExam) {
+          const oldVal = String(oldRow[examIdx] || "").trim() || "(trống)";
+          const newVal = String(row[examIdx] || "").trim();
+          if (!String(oldRow[examIdx] || "").trim() && newVal) {
+            changes.push(`Điểm thi mới: ${newVal}`);
+          } else if (newVal) {
+            changes.push(`Điểm thi: ${oldVal} -> ${newVal}`);
+          }
+        }
+      }
+      if (changes.length) {
+        alert = `(->) Thay đổi điểm môn: ${name} | ${changes.join(" | ")}`;
+      }
     }
     if (alert && !seenAlerts.has(alert)) {
       seenAlerts.add(alert);
