@@ -1170,13 +1170,57 @@
       container.innerHTML = html;
     }
 
+    function currentAcademicYearStart() {
+      const now = new Date();
+      return now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+    }
+
+    function currentSemesterNumber() {
+      const month = new Date().getMonth() + 1;
+      return month >= 8 ? 1 : month <= 5 ? 2 : 3;
+    }
+
+    function scheduleYearStart(table) {
+      const raw = table?.year || table?.sourceYear || table?.yearValue || '';
+      const match = String(raw).match(/\d{4}/);
+      return match ? Number(match[0]) : null;
+    }
+
+    function scheduleSemesterNumber(table) {
+      const raw = table?.semester || table?.semesterValue || '';
+      const match = String(raw).match(/\d+/);
+      return match ? Number(match[0]) : null;
+    }
+
+    function selectCurrentScheduleTables(raw) {
+      const withMetadata = raw.filter(table => scheduleYearStart(table) !== null);
+      if (!withMetadata.length) return raw;
+      const currentYear = currentAcademicYearStart();
+      const currentSemester = currentSemesterNumber();
+      const current = withMetadata.filter(table =>
+        scheduleYearStart(table) === currentYear && scheduleSemesterNumber(table) === currentSemester
+      );
+      if (current.length) return current;
+      const sameYear = withMetadata.filter(table => scheduleYearStart(table) === currentYear);
+      if (sameYear.length) {
+        const latestSemester = Math.max(...sameYear.map(scheduleSemesterNumber).filter(Number.isFinite));
+        return sameYear.filter(table => scheduleSemesterNumber(table) === latestSemester);
+      }
+      const latestYear = Math.max(...withMetadata.map(scheduleYearStart));
+      return withMetadata.filter(table => scheduleYearStart(table) === latestYear);
+    }
+
     function renderLichHocTab(container, raw) {
       if (!raw || !raw.length) {
         container.innerHTML = '<div class="text-center py-8 text-gray-400">Chưa có dữ liệu lịch học</div>';
         return;
       }
+      const tables = selectCurrentScheduleTables(raw);
       let html = '<div class="space-y-6">';
-      raw.forEach((t, i) => {
+      if (tables.length < raw.length) {
+        html += '<div class="text-xs text-gray-500">Đang hiển thị kỳ học hiện tại. Dữ liệu kỳ cũ vẫn nằm trong DB và dùng khi tra cứu theo năm học.</div>';
+      }
+      tables.forEach((t, i) => {
         const title = t.year && t.semester
           ? `Lịch Học ${t.year} - ${t.semester}`
           : `Bảng Lịch Học ${i + 1}`;

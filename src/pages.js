@@ -204,7 +204,14 @@ function _extractScheduleTables() {
     const rows = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")]
       .map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.trim()))
       .filter(row => row.length);
-    if (headers.some(h => /học phần|môn/i.test(h)) && rows.some(row => row.some(cell => cell.length > 2 && !/STT/i.test(cell)))) {
+    const normalizedHeaders = headers.map(header => String(header || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase());
+    // Keep course-registration tables only. Absence/announcement tables also
+    // contain subject/time columns, but lack credits and class columns.
+    const hasCourse = normalizedHeaders.some(header => /ten hoc phan|ten mon/.test(header));
+    const hasRegistrationColumns = normalizedHeaders.some(header => /so tin chi|ten lop tin chi|duong dan/.test(header));
+    if (hasCourse && hasRegistrationColumns && rows.some(row => row.some(cell => cell.length > 2 && !/STT/i.test(cell)))) {
       tables.push({ headers, rows });
     }
   });

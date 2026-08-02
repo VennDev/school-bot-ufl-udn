@@ -475,7 +475,19 @@ function getScheduleEntries(data, options = {}) {
     const n = normalizeScheduleHeader(h);
     return n.includes("ten hoc phan") || n.includes("ten mon") || n === "mon hoc" || n === "hoc phan";
   };
-  let tables = data.filter((t) => {
+  const isRegistrationTable = (table) => {
+    const headers = (table.headers || []).map(normalizeScheduleHeader);
+    const hasSubject = headers.some(isScheduleHeader);
+    const hasRegistrationColumns = headers.some(header =>
+      /so tin chi|ten lop tin chi|duong dan/.test(header)
+    );
+    return hasSubject && hasRegistrationColumns;
+  };
+  // Old DB snapshots can contain absence/announcement tables with subject/time
+  // columns. Prefer course-registration tables whenever any are available.
+  const registrationTables = data.filter(isRegistrationTable);
+  const sourceTables = registrationTables.length ? registrationTables : data;
+  let tables = sourceTables.filter((t) => {
     const headers = (t.headers || []).map(normalizeScheduleHeader);
     return headers.some(isScheduleHeader) || (t.rows || []).some(isLegacyRow) || (t.rows || []).some(isPortalScheduleRow);
   });

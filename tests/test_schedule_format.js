@@ -23,6 +23,13 @@ const multiSemesterEntries = getScheduleEntries([
 assert.strictEqual(multiSemesterEntries.length, 2);
 assert.ok(multiSemesterEntries.some(entry => entry.name === "Môn mới" && entry.room === "B204" && entry.period === "2"));
 
+// Ignore absence/announcement tables when registration schedule exists.
+const registrationOnlyEntries = getScheduleEntries([
+  { headers: ["STT", "Tên môn", "Thời gian học", "Cán bộ giảng dạy"], rows: [["1", "Thông báo nghỉ", "Thứ 2;Ngày: 01/08/2026;Tiết: 1", "GV"]] },
+  { headers: ["STT", "Tên học phần", "Số tín chỉ", "Tên lớp tín chỉ", "Thời gian", "Thứ", "Tiết"], rows: [["1", "Môn hiện tại", "3", "Môn hiện tại-01", "24/08/2026-06/12/2026", "2", "1-3"]] }
+]);
+assert.deepStrictEqual(registrationOnlyEntries.map(entry => entry.name), ["Môn hiện tại"]);
+
 const latestEntries = getScheduleEntries([
   { yearValue: "2025", semesterValue: "2", headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["1", "Môn cũ", "2", "L01"]] },
   { yearValue: "2026", semesterValue: "1", headers: ["Tiết", "Môn học", "Thứ", "Lớp học phần"], rows: [["7-8", "Môn hiện tại", "6", "L02"]] }
