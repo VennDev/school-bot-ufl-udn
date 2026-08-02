@@ -1244,7 +1244,12 @@
         const title = year && semester
           ? `Lịch Học ${year}-${year + 1} - Kỳ ${semester}`
           : `Bảng Lịch Học ${i + 1}`;
-        html += `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon('calendar-days', 'h-4 w-4')}${escapeHTML(title)}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
+        const rows = (t.rows || []).filter(row => {
+          if (!Array.isArray(row) || row.length > 3) return true;
+          const text = row.join(' ');
+          return !(/\b\d{4}\s*[-–]\s*\d{4}\b/.test(text) && /\bkỳ\s*[123]\b/i.test(text));
+        });
+        html += `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon('calendar-days', 'h-4 w-4')}${escapeHTML(title)}</h4>${renderTableHTML(t.headers, rows)}</div>`;
       });
       html += '</div>';
       container.innerHTML = html;

@@ -141,7 +141,12 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
         }
 
         for (const table of Array.isArray(extracted) ? extracted : []) {
-          const rows = (table?.rows || []).filter(row => !isPlaceholderRow(row));
+          const isScheduleSummaryRow = row => {
+            if (!Array.isArray(row) || row.length > 3) return false;
+            const text = row.join(" ");
+            return /\b\d{4}\s*[-–]\s*\d{4}\b/.test(text) && /\bkỳ\s*[123]\b/i.test(text);
+          };
+          const rows = (table?.rows || []).filter(row => !isPlaceholderRow(row) && !isScheduleSummaryRow(row));
           if (!rows.some(row => row.some(cell => String(cell ?? "").trim()))) continue;
           // Same rows can exist in multiple academic years. Keep selection metadata,
           // or a year-specific query can lose an otherwise valid match.
