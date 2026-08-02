@@ -1180,13 +1180,31 @@
       return month >= 8 ? 1 : month <= 5 ? 2 : 3;
     }
 
+    function scheduleDateStart(table) {
+      const text = (table?.rows || []).map(row => Array.isArray(row) ? row.join(' ') : String(row || '')).join(' ');
+      const dates = [...text.matchAll(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/g)].map(match => {
+        let year = Number(match[3]);
+        if (year < 100) year += 2000;
+        const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
+        return Number.isNaN(date.getTime()) ? null : date;
+      }).filter(Boolean);
+      return dates.length ? new Date(Math.min(...dates.map(date => date.getTime()))) : null;
+    }
+
     function scheduleYearStart(table) {
+      const date = scheduleDateStart(table);
+      if (date) return date.getMonth() + 1 >= 8 ? date.getFullYear() : date.getFullYear() - 1;
       const raw = table?.year || table?.sourceYear || table?.yearValue || '';
       const match = String(raw).match(/\d{4}/);
       return match ? Number(match[0]) : null;
     }
 
     function scheduleSemesterNumber(table) {
+      const date = scheduleDateStart(table);
+      if (date) {
+        const month = date.getMonth() + 1;
+        return month >= 8 ? 1 : month <= 4 ? 2 : 3;
+      }
       const raw = table?.semester || table?.semesterValue || '';
       const match = String(raw).match(/\d+/);
       return match ? Number(match[0]) : null;
@@ -1221,8 +1239,10 @@
         html += '<div class="text-xs text-gray-500">Đang hiển thị kỳ học hiện tại. Dữ liệu kỳ cũ vẫn nằm trong DB và dùng khi tra cứu theo năm học.</div>';
       }
       tables.forEach((t, i) => {
-        const title = t.year && t.semester
-          ? `Lịch Học ${t.year} - ${t.semester}`
+        const year = scheduleYearStart(t);
+        const semester = scheduleSemesterNumber(t);
+        const title = year && semester
+          ? `Lịch Học ${year}-${year + 1} - Kỳ ${semester}`
           : `Bảng Lịch Học ${i + 1}`;
         html += `<div><h4 class="flex items-center gap-2 text-sm font-bold text-blue-700 mb-2">${uiIcon('calendar-days', 'h-4 w-4')}${escapeHTML(title)}</h4>${renderTableHTML(t.headers, t.rows)}</div>`;
       });
