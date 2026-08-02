@@ -307,13 +307,20 @@
       <div class="bg-white p-6 rounded-lg shadow-md flex flex-col flex-1">
         <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
           <h3 class="text-lg font-bold text-gray-800">[📊] Thống kê tần suất sử dụng</h3>
-          <div class="flex items-center space-x-3">
-            <select id="stats-days" onchange="loadUsageStats()" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
+          <div class="flex items-center space-x-3 flex-wrap gap-2">
+            <select id="stats-days" onchange="onStatsDaysChange()" class="border border-gray-300 rounded px-3 py-1.5 text-sm">
               <option value="7">7 ngày</option>
               <option value="14">14 ngày</option>
               <option value="30" selected>30 ngày</option>
               <option value="90">90 ngày</option>
+              <option value="custom">Tùy chọn...</option>
             </select>
+            <span id="stats-date-range" class="hidden flex items-center space-x-2">
+              <span class="text-xs text-gray-500">Từ</span>
+              <input type="date" id="stats-date-from" onchange="loadUsageStats()" class="border border-gray-300 rounded px-2 py-1 text-sm">
+              <span class="text-xs text-gray-500">đến</span>
+              <input type="date" id="stats-date-to" onchange="loadUsageStats()" class="border border-gray-300 rounded px-2 py-1 text-sm">
+            </span>
             <button onclick="exportUsageCSV()" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded transition shadow">
               Xuất CSV
             </button>
@@ -586,10 +593,36 @@
     // ---------- Usage Stats & Chart ----------
     let cachedUsageStats = [];
 
+    function onStatsDaysChange() {
+      const val = document.getElementById('stats-days').value;
+      const rangeEl = document.getElementById('stats-date-range');
+      if (val === 'custom') {
+        rangeEl.classList.remove('hidden');
+        // Default to last 30 days if no dates set
+        const now = new Date();
+        const d30 = new Date(now.getTime() - 30 * 86400000);
+        document.getElementById('stats-date-from').value = d30.toISOString().slice(0, 10);
+        document.getElementById('stats-date-to').value = now.toISOString().slice(0, 10);
+      } else {
+        rangeEl.classList.add('hidden');
+      }
+      loadUsageStats();
+    }
+
     async function loadUsageStats() {
-      const days = document.getElementById('stats-days').value || 30;
+      const daysEl = document.getElementById('stats-days');
+      const daysVal = daysEl.value || '30';
+      let url;
+      if (daysVal === 'custom') {
+        const from = document.getElementById('stats-date-from').value;
+        const to = document.getElementById('stats-date-to').value;
+        if (!from || !to) return;
+        url = `/api/admin/usage-stats?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      } else {
+        url = `/api/admin/usage-stats?days=${daysVal}`;
+      }
       try {
-        const res = await fetch('/api/admin/usage-stats?days=' + days, {
+        const res = await fetch(url, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.status === 401 || res.status === 403) { logout(); return; }

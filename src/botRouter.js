@@ -1197,7 +1197,7 @@ async function processMessage(senderPsid, messageText) {
       return messenger.sendTextMessage(senderPsid, `Bạn hiện đã đăng nhập với tài khoản *${user.username}*. Đang chờ đồng bộ dữ liệu hoặc bạn có thể gõ "cài đặt" để cấu hình.`);
     }
     loginSessions.set(senderPsid, { step: "AWAITING_USERNAME" });
-    return messenger.sendTextMessage(senderPsid, "Vui lòng nhập Mã sinh viên của bạn để kết nối UFL Productivity Hub:");
+    return messenger.sendTextMessage(senderPsid, "Để lấy dữ liệu học tập (điểm số, lịch thi, học phí...) từ cổng thông tin nhà trường, bot cần đăng nhập vào tài khoản sinh viên của bạn. Vui lòng nhập Mã sinh viên (MSSV) trước nhé:");
   }
 
   // Handle User Settings

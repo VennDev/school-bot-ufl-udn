@@ -446,11 +446,14 @@ app.get("/api/admin/data-export", requireAdmin, async (req, res) => {
 
 // Usage statistics: daily message/active-user/sync/alert counts.
 // Aggregates from Interaction + ChangeLog collections.
+// Accepts ?days=N (default 30) or ?from=YYYY-MM-DD&to=YYYY-MM-DD for custom date range.
 app.get("/api/admin/usage-stats", requireAdmin, async (req, res) => {
   try {
+    const from = req.query.from || null;
+    const to = req.query.to || null;
     const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 365);
-    const stats = await db.getUsageStats(days);
-    res.json({ days, stats });
+    const stats = await db.getUsageStats(days, from, to);
+    res.json({ days, from, to, stats });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

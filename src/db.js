@@ -463,17 +463,28 @@ module.exports = {
       .lean();
   },
 
-  // Aggregate usage stats from Interaction + ChangeLog for the last N days.
+  // Aggregate usage stats from Interaction + ChangeLog for the last N days or a date range.
   // Returns daily buckets: { date, messages, activeUsers, syncs, alerts }.
-  async getUsageStats(days = 30) {
+  async getUsageStats(days = 30, fromDate = null, toDate = null) {
     await ensureInit();
-    const since = new Date();
-    since.setDate(since.getDate() - days);
-    since.setHours(0, 0, 0, 0);
+    let since, until;
+    if (fromDate && toDate) {
+      since = new Date(fromDate);
+      since.setHours(0, 0, 0, 0);
+      until = new Date(toDate);
+      until.setHours(23, 59, 59, 999);
+    } else {
+      since = new Date();
+      since.setDate(since.getDate() - days);
+      since.setHours(0, 0, 0, 0);
+      until = null;
+    }
+    const matchFilter = { createdAt: { $gte: since } };
+    if (until) matchFilter.createdAt.$lte = until;
 
     // Messages + unique users + syncs per day (from Interaction)
     const interactionPipeline = [
-      { $match: { createdAt: { $gte: since } } },
+      { $match: matchFilter },
       {
         $group: {
           _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
@@ -491,7 +502,7 @@ module.exports = {
 
     // Alerts per day (from ChangeLog)
     const alertPipeline = [
-      { $match: { createdAt: { $gte: since }, type: "alert" } },
+      { $match: Object.assign({ type: "alert" }, matchFilter) },
       {
         $group: {
           _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
