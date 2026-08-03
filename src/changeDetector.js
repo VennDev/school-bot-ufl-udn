@@ -401,20 +401,171 @@ function detectSchedule(oldData, newData) {
   return [...new Set(alerts)];
 }
 
+// Parse a money string like "5.000.000" or "5,000,000" or "5000000" → number.
+function _parseMoney(value) {
+  const text = String(value || "").trim();
+  if (!text || /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}$/.test(text)) return null;
+  if (!/[.,]\d|₫|đ/i.test(text) && !/\d{4,}/.test(text)) return null;
+  let number = text.replace(/[^\d.,-]/g, "");
+  const comma = number.lastIndexOf(","), dot = number.lastIndexOf(".");
+  if (comma >= 0 && dot >= 0) {
+    number = comma > dot ? number.replace(/\./g, "").replace(",", ".") : number.replace(/,/g, "");
+  } else if (comma >= 0) {
+    number = /,\d{1,2}$/.test(number) ? number.replace(",", ".") : number.replace(/,/g, "");
+  } else if ((number.match(/\./g) || []).length > 1) {
+    number = number.replace(/\./g, "");
+  }
+  const parsed = Number(number);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+// Extract year + term label from a tuition row.
+// Only treat bare digits (1-3) as a term when the table has a term-like column,
+// otherwise a credit-count cell ("3") gets misread as "Kỳ 3".
+function _parseTuitionTerm(cells, table, headers = []) {
+  const year = cells.find(c => /\b\d{4}\s*[-–]\s*\d{4}\b/.test(c)) || table.year || "";
+  const termCol = headers.findIndex(h => /hoc ky|học kỳ|ky|kỳ|dot|đợt/.test(h));
+  const hasTermColumn = termCol >= 0;
+  const term = cells.find(c => /^(?:học\s*kỳ|kỳ|đợt)\s*\d+$/i.test(c)) ||
+    (hasTermColumn && cells.find(c => /^[1-3]$/.test(c))) ||
+    table.semester || "";
+  const termText = String(term).replace(/^học\s*kỳ\s*/i, "Kỳ ").replace(/^kỳ\s*/i, "Kỳ ").replace(/^đợt\s*/i, "Đợt ");
+  return {
+    year: String(year).replace(/[–—]/g, "-").trim(),
+    term: /^[1-3]$/.test(termText) ? `Kỳ ${termText}` : termText,
+  };
+}
+
+// Parse tuition table array into Map<"year - term", { debt, amount }>.
+function _parseTuitionData(data) {
+  if (!Array.isArray(data)) return new Map();
+  const result = new Map();
+  data.forEach((table, idx) => {
+    const headers = (table?.headers || []).map(h =>
+      String(h).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    );
+    const debtCol = headers.findIndex(h => /con no|no\b|chua nop/.test(h));
+    let current = { year: table?.year || "", term: table?.semester || "" };
+    (table?.rows || []).forEach(row => {
+      if (!Array.isArray(row)) return;
+      const cells = row.map(c => String(c ?? "").trim()).filter(Boolean);
+      if (!cells.length) return;
+      const next = _parseTuitionTerm(cells, table, headers);
+      if (next.year) current.year = next.year;
+      if (next.term) current.term = next.term;
+
+      const label = [current.year, current.term || `Đợt ${idx + 1}`].filter(Boolean).join(" - ");
+      const hasDebtText = cells.some(c =>
+        /còn nợ|con no|chưa nộp|chua nop/i.test(c) && !/(?:0[,.]0{1,2})\b/.test(c)
+      );
+      let debtAmount = null;
+      if (debtCol >= 0) debtAmount = _parseMoney(row[debtCol]);
+      if (debtAmount === null && hasDebtText) {
+        const amounts = cells.map(_parseMoney).filter(v => v !== null);
+        debtAmount = amounts.length >= 2 ? amounts[amounts.length - 1] : (amounts[0] || null);
+      }
+      const hasDebt = hasDebtText || (debtAmount !== null && debtAmount > 0);
+
+      if (!result.has(label) || hasDebt) {
+        result.set(label, { debt: hasDebt, amount: debtAmount });
+      }
+    });
+  });
+  return result;
+}
+
 function detectTuition(oldData, newData) {
   if (!newData) return [];
-  // basic string diff for tuition table rows
-  const oldStr = JSON.stringify(oldData);
-  const newStr = JSON.stringify(newData);
-  if (oldStr !== newStr && newStr.includes("Nợ")) {
-    return ["[$] Có thay đổi hoặc công nợ mới về học phí. Vui lòng kiểm tra."];
+
+  const oldTerms = _parseTuitionData(oldData);
+  const newTerms = _parseTuitionData(newData);
+  const alerts = [];
+
+  for (const [label, info] of newTerms) {
+    if (!info.debt) continue;
+    const prev = oldTerms.get(label);
+
+    if (!prev) {
+      const amt = info.amount ? ` ${info.amount.toLocaleString("vi-VN")}đ` : "";
+      alerts.push(`[$] Học phí mới: ${label}: Còn nợ${amt}`);
+    } else if (!prev.debt) {
+      const amt = info.amount ? ` ${info.amount.toLocaleString("vi-VN")}đ` : "";
+      alerts.push(`[$] Học phí thay đổi: ${label}: Đã nộp → Còn nợ${amt}`);
+    } else if (prev.amount !== info.amount && info.amount !== null) {
+      const oldAmt = prev.amount ? prev.amount.toLocaleString("vi-VN") : "?";
+      const newAmt = info.amount.toLocaleString("vi-VN");
+      alerts.push(`[$] Học phí thay đổi: ${label}: Còn nợ ${oldAmt}đ → ${newAmt}đ`);
+    }
+    // ponytail: if debt resolved (prev.debt && !info.debt), add alert here.
   }
-  return [];
+
+  return alerts;
 }
 
 // Utility Template mapping per notification category.
 // Templates bypass 24h window. Created via: npm run setup-templates
 const T = messenger.UTILITY_TEMPLATES;
+
+// Jaccard similarity on word tokens (0–1).
+function _textSimilarity(a, b) {
+  const words = s => {
+    const tokens = s.toLowerCase()
+      .replace(/[\[\]()|,:.]/g, " ")
+      .split(/\s+/)
+      .filter(w => w.length > 0);
+    return new Set(tokens);
+  };
+  const sa = words(a), sb = words(b);
+  if (!sa.size || !sb.size) return 0;
+  const intersection = [...sa].filter(w => sb.has(w)).length;
+  const union = new Set([...sa, ...sb]).size;
+  return intersection / union;
+}
+
+// Extract course name and numeric scores from a grade alert.
+function _parseGradeAlert(alert) {
+  // New grade: "[=] Điểm mới môn: {name} | ..."
+  let m = alert.match(/\[=\]\s*Điểm mới môn:\s*(.+?)\s*\|/);
+  if (m) return { name: m[1].trim(), isGrade: true };
+  // Changed grade: "(->) Thay đổi điểm môn: {name} | ..."
+  m = alert.match(/\(->\)\s*Thay đổi điểm môn:\s*(.+?)\s*\|/);
+  if (m) return { name: m[1].trim(), isGrade: true };
+  return { isGrade: false };
+}
+
+function _numericFingerprint(alert) {
+  return [...alert.matchAll(/(\d+(?:\.\d+)?)/g)].map(m => m[1]).sort().join(",");
+}
+
+// Check if alert duplicates something already sent (stored in ChangeLog).
+// Grades: same course + different scores → not a duplicate (must notify).
+// Others: ≥ 75% text similarity → duplicate (suppress).
+function _isDuplicateAlert(alert, recentAlerts) {
+  if (!alert || !recentAlerts.length) return false;
+
+  const gradeInfo = _parseGradeAlert(alert);
+
+  if (gradeInfo.isGrade) {
+    const sameCourseAlerts = recentAlerts.filter(a => {
+      const prev = _parseGradeAlert(a);
+      return prev.isGrade && prev.name === gradeInfo.name;
+    });
+    if (!sameCourseAlerts.length) return false; // New course → notify
+
+    // Same course name: check if any numeric score differs.
+    const fp = _numericFingerprint(alert);
+    const scoreChanged = sameCourseAlerts.some(a => _numericFingerprint(a) !== fp);
+    if (scoreChanged) return false; // Score changed → notify
+
+    // Same course, same scores → check text similarity.
+    const maxSim = Math.max(...sameCourseAlerts.map(a => _textSimilarity(alert, a)));
+    return maxSim >= 0.75;
+  }
+
+  // Non-grade alerts: text similarity only.
+  const maxSim = Math.max(...recentAlerts.map(a => _textSimilarity(alert, a)));
+  return maxSim >= 0.75;
+}
 
 async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
   // Collect (alert, templateKey) pairs
@@ -453,20 +604,36 @@ async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
     if (!grouped.has(templateKey)) grouped.set(templateKey, []);
     grouped.get(templateKey).push(alert);
   }
-  for (const [templateKey, alerts] of grouped) {
-    const uniqueAlerts = [...new Set(alerts)];
-    grouped.set(templateKey, uniqueAlerts);
-    uniqueAlerts.forEach(alert => db.logChange(fbId, "alert", alert));
-  }
+
+  // Fetch recent alert history once for cross-run dedup.
+  const recentLogs = await db.getChangeLogs(fbId, 50);
+  const recentAlerts = recentLogs
+    .filter(log => log.type === "alert")
+    .map(log => log.content);
 
   for (const [templateKey, alerts] of grouped) {
+    const uniqueAlerts = [...new Set(alerts)];
+
+    const newAlerts = [];
+    for (const alert of uniqueAlerts) {
+      if (_isDuplicateAlert(alert, recentAlerts)) {
+        console.log(`[notifier] Deduped alert for ${fbId}: ${alert.substring(0, 80)}...`);
+        continue;
+      }
+      newAlerts.push(alert);
+    }
+    if (!newAlerts.length) continue;
+
+    // Log only alerts that pass dedup so they become future dedup references.
+    newAlerts.forEach(alert => db.logChange(fbId, "alert", alert));
+
     const maxAlerts = 8;
-    const visible = alerts.slice(0, maxAlerts);
-    if (alerts.length > maxAlerts) {
-      visible.push(`... và ${alerts.length - maxAlerts} thay đổi khác. Mở mục tra cứu để xem đầy đủ.`);
+    const visible = newAlerts.slice(0, maxAlerts);
+    if (newAlerts.length > maxAlerts) {
+      visible.push(`... và ${newAlerts.length - maxAlerts} thay đổi khác. Mở mục tra cứu để xem đầy đủ.`);
     }
     const content = visible.join("\n");
-    console.log(`[notifier] Sending ${alerts.length} alert(s) to ${fbId} [${templateKey}]`);
+    console.log(`[notifier] Sending ${newAlerts.length} alert(s) to ${fbId} [${templateKey}]`);
     try {
       await messenger.sendUtilityMessage(fbId, templateKey, [content]);
     } catch (error) {
