@@ -1,5 +1,14 @@
 const BASE = "https://sinhvien.ufl.udn.vn";
 
+function _normalizeSemester(text) {
+  const str = String(text || "").trim();
+  const num = str.match(/(\d+)/);
+  if (num) return `Kỳ ${num[1]}`;
+  const roman = { i: "1", ii: "2", iii: "3", iv: "4" };
+  const lower = str.toLowerCase().replace(/\s+/g, "");
+  return roman[lower] ? `Kỳ ${roman[lower]}` : str;
+}
+
 function parseAcademicYear(value) {
   const match = String(value || "").match(/\b(\d{4})\s*[-–]\s*(\d{4})\b/);
   return match ? { start: Number(match[1]), end: Number(match[2]) } : null;
@@ -133,7 +142,7 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
           const selection = normalizeAcademicYearSelection(year.text, usableRows, headers);
           if (!collectedRows.length) collectedRows.push([...headers, "Năm học", "Học kỳ"]);
           usableRows.forEach(row => {
-            const entry = [...row, academicYearTextForRow(row, headers, selection.text), semester.text];
+            const entry = [...row, academicYearTextForRow(row, headers, selection.text), _normalizeSemester(semester.text)];
             const key = JSON.stringify(entry);
             if (!seenRows.has(key)) { seenRows.add(key); collectedRows.push(entry); }
           });
@@ -161,10 +170,10 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
             yearValue: selection.value,
             sourceYear: year.text,
             sourceYearValue: year.value,
-            semester: semester.text,
+            semester: _normalizeSemester(semester.text),
             semesterValue: semester.value,
             headers: [...headers, "Năm học", "Học kỳ"],
-            rows: rows.map(row => [...row, academicYearTextForRow(row, headers, selection.text), semester.text]),
+            rows: rows.map(row => [...row, academicYearTextForRow(row, headers, selection.text), _normalizeSemester(semester.text)]),
           });
         }
       } catch {

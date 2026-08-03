@@ -2,6 +2,17 @@ const messenger = require("./messenger");
 const db = require("./db");
 const mailer = require("./mailer");
 
+// Normalize semester text to stable format for key comparison.
+// Portal dropdown can return "Học kỳ 1", "Kỳ 1", "Kỳ I", etc. between loads.
+function _normalizeSemester(text) {
+  const str = String(text || "").trim();
+  const num = str.match(/(\d+)/);
+  if (num) return `Kỳ ${num[1]}`;
+  const roman = { i: "1", ii: "2", iii: "3", iv: "4" };
+  const lower = str.toLowerCase().replace(/\s+/g, "");
+  return roman[lower] ? `Kỳ ${roman[lower]}` : str;
+}
+
 // Parse component score text like "TP1 : 8 - TP2 : 8" or "CC:8, GK:7.5"
 // into a stable, comparable key-sorted string: "TP1:8|TP2:8"
 function _normComponentScores(value) {
@@ -70,7 +81,7 @@ function detectGrades(oldData, newData) {
   const examIdx = findHeader(/^diem thi$|diem thi(?!.*tk)|diem cuoi ky/);
   const yearIdx = findHeader(/nam hoc/);
   const semesterIdx = findHeader(/hoc ky/);
-  const rowKey = row => [row[keyIdx], row[nameIdx], yearIdx >= 0 ? row[yearIdx] : "", semesterIdx >= 0 ? row[semesterIdx] : ""].join("|");
+  const rowKey = row => [row[keyIdx], row[nameIdx], yearIdx >= 0 ? row[yearIdx] : "", semesterIdx >= 0 ? _normalizeSemester(row[semesterIdx]) : ""].join("|");
 
   const oldRows = new Map();
   const oldBaseRows = new Map();
@@ -169,7 +180,7 @@ function detectExams(oldData, newData) {
   const attemptIdx = headerIdx(/lần thi/i);
   const roundIdx = headerIdx(/đợt thi/i);
   const at = (row, idx) => (idx >= 0 ? String(row[idx] ?? "").trim() : "");
-  const examKey = row => [row[1], at(row, yearIdx), at(row, semesterIdx), at(row, attemptIdx), at(row, roundIdx)].join("|");
+  const examKey = row => [row[1], at(row, yearIdx), _normalizeSemester(at(row, semesterIdx)), at(row, attemptIdx), at(row, roundIdx)].join("|");
   const slot = row => `${String(row[3] ?? "").trim()}|${String(row[9] ?? "").trim()}`;
   const oldSlots = new Map();
   oldData.slice(1).forEach((r) => {
