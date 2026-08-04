@@ -232,7 +232,21 @@ function _extractTables() {
     });
 
     const rows = grid.filter(r => r && r.some(c => c !== undefined));
-    if (headers.length || rows.length) tables.push({ headers, rows });
+
+    // Drop sub-header rows that repeat the same header text in tbody.
+    // Portal sometimes renders a second row of lowercase headers inside tbody.
+    const filtered = headers.length
+      ? rows.filter(r => {
+          if (r.length !== headers.length) return true;
+          const matchCount = r.filter((cell, i) =>
+            cell && headers[i] &&
+            cell.toLowerCase() === headers[i].toLowerCase()
+          ).length;
+          return matchCount < headers.length;
+        })
+      : rows;
+
+    if (headers.length || filtered.length) tables.push({ headers, rows: filtered });
   });
   return tables;
 }
