@@ -13,6 +13,17 @@ function _normalizeSemester(text) {
   return roman[lower] ? `Kỳ ${roman[lower]}` : str;
 }
 
+// Normalize academic year text: collapse whitespace, normalize dashes.
+// "2024 - 2025", "2024–2025", "2024-2025" all become "2024-2025".
+function _normalizeYear(text) {
+  return String(text || "").trim().replace(/\s*[–—-]\s*/g, "-");
+}
+
+// Normalize a cell value for key comparison: trim whitespace.
+function _normCell(text) {
+  return String(text || "").trim();
+}
+
 // Parse component score text like "TP1 : 8 - TP2 : 8" or "CC:8, GK:7.5"
 // into a stable, comparable key-sorted string: "TP1:8|TP2:8"
 function _normComponentScores(value) {
@@ -81,11 +92,11 @@ function detectGrades(oldData, newData) {
   const examIdx = findHeader(/^diem thi$|diem thi(?!.*tk)|diem cuoi ky/);
   const yearIdx = findHeader(/nam hoc/);
   const semesterIdx = findHeader(/hoc ky/);
-  const rowKey = row => [row[keyIdx], row[nameIdx], yearIdx >= 0 ? row[yearIdx] : "", semesterIdx >= 0 ? _normalizeSemester(row[semesterIdx]) : ""].join("|");
+  const rowKey = row => [_normCell(row[keyIdx]), _normCell(row[nameIdx]), yearIdx >= 0 ? _normalizeYear(row[yearIdx]) : "", semesterIdx >= 0 ? _normalizeSemester(row[semesterIdx]) : ""].join("|");
 
   const oldRows = new Map();
   const oldBaseRows = new Map();
-  const baseKey = row => [row[keyIdx], row[nameIdx]].join("|");
+  const baseKey = row => [_normCell(row[keyIdx]), _normCell(row[nameIdx])].join("|");
   // Portal renders the same numeric grade with varying string forms between
   // page loads ("6.5" vs "6.50", trailing spaces, comma decimals). Compare
   // numerically so formatting churn never looks like a new/changed grade.
