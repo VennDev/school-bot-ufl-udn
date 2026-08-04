@@ -193,12 +193,45 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
 function _extractTables() {
   const tables = [];
   document.querySelectorAll("table").forEach(table => {
-    const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
-    const rows = [];
-    table.querySelectorAll("tbody tr, tr:not(:first-child)").forEach(tr => {
-      const cells = [...tr.querySelectorAll("td")].map(td => td.innerText.trim());
-      if (cells.length) rows.push(cells);
+    // Expand colspan in headers so header count matches data columns.
+    const rawHeaders = [...table.querySelectorAll("thead th, tr:first-child th")];
+    const headers = [];
+    rawHeaders.forEach(th => {
+      const text = th.innerText.trim();
+      const cs = parseInt(th.getAttribute("colspan") || "1", 10);
+      for (let i = 0; i < cs; i++) headers.push(text);
     });
+
+    // Build grid accounting for rowspan/colspan.
+    const grid = [];   // grid[r][c] = text
+    const taken = [];  // taken[r][c] = true when occupied by a span from above/left
+    const trs = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")];
+    trs.forEach((tr, ri) => {
+      const tds = [...tr.querySelectorAll("td, th")];
+      let col = 0;
+      if (!grid[ri]) grid[ri] = [];
+      if (!taken[ri]) taken[ri] = [];
+      tds.forEach(td => {
+        // Skip columns already taken by rowspan from a previous row.
+        while (col < 200 && taken[ri][col]) col++;
+        const text = td.innerText.trim();
+        const rs = parseInt(td.getAttribute("rowspan") || "1", 10);
+        const cs = parseInt(td.getAttribute("colspan") || "1", 10);
+        for (let dr = 0; dr < rs; dr++) {
+          for (let dc = 0; dc < cs; dc++) {
+            const r = ri + dr;
+            const c = col + dc;
+            if (!grid[r]) grid[r] = [];
+            if (!taken[r]) taken[r] = [];
+            grid[r][c] = (dr === 0 && dc === 0) ? text : "";
+            taken[r][c] = true;
+          }
+        }
+        col += cs;
+      });
+    });
+
+    const rows = grid.filter(r => r && r.some(c => c !== undefined));
     if (headers.length || rows.length) tables.push({ headers, rows });
   });
   return tables;
