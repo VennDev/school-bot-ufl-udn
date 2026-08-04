@@ -248,9 +248,11 @@ module.exports = {
     await ChangeLog.create({ fb_id: fbId, type, content });
   },
 
-  async getChangeLogs(fbId, limit = 20) {
+  async getChangeLogs(fbId, limit = 20, type = null) {
     await ensureInit();
-    return ChangeLog.find({ fb_id: fbId }).sort({ createdAt: -1 }).limit(limit).lean();
+    const filter = { fb_id: fbId };
+    if (type) filter.type = type;
+    return ChangeLog.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
   },
 
   async getSystemSetting(key, defaultValue = "") {

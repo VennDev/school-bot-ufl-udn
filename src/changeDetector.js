@@ -616,11 +616,11 @@ async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
     grouped.get(templateKey).push(alert);
   }
 
-  // Fetch recent alert history once for cross-run dedup.
-  const recentLogs = await db.getChangeLogs(fbId, 50);
-  const recentAlerts = recentLogs
-    .filter(log => log.type === "alert")
-    .map(log => log.content);
+  // Fetch recent alert history for cross-run dedup.
+  // Filter by type="alert" so non-alert logs (sync, reminders...) don't
+  // push real alerts out of the limit window.
+  const recentLogs = await db.getChangeLogs(fbId, 200, "alert");
+  const recentAlerts = recentLogs.map(log => log.content);
 
   for (const [templateKey, alerts] of grouped) {
     const uniqueAlerts = [...new Set(alerts)];
