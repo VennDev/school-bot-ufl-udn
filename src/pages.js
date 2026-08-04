@@ -10,7 +10,7 @@ function _normalizeSemester(text) {
 }
 
 function parseAcademicYear(value) {
-  const match = String(value || "").match(/\b(\d{4})\s*[-–]\s*(\d{4})\b/);
+  const match = String(value || "").match(/\b(\d{4})\s*[-–—]\s*(\d{4})\b/);
   return match ? { start: Number(match[1]), end: Number(match[2]) } : null;
 }
 
@@ -76,8 +76,10 @@ function normalizeAcademicYearSelection(yearText, rows, headers = []) {
   // Row dates win. Portal can return a plausible but wrong option label
   // (for example 2027-2028 while rows end in April 2027).
   if (inferred) return { text: inferred.text, value: String(inferred.start) };
+  // Always normalize to canonical "YYYY-YYYY" so portal text variations
+  // ("2023 - 2024", "2023–2024", "2023-2024") produce a stable key.
   if (parsed && parsed.start <= new Date().getFullYear() + 1) {
-    return { text: String(yearText).trim(), value: String(parsed.start) };
+    return { text: `${parsed.start}-${parsed.end}`, value: String(parsed.start) };
   }
   return { text: String(yearText || "").trim(), value: String(yearText || "").trim() };
 }
