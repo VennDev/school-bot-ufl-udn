@@ -113,20 +113,47 @@ function stripMarkdown(text) {
     .trim();
 }
 
+// Retry wrapper: retries up to `maxRetries` times on transient errors
+// (abort, network, 429 rate-limit, 5xx server). Client errors (4xx except
+// 429) are not retried — they indicate a permanent problem.
+async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const status = error.status || error.statusCode;
+      const isTransient = !status || status === 429 || status >= 500
+        || error.name === "AbortError"
+        || error.code === "ENOTFOUND"
+        || error.code === "ECONNRESET"
+        || error.code === "EPIPE";
+      if (!isTransient) throw error;
+      if (attempt < maxRetries) {
+        const backoff = delayMs * Math.pow(2, attempt);
+        console.log(`[ai] Retry ${attempt + 1}/${maxRetries} after ${backoff}ms: ${error.message}`);
+        await new Promise(r => setTimeout(r, backoff));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function askAI(systemPrompt, userPrompt) {
   let reply = "";
   try {
-    reply = await callOpenCode(systemPrompt, userPrompt);
+    reply = await withRetry(() => callOpenCode(systemPrompt, userPrompt));
   } catch (e) {
-    console.error("[ai] OpenCode error, falling back to OpenAI/Gemini...", e.message);
+    console.error("[ai] OpenCode failed, trying Gemini...", e.message);
     try {
-      reply = await callGemini(systemPrompt, userPrompt);
+      reply = await withRetry(() => callGemini(systemPrompt, userPrompt));
     } catch (e2) {
-      console.error("[ai] Gemini fallback error, trying OpenAI...", e2.message);
+      console.error("[ai] Gemini failed, trying OpenAI...", e2.message);
       try {
-        reply = await callOpenAI(systemPrompt, userPrompt);
+        reply = await withRetry(() => callOpenAI(systemPrompt, userPrompt));
       } catch (e3) {
-        console.error("[ai] OpenAI fallback error...", e3.message);
+        console.error("[ai] All providers exhausted:", e3.message);
         return "Trợ lý AI đang bận, vui lòng thử lại sau.";
       }
     }
