@@ -569,7 +569,13 @@ function _parseGradeAlert(alert) {
 }
 
 function _numericFingerprint(alert) {
-  return [...alert.matchAll(/(\d+(?:\.\d+)?)/g)].map(m => m[1]).sort().join(",");
+  // Extract only scores: TP values, Thi, TBCHP. Exclude non-score numbers
+  // (course code, STT, credit count) so formatting churn on those columns
+  // never looks like a score change. TBCHP is the trailing grade.
+  const m = alert.match(/TBCHP:\s*(\d+(?:\.\d+)?)/);
+  const tp = [...alert.matchAll(/TP\d?\s*:\s*(\d+(?:\.\d+)?)/g)].map(x => x[1]);
+  const thi = alert.match(/Thi:\s*(\d+(?:\.\d+)?)/);
+  return [...tp, thi?.[1], m?.[1]].filter(Boolean).sort().join(",");
 }
 
 // Check if alert duplicates something already sent (stored in ChangeLog).
