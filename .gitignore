@@ -1,5 +1,6 @@
 node_modules/
 data/
+logs/
 accounts.json
 tests/data.json
 .tor-instances/

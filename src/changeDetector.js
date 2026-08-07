@@ -1,6 +1,7 @@
 const messenger = require("./messenger");
 const db = require("./db");
 const mailer = require("./mailer");
+const { logNotificationDiff } = require("./notifLog");
 
 // Normalize semester text to stable format for key comparison.
 // Portal dropdown can return "Học kỳ 1", "Kỳ 1", "Kỳ I", etc. between loads.
@@ -649,9 +650,11 @@ async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
     const uniqueAlerts = [...new Set(alerts)];
 
     const newAlerts = [];
+    const dedupedAlerts = [];
     for (const alert of uniqueAlerts) {
       if (_isDuplicateAlert(alert, recentAlerts)) {
         console.log(`[notifier] Deduped alert for ${fbId}: ${alert.substring(0, 80)}...`);
+        dedupedAlerts.push(alert);
         continue;
       }
       newAlerts.push(alert);
@@ -660,6 +663,9 @@ async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
 
     // Log only alerts that pass dedup so they become future dedup references.
     newAlerts.forEach(alert => db.logChange(fbId, "alert", alert));
+
+    // Detailed debug log: old vs new data slice + alerts + deduped.
+    logNotificationDiff({ fbId, templateKey, alerts: newAlerts, deduped: dedupedAlerts, oldRaw, newRaw });
 
     const maxAlerts = 8;
     const visible = newAlerts.slice(0, maxAlerts);
