@@ -78,6 +78,16 @@ function detectGrades(oldData, newData) {
   const hasComparableSemesterMetadata = hasSemesterMetadata(newTables) && hasSemesterMetadata(oldTables);
   if (hasSemesterMetadata(newTables) && !hasSemesterMetadata(oldTables)) return [];
 
+  // Snapshots scraped before the rowspan/colspan fix have rows whose cell
+  // count does not match headers (merged cells not expanded → shifted
+  // columns). Their rowKeys never match fresh aligned rows, so every course
+  // would look like a new grade. Stay silent once; next sync re-baselines.
+  const hasMisalignedRows = tables => tables.some(table => {
+    const n = (table.headers || []).length;
+    return n > 0 && (table.rows || []).some(row => Array.isArray(row) && row.length !== n);
+  });
+  if (hasMisalignedRows(oldTables) && !hasMisalignedRows(newTables)) return [];
+
   const headers = newTables.find(t => t.headers?.length)?.headers || [];
   const normalizedHeaders = headers.map(norm);
   const findHeader = pattern => normalizedHeaders.findIndex(h => pattern.test(h));
