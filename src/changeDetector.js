@@ -119,6 +119,19 @@ function detectGrades(oldData, newData) {
     oldRows.set(rowKey(row), row);
     oldBaseRows.set(baseKey(row), row);
   });
+
+  // Key-overlap guard: if the vast majority of OLD rows cannot be matched
+  // in the new snapshot by key, the old snapshot is structurally
+  // incompatible (misaligned columns, changed year/semester labels,
+  // different layout). Notifying every course as "new" would spam the
+  // whole transcript. Stay silent once; next sync re-baselines.
+  // Old-side overlap is robust to ADDED semesters (new rows don't lower it),
+  // so legitimate new-course alerts still pass.
+  const newRowsByKey = new Map(newTables.flatMap(t => t.rows || []).map(row => [rowKey(row), row]));
+  if (oldRows.size > 0) {
+    const matchedOld = [...oldRows.keys()].filter(key => newRowsByKey.has(key)).length;
+    if (matchedOld / oldRows.size < 0.5) return [];
+  }
   const alerts = [];
   const seenAlerts = new Set();
   newTables.flatMap(t => t.rows || []).forEach(row => {
