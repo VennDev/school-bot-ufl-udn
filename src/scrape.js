@@ -17,7 +17,7 @@ const BATCH_SIZE = 8; // Scrape all 8 pages in one login session to prevent dupl
 const DELAY = 2000; // Reduce delay to speed up scraping
 const MAX_RETRIES = 20;
 const BACKOFF_BASE = 30000;
-const MAX_PARALLEL = 3;
+const MAX_PARALLEL = Math.max(1, Math.min(3, Number.parseInt(process.env.SCRAPER_MAX_PARALLEL || "2", 10) || 2));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
