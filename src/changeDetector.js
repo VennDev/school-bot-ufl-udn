@@ -425,7 +425,7 @@ function detectSchedule(oldData, newData) {
   const value = entry => [norm(entry.day), norm(entry.period), norm(entry.room), normTime(entry.time)].join("|");
   const oldRows = new Map(oldEntries.map(entry => [key(entry), entry]));
   const alerts = [];
-  newEntries.forEach(entry => {
+  comparableNewEntries.forEach(entry => {
     const oldEntry = oldRows.get(key(entry));
     if (!oldEntry) {
       alerts.push(`[~] Lịch học mới: ${entry.name} - Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
