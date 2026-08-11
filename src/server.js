@@ -16,6 +16,8 @@ const syncProgress = require("./syncProgress");
 
 const avatarCache = new Map();
 const AVATAR_CACHE_MS = 15 * 60 * 1000;
+const avatarFailures = new Map();
+const AVATAR_FAILURE_CACHE_MS = 60 * 60 * 1000;
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 const app = express();
@@ -168,6 +170,8 @@ app.get("/api/admin/avatar/:fbId", requireAdmin, async (req, res) => {
   };
   const cached = avatarCache.get(fbId);
   if (cached && cached.expiresAt > Date.now()) return sendCached(cached);
+  const failedAt = avatarFailures.get(fbId);
+  if (failedAt && failedAt > Date.now() - AVATAR_FAILURE_CACHE_MS) return res.status(404).end();
 
   try {
     const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
@@ -178,7 +182,13 @@ app.get("/api/admin/avatar/:fbId", requireAdmin, async (req, res) => {
     url.searchParams.set("redirect", "false");
     url.searchParams.set("access_token", pageToken);
     const graphResponse = await fetch(url);
-    if (!graphResponse.ok) throw new Error(`Graph API ${graphResponse.status}`);
+    if (!graphResponse.ok) {
+      if (graphResponse.status === 400 || graphResponse.status === 403 || graphResponse.status === 404) {
+        avatarFailures.set(fbId, Date.now());
+        return res.status(404).end();
+      }
+      throw new Error(`Graph API ${graphResponse.status}`);
+    }
     const payload = await graphResponse.json();
     const picture = payload?.data?.url;
     if (!picture) throw new Error("Avatar URL missing");
@@ -195,6 +205,7 @@ app.get("/api/admin/avatar/:fbId", requireAdmin, async (req, res) => {
     avatarCache.set(fbId, value);
     return sendCached(value);
   } catch (error) {
+    avatarFailures.set(fbId, Date.now());
     console.warn(`[admin-avatar] ${fbId}: ${error.message}`);
     res.status(404).end();
   }
