@@ -111,13 +111,21 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
   };
 
   const years = await readOptions("#cmbNamHoc");
+  const yearValueOf = (y) => parseInt(String(y.value || "").trim(), 10);
+  const sortedYears = years.slice().sort((a, b) => yearValueOf(b) - yearValueOf(a) || String(b.text).localeCompare(String(a.text)));
+  // Portal may list a decade of academic years; each combination costs ~1-2s and a
+  // full enumeration makes the page more likely to be closed mid-scrape. Only the
+  // most recent years matter for change detection, so cap the work.
+  const currentYear = new Date().getFullYear();
+  const recentYears = sortedYears.filter((y) => !isNaN(yearValueOf(y)) && yearValueOf(y) >= currentYear - 3);
+  const yearsToIterate = recentYears.length ? recentYears : sortedYears.slice(0, 5);
   const collectedTables = [];
   const collectedRows = [];
   const seenTables = new Set();
   const seenRows = new Set();
   const isPlaceholderRow = (row) => /không\s+có\s+(?:dữ\s+liệu|lịch)|chưa\s+có\s+dữ\s+liệu|no\s+data/i.test(row.join(" "));
 
-  for (const year of years) {
+  for (const year of yearsToIterate) {
     if (!await settleSelection("#cmbNamHoc", year.value)) continue;
     // Year change may replace dropdown DOM; read current options each iteration.
 

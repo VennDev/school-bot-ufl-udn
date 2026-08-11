@@ -18,6 +18,7 @@ const DELAY = 2000; // Reduce delay to speed up scraping
 const MAX_RETRIES = 20;
 const BACKOFF_BASE = 30000;
 const MAX_PARALLEL = Math.max(1, Math.min(3, Number.parseInt(process.env.SCRAPER_MAX_PARALLEL || "2", 10) || 2));
+const BROWSER_CLOSED_RE = /(?:Target page|context or browser has been closed|Browser has been closed|Target closed|Browser closed)/i;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -242,9 +243,9 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
       } catch (e) {
         const msg = e.message || "";
         if (progressRunId) syncProgress.pageFailed(progressRunId, account.fb_id, p.key, msg.split("\n")[0] || e.name || "Unknown error");
-        if (msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
+        if (BROWSER_CLOSED_RE.test(msg) || msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
           blocked = true;
-          console.log(`  [${account.username}] ${p.key}: BLOCKED`);
+          console.log(`  [${account.username}] ${p.key}: BLOCKED (${BROWSER_CLOSED_RE.test(msg) ? "browser closed" : msg.split("\n")[0]})`);
           break;
         }
         console.error(`  [${account.username}] ${p.key}: FAIL: ${msg.split("\n")[0] || e.name || "Unknown error"}`);
@@ -256,7 +257,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
     }
   } catch (e) {
     const msg = e.message || "";
-    if (msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
+    if (BROWSER_CLOSED_RE.test(msg) || msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
       blocked = true;
     }
     console.log(`  [${account.username}] Session error: ${msg.split("\n")[0]}`);
@@ -288,8 +289,9 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
   let consecutiveFails = 0;
   const syncedThisRun = new Set();
   const proxy = useTor ? socksUrl(torIdx) : null;
+  const deadline = Date.now() + (Number.parseInt(process.env.SCRAPER_ACCOUNT_TIMEOUT_MS || "0", 10) || 0);
 
-  while (pending.length > 0 && attempt < MAX_RETRIES) {
+  while (pending.length > 0 && attempt < MAX_RETRIES && (deadline === 0 || Date.now() < deadline)) {
     const batch = pending.slice(0, BATCH_SIZE);
     attempt++;
     if (progressRunId) syncProgress.accountAttempt(progressRunId, account.fb_id, attempt, `Lần thử ${attempt}/${MAX_RETRIES}`);
@@ -441,11 +443,35 @@ async function main() {
       await scrapeAccount(account, 0, false, silent, notifyLoginFailure);
     }
   } else {
-    for (const account of accounts) {
+    const timeoutMs = Number.parseInt(process.env.SCRAPER_ACCOUNT_TIMEOUT_MS || "0", 10) || 0;
+    const queue = accounts.slice();
+    let index = 0;
+    let processed = 0;
+    const pushed = new Set();
+    // Round-robin: nick nào fail quá lâu sẽ bị đẩy về cuối hàng đợi,
+    // xử các nick khác trước, rồi quay lại sau.
+    while (queue.length > 0 && processed < accounts.length * 2) {
+      const account = queue[index % queue.length];
       console.log(`\n=== ${account.label || account.username} ===`);
       await scrapeAccount(account, 0, useTor, silent, notifyLoginFailure);
-
-      if (useTor && accounts.indexOf(account) < accounts.length - 1) {
+      processed++;
+      const result = await loadResult(account);
+      const done = Object.keys(result).length;
+      const complete = done === PAGES.length;
+      if (complete) {
+        // Remove completed accounts from the queue so they aren't retried again.
+        queue.splice(index % queue.length, 1);
+      } else if (timeoutMs > 0 && !pushed.has(account.fb_id)) {
+        // Nick fail quá lâu: đẩy về cuối hàng đợi, xử nick khác trước.
+        console.log(`  [${account.username}] Incomplete after timeout — deferring to end of queue.`);
+        queue.splice(index % queue.length, 1);
+        queue.push(account);
+        pushed.add(account.fb_id);
+        // Không tăng index: nick vừa đẩy về cuối sẽ được xử lại sau vòng này.
+      } else {
+        index++;
+      }
+      if (useTor && queue.length > 0) {
         await rotateIP(0);
       }
     }
