@@ -10,7 +10,9 @@ const db = require("./db");
 const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { checkAndNotify } = require("./changeDetector");
+const syncProgress = require("./syncProgress");
 
+let progressRunId = null;
 const BATCH_SIZE = 8; // Scrape all 8 pages in one login session to prevent duplicate logins
 const DELAY = 2000; // Reduce delay to speed up scraping
 const MAX_RETRIES = 20;
@@ -140,6 +142,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
   };
 
   try {
+    if (progressRunId) syncProgress.loginStarted(progressRunId, account.fb_id);
     let rejectCredentialFailure;
     const credentialFailure = new Promise((_, reject) => {
       rejectCredentialFailure = reject;
@@ -165,6 +168,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
     fastPage = winner.page;
     fastProxyUsed = winner.label;
     console.log(`  [${account.username}] Winner connection: ${fastProxyUsed}`);
+    if (progressRunId) syncProgress.loginSucceeded(progressRunId, account.fb_id, fastProxyUsed);
 
     // Close losing browsers immediately (those that made it into activeBrowsers before race settled)
     await Promise.all(
@@ -180,6 +184,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
     await Promise.all(activeBrowsers.map((b) => b.close().catch(() => {})));
     
     const invalidCredentials = e.message === "INVALID_CREDENTIALS" || e.errors?.some(error => error.message === "INVALID_CREDENTIALS");
+    if (progressRunId) syncProgress.accountAttempt(progressRunId, account.fb_id, 0, `Đăng nhập thất bại: ${loginDetails.split(" | ")[0]}`);
     // Background sync should never delete users for transient network failures.
     if (!silent || (notifyLoginFailure && invalidCredentials)) {
       await db.deleteUser(account.fb_id);
@@ -203,6 +208,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
     }
  
     for (const p of pages) {
+      if (progressRunId) syncProgress.pageStarted(progressRunId, account.fb_id, p.key);
       await sleep(DELAY);
       try {
         await fastPage.goto(p.url, { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -222,6 +228,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
           throw new Error("EMPTY_DATA");
         }
         scraped[p.key] = pageData;
+        if (progressRunId) syncProgress.pageFinished(progressRunId, account.fb_id, p.key);
         console.log(`  [${account.username}] ${p.key}: OK`);
         if (!silent) {
           await messenger.sendTextMessage(account.fb_id, `[+] Tải thành công danh mục: ${p.key === "canhBao" ? "Cảnh báo học vụ" : 
@@ -234,6 +241,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
         }
       } catch (e) {
         const msg = e.message || "";
+        if (progressRunId) syncProgress.pageFailed(progressRunId, account.fb_id, p.key, msg.split("\n")[0] || e.name || "Unknown error");
         if (msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
           blocked = true;
           console.log(`  [${account.username}] ${p.key}: BLOCKED`);
@@ -263,6 +271,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
 }
 
 async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLoginFailure = false) {
+  if (progressRunId) syncProgress.accountStart(progressRunId, account.fb_id);
   let result = await loadResult(account);
   // Snapshot original DB state ONCE before any scraping.
   // All change-detection calls compare against this baseline,
@@ -283,6 +292,7 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
   while (pending.length > 0 && attempt < MAX_RETRIES) {
     const batch = pending.slice(0, BATCH_SIZE);
     attempt++;
+    if (progressRunId) syncProgress.accountAttempt(progressRunId, account.fb_id, attempt, `Lần thử ${attempt}/${MAX_RETRIES}`);
     console.log(`\n  [${account.username}] Attempt ${attempt}/${MAX_RETRIES}: ${batch.map((p) => p.key).join(", ")}`);
 
     const { scraped, blocked } = await scrapeBatch(account, batch, proxy, silent, notifyLoginFailure);
@@ -291,6 +301,7 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
     const userExists = await db.getUser(account.fb_id);
     if (!userExists) {
       console.log(`  [${account.username}] User deleted due to invalid credentials. Aborting scrape loop.`);
+      if (progressRunId) syncProgress.accountFinished(progressRunId, account.fb_id, "failed", "Tài khoản đã bị xóa sau khi đăng nhập thất bại");
       return result;
     }
 
@@ -344,6 +355,14 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
     await saveResult(account, result, baselineOldData, true);
   }
 
+  if (progressRunId) {
+    syncProgress.accountFinished(
+      progressRunId,
+      account.fb_id,
+      pending.length ? "incomplete" : "complete",
+      pending.length ? `Thiếu: ${pending.map(p => p.label).join(", ")}` : null,
+    );
+  }
   return result;
 }
 
@@ -379,6 +398,7 @@ async function main() {
   }
 
   const mode = parallel ? "PARALLEL" : "SEQUENTIAL";
+  progressRunId = syncProgress.startRun(accounts, { mode, useTor });
   console.log(`Scraping ${accounts.length} account(s), Tor: ${useTor ? "ON" : "OFF"}, Mode: ${mode}, Silent: ${silent}\n`);
 
   if (parallel && useTor) {
@@ -434,6 +454,7 @@ async function main() {
     console.log(`${account.username}: ${done}/${PAGES.length} ${status}`);
   }
 
+  syncProgress.finishRun(progressRunId, allComplete ? "complete" : "incomplete");
   if (!allComplete) {
     console.log("\nRe-run to continue incomplete accounts. Progress is saved.");
     process.exitCode = 2;
@@ -442,6 +463,7 @@ async function main() {
 
 main()
   .catch((err) => {
+    if (progressRunId) syncProgress.finishRun(progressRunId, "failed", err.message);
     console.error(err);
     process.exit(1);
   })

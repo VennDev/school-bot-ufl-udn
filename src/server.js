@@ -12,6 +12,7 @@ const messenger = require("./messenger");
 const { ocrImageUrl } = require("./ocr");
 const { startScheduler } = require("./cron");
 const { PAGES, hasUsableData } = require("./pages");
+const syncProgress = require("./syncProgress");
 
 const app = express();
 app.use(express.json());
@@ -143,8 +144,19 @@ app.get("/api/admin/stats", requireAdmin, async (req, res) => {
     totalUsers: users.length,
     completeUsers: completeCount,
     users: detailedUsers,
-    botStatus
+    botStatus,
+    syncRuns: syncProgress.listRuns(),
   });
+});
+
+app.get("/api/admin/sync-progress", requireAdmin, (req, res) => {
+  res.json({ runs: syncProgress.listRuns() });
+});
+
+app.get("/api/admin/sync-progress/:runId", requireAdmin, (req, res) => {
+  const run = syncProgress.readRun(req.params.runId);
+  if (!run) return res.status(404).json({ error: "Sync run not found" });
+  res.json(run);
 });
 
 app.post("/api/admin/sync-all", requireAdmin, (req, res) => {

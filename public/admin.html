@@ -74,6 +74,19 @@
           <p class="text-xs text-gray-500 text-center">Kích hoạt scraper qua Tor cho toàn bộ user đang lưu trong cơ sở dữ liệu.</p>
         </div>
 
+        <div class="bg-white p-6 rounded-lg shadow-md space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-700">[%] Tiến trình realtime</h3>
+            <span id="sync-progress-summary" class="text-xs text-gray-500">Chưa chạy</span>
+          </div>
+          <div class="h-2 overflow-hidden rounded-full bg-gray-200">
+            <div id="sync-progress-bar" class="h-full rounded-full bg-blue-600 transition-all" style="width:0%"></div>
+          </div>
+          <div id="sync-progress-tree" class="max-h-80 space-y-3 overflow-y-auto text-xs">
+            <p class="text-gray-400">Nhấn đồng bộ để xem tiến trình từng nick.</p>
+          </div>
+        </div>
+
         <!-- Test Notification Panel -->
         <div class="bg-white p-6 rounded-lg shadow-md space-y-4 border-l-4 border-orange-400">
           <h3 class="text-lg font-semibold text-gray-700">[!] Kiểm tra thông báo</h3>
@@ -390,6 +403,7 @@
     let token = localStorage.getItem('admin_token') || '';
     let currentDataPage = 1;
     let totalDataCount = 0;
+    let syncProgressTimer = null;
     const itemsPerPage = 10;
 
     function switchTab(tab) {
@@ -726,6 +740,7 @@
         return;
       }
       const data = await res.json();
+      renderSyncRuns(data.syncRuns || []);
       document.getElementById('stat-total-users').innerText = data.totalUsers;
       document.getElementById('stat-complete-users').innerText = data.completeUsers;
 
@@ -828,6 +843,36 @@
       if (data.success) loadStats();
     }
 
+    function statusLabel(status) {
+      return ({ queued: 'Đang chờ', running: 'Đang chạy', complete: 'Hoàn tất', incomplete: 'Thiếu dữ liệu', failed: 'Thất bại' })[status] || status;
+    }
+
+    function renderSyncRuns(runs) {
+      const run = runs.find(item => item.status === 'running') || runs[0];
+      const summary = document.getElementById('sync-progress-summary');
+      const bar = document.getElementById('sync-progress-bar');
+      const tree = document.getElementById('sync-progress-tree');
+      if (!run) {
+        summary.innerText = 'Chưa chạy';
+        bar.style.width = '0%';
+        tree.innerHTML = '<p class="text-gray-400">Nhấn đồng bộ để xem tiến trình từng nick.</p>';
+        return;
+      }
+      summary.innerText = `${run.overallPercent || 0}% · ${run.finishedAccounts || 0}/${run.totalAccounts || 0} nick · ${statusLabel(run.status)}`;
+      bar.style.width = `${Math.min(100, Math.max(0, run.overallPercent || 0))}%`;
+      tree.innerHTML = (run.accounts || []).map(account => {
+        const color = account.status === 'complete' ? 'bg-emerald-500' : account.status === 'failed' ? 'bg-red-500' : account.status === 'incomplete' ? 'bg-amber-500' : 'bg-blue-600';
+        const pages = (account.pages || []).map(page => `<span title="${escapeHTML(page.error || page.label)}" class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${page.status === 'done' ? 'bg-emerald-100 text-emerald-700' : page.status === 'failed' ? 'bg-red-100 text-red-700' : page.status === 'running' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}">${page.status === 'done' ? '✓' : page.status === 'running' ? '…' : page.status === 'failed' ? '!' : '○'} ${escapeHTML(page.label)}</span>`).join('');
+        return `<details class="rounded border border-gray-200 p-2" ${account.status === 'running' ? 'open' : ''}><summary class="cursor-pointer list-none"><div class="flex items-center justify-between gap-2"><span class="min-w-0 truncate font-semibold text-gray-700">${escapeHTML(account.username)} <span class="font-normal text-gray-400">(${escapeHTML(account.fbId)})</span></span><span class="shrink-0 font-bold text-gray-600">${account.percent || 0}%</span></div><div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200"><div class="h-full ${color} transition-all" style="width:${account.percent || 0}%"></div></div><div class="mt-1 truncate text-gray-500">${escapeHTML(account.stage || statusLabel(account.status))}${account.error ? ` · ${escapeHTML(account.error)}` : ''}</div></summary><div class="mt-2 flex flex-wrap gap-1">${pages}</div></details>`;
+      }).join('');
+    }
+
+    function startProgressPolling() {
+      if (syncProgressTimer) clearInterval(syncProgressTimer);
+      loadStats();
+      syncProgressTimer = setInterval(loadStats, 1500);
+    }
+
     async function triggerGlobalSync() {
       if (!confirm("Bắt đầu chạy scraper ngầm cho toàn bộ hệ thống?")) return;
       const res = await fetch('/api/admin/sync-all', {
@@ -836,6 +881,7 @@
       });
       const data = await res.json();
       alert(data.message);
+      if (data.success) startProgressPolling();
     }
 
     async function syncSingleUser(username, fbId = '') {
@@ -845,6 +891,7 @@
       });
       const data = await res.json();
       alert(data.message);
+      if (data.success) startProgressPolling();
     }
 
     async function nukeAndResync(username, fbId = '') {
@@ -855,7 +902,7 @@
       });
       const data = await res.json();
       alert(data.message || data.error || 'Done');
-      if (data.success) loadStats();
+      if (data.success) startProgressPolling();
     }
 
     async function testNotifyUser(username, btnEl, fbId = '') {
@@ -967,6 +1014,7 @@
         });
         const data = await res.json();
         if (data.success) {
+          startProgressPolling();
           resultEl.className = 'text-xs text-green-600';
           resultEl.innerText = `[✓] Bước 1 hoàn tất: ${data.message} Đợi ~30s rồi nhấn "Bước 2: Sync lại" để test thông báo.`;
         } else {
@@ -1001,6 +1049,7 @@
         });
         const data = await res.json();
         if (data.success) {
+          startProgressPolling();
           resultEl.className = 'text-xs text-green-600';
           resultEl.innerText = `[✓] Bước 2 hoàn tất: ${data.message} Kiểm tra chatbot — nếu web có điểm mới, bot sẽ báo. Nếu không có thay đổi, bot sẽ không gửi gì (đúng).`;
         } else {

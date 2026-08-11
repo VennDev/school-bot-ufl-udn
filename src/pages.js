@@ -601,8 +601,16 @@ const PAGES = [
     key: "lichHoc",
     url: `${BASE}/TraCuuLichHoc/Index`,
     label: "Lịch học",
-    // Iterate all year x semester options to collect full historical + current schedules
-    setup: async (page) => _collectMultiSemester(page, _extractScheduleTables),
+    // The schedule controls live inside the hidden "Lịch học" tab by default.
+    // Activate that tab before selecting year/semester; Playwright rejects hidden controls.
+    setup: async (page) => {
+      const tab = page.locator('a[href="#home"]');
+      if (await tab.count()) {
+        await tab.click().catch(() => {});
+        await page.waitForTimeout(200);
+      }
+      return _collectMultiSemester(page, _extractScheduleTables);
+    },
     extract: () => {
       const tables = [];
       document.querySelectorAll("table").forEach((table) => {
