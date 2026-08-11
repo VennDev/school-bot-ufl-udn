@@ -14,6 +14,10 @@ const { startScheduler } = require("./cron");
 const { PAGES, hasUsableData } = require("./pages");
 const syncProgress = require("./syncProgress");
 
+const avatarCache = new Map();
+const AVATAR_CACHE_MS = 15 * 60 * 1000;
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
@@ -151,6 +155,49 @@ app.get("/api/admin/stats", requireAdmin, async (req, res) => {
 
 app.get("/api/admin/sync-progress", requireAdmin, (req, res) => {
   res.json({ runs: syncProgress.listRuns() });
+});
+
+app.get("/api/admin/avatar/:fbId", requireAdmin, async (req, res) => {
+  const fbId = requireFbId(req.params.fbId);
+  if (!fbId) return res.status(400).end();
+
+  const sendCached = cached => {
+    res.set("Cache-Control", "private, max-age=900");
+    res.set("Content-Type", cached.contentType);
+    return res.send(cached.body);
+  };
+  const cached = avatarCache.get(fbId);
+  if (cached && cached.expiresAt > Date.now()) return sendCached(cached);
+
+  try {
+    const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
+    if (!pageToken) return res.status(404).end();
+
+    const url = new URL(`https://graph.facebook.com/v21.0/${fbId}/picture`);
+    url.searchParams.set("type", "small");
+    url.searchParams.set("redirect", "false");
+    url.searchParams.set("access_token", pageToken);
+    const graphResponse = await fetch(url);
+    if (!graphResponse.ok) throw new Error(`Graph API ${graphResponse.status}`);
+    const payload = await graphResponse.json();
+    const picture = payload?.data?.url;
+    if (!picture) throw new Error("Avatar URL missing");
+
+    const imageResponse = await fetch(picture);
+    const contentType = imageResponse.headers.get("content-type") || "";
+    const contentLength = Number(imageResponse.headers.get("content-length") || 0);
+    if (!imageResponse.ok || !contentType.startsWith("image/")) throw new Error("Avatar image unavailable");
+    if (contentLength > MAX_AVATAR_BYTES) throw new Error("Avatar image too large");
+    const body = Buffer.from(await imageResponse.arrayBuffer());
+    if (body.length > MAX_AVATAR_BYTES) throw new Error("Avatar image too large");
+
+    const value = { body, contentType: contentType.split(";", 1)[0], expiresAt: Date.now() + AVATAR_CACHE_MS };
+    avatarCache.set(fbId, value);
+    return sendCached(value);
+  } catch (error) {
+    console.warn(`[admin-avatar] ${fbId}: ${error.message}`);
+    res.status(404).end();
+  }
 });
 
 app.get("/api/admin/sync-progress/:runId", requireAdmin, (req, res) => {
