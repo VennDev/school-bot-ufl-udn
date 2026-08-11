@@ -770,7 +770,7 @@
             <div class="flex items-center gap-3">
               <div class="relative h-9 w-9 shrink-0">
                 <span class="avatar-fallback absolute inset-0 flex items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">${initials}</span>
-                <img src="${avatarUrl}" alt="" loading="lazy" class="relative h-9 w-9 rounded-full object-cover" onerror="this.remove()">
+                <img alt="" loading="lazy" class="avatar-image relative hidden h-9 w-9 rounded-full object-cover">
               </div>
               <span class="font-medium text-gray-900">${escapeHTML(u.username)}</span>
             </div>
@@ -790,7 +790,22 @@
           </td>
         `;
         tbody.appendChild(tr);
+        loadAvatar(tr.querySelector('.avatar-image'), tr.querySelector('.avatar-fallback'), avatarUrl);
       });
+    }
+
+    async function loadAvatar(image, fallback, url) {
+      try {
+        const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!response.ok) return;
+        const blob = await response.blob();
+        if (!blob.type.startsWith('image/')) return;
+        image.src = URL.createObjectURL(blob);
+        image.onload = () => {
+          image.classList.remove('hidden');
+          fallback.classList.add('hidden');
+        };
+      } catch {}
     }
 
     async function loadSettings() {

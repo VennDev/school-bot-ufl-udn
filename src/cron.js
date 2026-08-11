@@ -196,9 +196,14 @@ function scheduleNextRun() {
 
 async function startScheduler() {
   const intervalHours = parseInt(process.env.SCRAPER_INTERVAL_HOURS || "4", 10);
+  const syncOnStart = /^(1|true|yes)$/i.test(process.env.SCRAPER_SYNC_ON_START || "false");
   console.log(`[cron] Scheduler started (full-page refresh every ~${intervalHours}h + 0-15min jitter).`);
 
-  await runScraper();
+  if (syncOnStart) {
+    await runScraper();
+  } else {
+    console.log("[cron] Startup scrape disabled. Set SCRAPER_SYNC_ON_START=true to enable it.");
+  }
   await checkExamReminders();
 
   scheduleNextRun();
