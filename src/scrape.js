@@ -95,7 +95,20 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
   let raceSettled = false; // guard against late-arriving loser leaking browser
 
   const tryLogin = async (proxyServer, label) => {
-    const launchOpts = { headless: true };
+    const launchOpts = {
+      headless: true,
+      args: [
+        "--disable-dev-shm-usage",
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--disable-component-update",
+        "--disable-sync",
+        "--js-flags=--max-old-space-size=512",
+        "--renderer-process-limit=2",
+      ],
+    };
     if (proxyServer) launchOpts.proxy = { server: proxyServer };
 
     let browser;
