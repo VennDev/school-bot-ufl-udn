@@ -102,8 +102,8 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
   const settleSelection = async (selector, value) => {
     try {
       await page.selectOption(selector, value);
-      await page.waitForLoadState("networkidle").catch(() => {});
-      await page.waitForTimeout(700);
+      // Avoid networkidle; school portal keeps background XHR open causing 30s hangs.
+      await page.waitForTimeout(300);
       return true;
     } catch {
       return false;
