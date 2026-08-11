@@ -196,7 +196,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
         }
       ]);
     }
-    return { scraped: {}, blocked: true };
+    return { scraped: {}, blocked: true, invalidCredentials };
   }
 
   const scraped = {};
@@ -295,8 +295,15 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
     if (progressRunId) syncProgress.accountAttempt(progressRunId, account.fb_id, attempt, `Lần thử ${attempt}/${MAX_RETRIES}`);
     console.log(`\n  [${account.username}] Attempt ${attempt}/${MAX_RETRIES}: ${batch.map((p) => p.key).join(", ")}`);
 
-    const { scraped, blocked } = await scrapeBatch(account, batch, proxy, silent, notifyLoginFailure);
+    const { scraped, blocked, invalidCredentials } = await scrapeBatch(account, batch, proxy, silent, notifyLoginFailure);
     
+    // Invalid credentials are definitive: do not retry 20 times or spam logs.
+    if (invalidCredentials) {
+      console.log(`  [${account.username}] INVALID_CREDENTIALS — aborting, no retry.`);
+      if (progressRunId) syncProgress.accountFinished(progressRunId, account.fb_id, "failed", "Sai mã sinh viên hoặc mật khẩu");
+      return result;
+    }
+
     // Check if user still exists in database. If not (e.g. login failed and user was deleted), exit retry loop immediately.
     const userExists = await db.getUser(account.fb_id);
     if (!userExists) {
