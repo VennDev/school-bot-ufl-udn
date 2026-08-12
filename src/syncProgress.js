@@ -5,6 +5,7 @@ const { PAGES } = require("./pages");
 
 const PROGRESS_DIR = process.env.SYNC_PROGRESS_DIR || path.resolve(__dirname, "../data/sync-progress");
 const STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000;
+const RUN_HEARTBEAT_TIMEOUT_MS = Math.max(5 * 60 * 1000, Number.parseInt(process.env.SYNC_PROGRESS_TIMEOUT_MS || "600000", 10) || 600000);
 
 const now = () => new Date().toISOString();
 const createRunId = () => `${Date.now()}-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
@@ -200,11 +201,28 @@ function finishRun(runId, status = "complete", error = null) {
 function listRuns() {
   let dirs = [];
   try { dirs = fs.readdirSync(PROGRESS_DIR); } catch { return []; }
-  const cutoff = Date.now() - STALE_AFTER_MS;
+  const nowMs = Date.now();
+  const cutoff = nowMs - STALE_AFTER_MS;
   return dirs.map(readRun).filter(Boolean).filter(run => {
-    if (Date.parse(run.updatedAt || 0) < cutoff) {
+    const updatedMs = Date.parse(run.updatedAt || 0);
+    if (updatedMs < cutoff) {
       try { fs.rmSync(runDir(run.runId), { recursive: true, force: true }); } catch {}
       return false;
+    }
+    if (run.status === "running" && nowMs - updatedMs > RUN_HEARTBEAT_TIMEOUT_MS) {
+      run.status = "failed";
+      run.error = "Scraper process stopped unexpectedly or timed out";
+      run.updatedAt = new Date().toISOString();
+      writeJSON(metaPath(run.runId), {
+        runId: run.runId,
+        status: run.status,
+        mode: run.mode,
+        useTor: run.useTor,
+        startedAt: run.startedAt,
+        updatedAt: run.updatedAt,
+        totalAccounts: run.totalAccounts,
+        error: run.error,
+      });
     }
     return true;
   }).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
