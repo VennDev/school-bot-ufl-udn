@@ -123,6 +123,13 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
   const collectedRows = [];
   const seenTables = new Set();
   const seenRows = new Set();
+  // Portal sometimes ignores the (year, semester) selection and returns the SAME
+  // table for several dropdown combos. Tagging each copy with its selected combo
+  // creates duplicate tables with different semester labels, which makes the
+  // change detector re-alert old grades. Collapse tables by actual CONTENT
+  // (original cells only, before the year/semester columns are appended).
+  const seenTableContents = new Set();
+  const contentFingerprint = rows => JSON.stringify(rows.map(r => (Array.isArray(r) ? r : [r]).map(c => String(c ?? "").trim())));
   const isPlaceholderRow = (row) => /không\s+có\s+(?:dữ\s+liệu|lịch)|chưa\s+có\s+dữ\s+liệu|no\s+data/i.test(row.join(" "));
 
   for (const year of yearsToIterate) {
@@ -167,6 +174,11 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
           };
           const rows = (table?.rows || []).filter(row => !isPlaceholderRow(row) && !isScheduleSummaryRow(row));
           if (!rows.some(row => row.some(cell => String(cell ?? "").trim()))) continue;
+          // Same portal table returned under multiple (year, semester) selections:
+          // keep only the first copy so semester labels don't drift between syncs.
+          const contentKey = contentFingerprint(rows);
+          if (seenTableContents.has(contentKey)) continue;
+          seenTableContents.add(contentKey);
           // Same rows can exist in multiple academic years. Keep selection metadata,
           // or a year-specific query can lose an otherwise valid match.
           const headers = table.headers || [];

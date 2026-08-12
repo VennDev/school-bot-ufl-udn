@@ -105,8 +105,8 @@ function detectGrades(oldData, newData) {
   const semesterIdx = findHeader(/hoc ky/);
   const rowKey = row => [_normCell(row[keyIdx]), _normCell(row[nameIdx]), yearIdx >= 0 ? _normalizeYear(row[yearIdx]) : "", semesterIdx >= 0 ? _normalizeSemester(row[semesterIdx]) : ""].join("|");
 
-  const oldRows = new Map();
   const oldBaseRows = new Map();
+  const oldBaseRowsByKey = new Map();
   const baseKey = row => [_normCell(row[keyIdx]), _normCell(row[nameIdx])].join("|");
   // Portal renders the same numeric grade with varying string forms between
   // page loads ("6.5" vs "6.50", trailing spaces, comma decimals). Compare
@@ -117,8 +117,12 @@ function detectGrades(oldData, newData) {
     return Number.isFinite(numeric) ? numeric : text;
   };
   oldTables.flatMap(t => t.rows || []).forEach(row => {
-    oldRows.set(rowKey(row), row);
     oldBaseRows.set(baseKey(row), row);
+    // Keep the highest TBCHP among duplicate subject rows (retake → best grade).
+    const existing = oldBaseRowsByKey.get(baseKey(row));
+    if (!existing || normScore(row[scoreIdx]) > normScore(existing[scoreIdx])) {
+      oldBaseRowsByKey.set(baseKey(row), row);
+    }
   });
 
   // Key-overlap guard: if the vast majority of OLD rows cannot be matched
@@ -128,19 +132,28 @@ function detectGrades(oldData, newData) {
   // whole transcript. Stay silent once; next sync re-baselines.
   // Old-side overlap is robust to ADDED semesters (new rows don't lower it),
   // so legitimate new-course alerts still pass.
-  const newRowsByKey = new Map(newTables.flatMap(t => t.rows || []).map(row => [rowKey(row), row]));
-  if (oldRows.size > 0) {
-    const matchedOld = [...oldRows.keys()].filter(key => newRowsByKey.has(key)).length;
-    if (matchedOld / oldRows.size < 0.5) return [];
+  // Compare by BASE key (subject identity) — semester-tag drift must not
+  // count as an incompatible snapshot.
+  const newRowsByBaseKey = new Map();
+  newTables.flatMap(t => t.rows || []).forEach(row => {
+    const bk = baseKey(row);
+    const existing = newRowsByBaseKey.get(bk);
+    if (!existing || normScore(row[scoreIdx]) > normScore(existing[scoreIdx])) {
+      newRowsByBaseKey.set(bk, row);
+    }
+  });
+  if (oldBaseRowsByKey.size > 0) {
+    const matchedOld = [...oldBaseRowsByKey.keys()].filter(key => newRowsByBaseKey.has(key)).length;
+    if (matchedOld / oldBaseRowsByKey.size < 0.5) return [];
   }
   const alerts = [];
   const seenAlerts = new Set();
-  newTables.flatMap(t => t.rows || []).forEach(row => {
+  // Iterate unique subjects in NEW (best row per subject), not raw rows, so a
+  // subject repeated across semester tables is reported at most once.
+  [...newRowsByBaseKey.values()].forEach(row => {
     const name = String(row[nameIdx] || "").trim();
     if (!name || /^tên học phần$/i.test(name)) return;
-    // Fallback base key prevents one-time migration spam when year/semester
-    // metadata was added to existing DB rows.
-    const oldRow = oldRows.get(rowKey(row)) || (!hasComparableSemesterMetadata ? oldBaseRows.get(baseKey(row)) : null);
+    const oldRow = oldBaseRowsByKey.get(baseKey(row));
     let alert = null;
     if (!oldRow) {
       const parts = [`[=] Điểm mới môn: ${name}`];
