@@ -18,9 +18,14 @@ const DELAY = 2000; // Reduce delay to speed up scraping
 const MAX_RETRIES = 20;
 const BACKOFF_BASE = 30000;
 const MAX_PARALLEL = Math.max(1, Math.min(3, Number.parseInt(process.env.SCRAPER_MAX_PARALLEL || "2", 10) || 2));
+const PAGE_TIMEOUT_MS = Math.max(30000, Number.parseInt(process.env.SCRAPER_PAGE_TIMEOUT_MS || "120000", 10) || 120000);
 const BROWSER_CLOSED_RE = /(?:Target page|context or browser has been closed|Browser has been closed|Target closed|Browser closed)/i;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const withTimeout = (promise, ms, label) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+]);
 
 function isLoginSuccessUrl(value) {
   try {
@@ -230,12 +235,12 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
 
         // Run page-specific setup (e.g. iterate semester/year dropdowns) before extracting
         if (typeof p.setup === "function") {
-          await p.setup(fastPage);
+          await withTimeout(p.setup(fastPage), PAGE_TIMEOUT_MS, `${p.key} setup`);
         }
 
         const pageData = fastPage._collectedData !== undefined
           ? fastPage._collectedData
-          : await fastPage.evaluate(p.extract);
+          : await withTimeout(fastPage.evaluate(p.extract), PAGE_TIMEOUT_MS, `${p.key} evaluate`);
         delete fastPage._collectedData;
         if (!hasUsableData(p.key, pageData)) {
           console.warn(`  [${account.username}] ${p.key}: EMPTY_DATA validation failed. Extracted raw:`, JSON.stringify(pageData));
@@ -256,9 +261,9 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
       } catch (e) {
         const msg = e.message || "";
         if (progressRunId) syncProgress.pageFailed(progressRunId, account.fb_id, p.key, msg.split("\n")[0] || e.name || "Unknown error");
-        if (BROWSER_CLOSED_RE.test(msg) || msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
+        if (BROWSER_CLOSED_RE.test(msg) || msg.includes("timed out after") || msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
           blocked = true;
-          console.log(`  [${account.username}] ${p.key}: BLOCKED (${BROWSER_CLOSED_RE.test(msg) ? "browser closed" : msg.split("\n")[0]})`);
+          console.log(`  [${account.username}] ${p.key}: BLOCKED (${BROWSER_CLOSED_RE.test(msg) ? "browser closed" : msg.includes("timed out after") ? "timeout" : msg.split("\n")[0]})`);
           break;
         }
         console.error(`  [${account.username}] ${p.key}: FAIL: ${msg.split("\n")[0] || e.name || "Unknown error"}`);
@@ -270,7 +275,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
     }
   } catch (e) {
     const msg = e.message || "";
-    if (BROWSER_CLOSED_RE.test(msg) || msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
+    if (BROWSER_CLOSED_RE.test(msg) || msg.includes("timed out after") || msg.includes("HTTP2_PROTOCOL_ERROR") || msg.includes("ERR_CONNECTION") || msg.includes("ERR_EMPTY_RESPONSE")) {
       blocked = true;
     }
     console.log(`  [${account.username}] Session error: ${msg.split("\n")[0]}`);
