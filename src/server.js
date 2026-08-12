@@ -227,6 +227,9 @@ app.get("/api/admin/avatar/:fbId", requireAdmin, async (req, res) => {
     }
 
     // Neither source worked — remember the miss briefly so we don't hammer Graph.
+    // Log the reason (400 = psid never messaged the page / invalid id, which is
+    // expected for seeded test accounts without Messenger history).
+    console.warn(`[admin-avatar] ${fbId}: no avatar via picture/profile_pic (Graph ${graphResponse.status})`);
     avatarFailures.set(fbId, Date.now());
     return res.status(404).end();
   } catch (error) {
