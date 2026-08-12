@@ -138,12 +138,22 @@ function extractGPA(tables) {
         }
 
         if (cell.includes("tín chỉ tích lũy") || cell.includes("tổng số tín chỉ tích lũy") || cell.includes("sct tích lũy") || cell.includes("tc tích lũy")) {
-          const match = cell.match(/(?:tín chỉ tích lũy|tc tích lũy)\s*[:=]?\s*(\d{1,3})\b/);
+          const match = cell.match(/(?:tín chỉ tích lũy|tc tích lũy|sct tích lũy)\s*[:=]?\s*(\d{1,3})\b/);
           if (match) {
             creditsAccumulated = parseCredits(match[1]);
           } else if (row[i + 1]) {
             creditsAccumulated = parseCredits(row[i + 1]);
           }
+        }
+
+        // Portal summary: "Số tín chỉ tích lũy: A / B" — A = earned credits,
+        // B = total credits taken. The numeric row is often captured separately
+        // (e.g. ["A: 114", "B: 116"] or "A = 114"). Parse A so the profile's
+        // real accumulated total is never lost.
+        const earnedMatch = cell.match(/^\s*a\s*[:=]\s*(\d{1,3})\b/i);
+        if (earnedMatch && cell.includes("tín chỉ") === false) {
+          const credits = parseCredits(earnedMatch[1]);
+          if (credits > 0) creditsAccumulated = credits;
         }
       }
     }

@@ -87,4 +87,21 @@ assert.strictEqual(extractGPA([{
   rows: [["Điểm TBCTL hệ 10: 8.9"], ["Tín chỉ tích lũy: 114"], ["Xếp loại: Giỏi"]]
 }]).creditsAccumulated, 114);
 
+
+// Regression: portal summary "Số tín chỉ tích lũy: A / B" — A is the earned
+// accumulated credits. Parse the numeric A row even without a GPA column.
+assert.strictEqual(extractGPA([{
+  headers: [],
+  rows: [["Số tín chỉ tích lũy: A / B"], ["A: 114"], ["B: 116"]]
+}]).creditsAccumulated, 114);
+assert.strictEqual(extractGPA([{
+  headers: [],
+  rows: [["A = 114", "B = 116"]]
+}]).creditsAccumulated, 114);
+// Legend-only rows (no numbers) must not become credits.
+assert.strictEqual(extractGPA([{
+  headers: [],
+  rows: [["Số tín chỉ tích lũy: A / B", "A: Tổng số tín chỉ...", "B: Tổng số tín chỉ..."]]
+}]), null);
+
 console.log("Credits accumulated regression test passed OK!");
