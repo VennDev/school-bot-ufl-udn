@@ -307,7 +307,8 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
   let consecutiveFails = 0;
   const syncedThisRun = new Set();
   const proxy = useTor ? socksUrl(torIdx) : null;
-  const deadline = Date.now() + (Number.parseInt(process.env.SCRAPER_ACCOUNT_TIMEOUT_MS || "0", 10) || 0);
+  const accountTimeoutMs = Number.parseInt(process.env.SCRAPER_ACCOUNT_TIMEOUT_MS || "0", 10) || 0;
+  const deadline = accountTimeoutMs > 0 ? Date.now() + accountTimeoutMs : 0;
 
   while (pending.length > 0 && attempt < MAX_RETRIES && (deadline === 0 || Date.now() < deadline)) {
     const batch = pending.slice(0, BATCH_SIZE);
