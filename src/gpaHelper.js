@@ -159,6 +159,18 @@ function extractGPA(tables) {
     };
   }
 
+  // Portal sometimes shows only hệ 10 summary (e.g. "Điểm TBCTL hệ 10: 8.9") next to
+  // "Tín chỉ tích lũy: 114". creditsAccumulated is still meaningful — surface it.
+  if (creditsAccumulated > 0) {
+    return {
+      gpaSemester: gpaSemester || 0,
+      gpaAccumulated: gpaAccumulated || (gpaAccumulated10 != null ? parseFloat((gpaAccumulated10 / 2.5).toFixed(2)) : 0),
+      gpaSemester10: gpaSemester10 || 0,
+      gpaAccumulated10: gpaAccumulated10 || 0,
+      creditsAccumulated
+    };
+  }
+
   return null;
 }
 

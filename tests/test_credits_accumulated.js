@@ -56,4 +56,35 @@ const completeHistory = formatKetQuaHocTap({
 });
 assert.match(completeHistory, /Tín chỉ tích lũy: 114 TC/);
 
+
+// Regression: partial scrape (only current semester collected) must NOT
+// under-report the profile's accumulated total when the portal summary has it.
+const partialRows = [
+  ["1", "Giao thoa văn hóa", "2", "TP1 : 8.6 - TP2 : 8.8", "", "7.9", "3", "B"],
+  ["2", "Biên dịch 2", "3", "TP1 : 9 - TP2 : 8.5", "8", "8.4", "3", "B"],
+  ["3", "Kỹ năng tiếng C1.3", "3", "TP1 : 8.6 - TP2 : 7.7", "9.2", "8.6", "4", "A"],
+  ["4", "Kỹ năng tiếng C1.4", "3", "TP1 : 8.2 - TP2 : 8.5", "9.3", "8.8", "4", "A"],
+  ["5", "Dẫn nhập ngữ dụng học tiếng Anh", "2", "TP2 : 8.7 - TP1 : 8", "7.7", "8.1", "3", "B"]
+];
+const partialTable = {
+  headers: ["STT", "Tên học phần", "Số tín chỉ", "Điểm thành phần", "Điểm thi", "TBCHP", "Điểm số", "Điểm chữ"],
+  rows: partialRows
+};
+const summary114 = {
+  headers: ["ĐTBHK hệ 4", "ĐTBCTL hệ 4", "Tín chỉ tích lũy"],
+  rows: [["3.56", "3.56", "114"]]
+};
+const partialResult = formatKetQuaHocTap({
+  ket_qua_hoc_tap: JSON.stringify([summary114, partialTable]),
+  diem_ren_luyen: "[]"
+});
+assert.match(partialResult, /Tín chỉ tích lũy: 114 TC/);
+assert.doesNotMatch(partialResult, /Tín chỉ tích lũy: 13 TC/);
+
+// Regression: hệ 10 text summary ("Tín chỉ tích lũy: 114") must surface credits.
+assert.strictEqual(extractGPA([{
+  headers: [],
+  rows: [["Điểm TBCTL hệ 10: 8.9"], ["Tín chỉ tích lũy: 114"], ["Xếp loại: Giỏi"]]
+}]).creditsAccumulated, 114);
+
 console.log("Credits accumulated regression test passed OK!");

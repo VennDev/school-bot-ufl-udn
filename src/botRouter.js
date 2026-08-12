@@ -97,10 +97,18 @@ function isGradeTable(table) {
   return headers.includes("ten hoc phan") && headers.some(header => /tbchp|diem tk|diem thi|diem chu|diem so/.test(header));
 }
 
+// Portal summary (ĐTBCTL/Tín chỉ tích lũy) and the grade-row sum can disagree:
+// - The summary column can be stale/partial (e.g. 52 TC) while the full history rows sum
+//   to the real total (114 TC), or the reverse (summary 812 while rows sum 5).
+// Use the LARGER plausible value: both sources should converge on the true total, and a
+// partial scrape must never under-report the accumulated credits.
 function useGradeTableCredits(gpa, courses) {
   if (!gpa || !courses.length) return gpa;
   const calculated = calculateGPA(courses);
-  return { ...gpa, creditsAccumulated: calculated.creditsAccumulated };
+  const summaryCredits = gpa.creditsAccumulated || 0;
+  const rowCredits = calculated.creditsAccumulated || 0;
+  const creditsAccumulated = Math.max(summaryCredits, rowCredits);
+  return { ...gpa, creditsAccumulated };
 }
 
 // Portal trả cùng bảng điểm tích lũy cho mọi năm/kỳ, nên một học phần lặp nhiều
@@ -1631,9 +1639,9 @@ async function processMessage(senderPsid, messageText) {
     if (!gpa) {
       gpa = calculateGPA(courses);
     } else {
-      // Merge credits accumulated from actual course rows (more reliable than summary parser)
-      const calculated = calculateGPA(courses);
-      gpa = { ...gpa, creditsAccumulated: calculated.creditsAccumulated };
+      // Same max(summary, row-sum) rule as formatKetQuaHocTap so the AI context
+      // never under-reports accumulated credits.
+      gpa = useGradeTableCredits(gpa, courses);
     }
 
     const evalResult = getAcademicEvaluation(gpa.gpaAccumulated, gpa.gpaSemester, courses);
