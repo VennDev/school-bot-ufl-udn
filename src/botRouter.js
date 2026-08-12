@@ -1609,8 +1609,11 @@ async function processMessage(senderPsid, messageText) {
 
   // Ask AI (Free text)
   const rawGrades = data.ket_qua_hoc_tap ? JSON.parse(data.ket_qua_hoc_tap) : null;
-  const targetGradeTable = rawGrades ? rawGrades.find((t) => t.headers && t.headers.includes("Tên học phần")) : null;
-  const gradesRows = targetGradeTable ? (targetGradeTable.rows || []) : [];
+  // The portal returns one grade table per year/semester. Using find() here
+  // only counted the first table (e.g. 52 TC in the test account), while the
+  // profile's accumulated total covers every semester. Merge all grade tables.
+  const gradeTablesForAI = rawGrades ? rawGrades.filter(isGradeTable) : [];
+  const gradesRows = gradeRows(gradeTablesForAI);
 
   // Build GPA summary and grade list for AI context.
   // Use extractGPA first (summary tables) like formatKetQuaHocTap does;
@@ -1643,8 +1646,7 @@ async function processMessage(senderPsid, messageText) {
       subjectsToRelearn: evalResult.subjectsToRelearn,
       subjectsToImprove: evalResult.subjectsToImprove
     };
-    // Send all courses so AI has full context; gradeRows already deduplicates.
-    // ponytail: if token limit becomes issue, compact to {name,grade} only for older courses.
+    // Send all deduplicated courses so AI and the profile use the same total.
     recentGradesFiltered = gradesRows.map(r => ({
       name: r[2],
       credits: r[3],

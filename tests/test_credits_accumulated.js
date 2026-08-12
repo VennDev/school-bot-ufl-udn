@@ -1,4 +1,5 @@
 const assert = require("assert");
+const fs = require("fs");
 const { formatKetQuaHocTap } = require("../src/botRouter");
 const { extractGPA } = require("../src/gpaHelper");
 
@@ -45,5 +46,14 @@ const duplicated = formatKetQuaHocTap({
   diem_ren_luyen: "[]"
 });
 assert.match(duplicated, /Tín chỉ tích lũy: 5 TC/);
+
+// Regression: the complete test account has grade rows across the full
+// history. Do not report only the first semester/table (52 TC).
+const testAccountFixture = JSON.parse(fs.readFileSync(require.resolve("./data.json"), "utf8"));
+const completeHistory = formatKetQuaHocTap({
+  ket_qua_hoc_tap: JSON.stringify(testAccountFixture.ketQuaHocTap),
+  diem_ren_luyen: "[]"
+});
+assert.match(completeHistory, /Tín chỉ tích lũy: 114 TC/);
 
 console.log("Credits accumulated regression test passed OK!");
