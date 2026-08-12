@@ -17,7 +17,8 @@ const syncProgress = require("./syncProgress");
 const avatarCache = new Map();
 const AVATAR_CACHE_MS = 15 * 60 * 1000;
 const avatarFailures = new Map();
-const AVATAR_FAILURE_CACHE_MS = 60 * 60 * 1000;
+// Short TTL: a transient Graph error must not hide the avatar for a whole hour.
+const AVATAR_FAILURE_CACHE_MS = 2 * 60 * 1000;
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 const app = express();
@@ -177,33 +178,57 @@ app.get("/api/admin/avatar/:fbId", requireAdmin, async (req, res) => {
     const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
     if (!pageToken) return res.status(404).end();
 
-    const url = new URL(`https://graph.facebook.com/v21.0/${fbId}/picture`);
-    url.searchParams.set("type", "small");
-    url.searchParams.set("redirect", "false");
-    url.searchParams.set("access_token", pageToken);
-    const graphResponse = await fetch(url);
-    if (!graphResponse.ok) {
-      if (graphResponse.status === 400 || graphResponse.status === 403 || graphResponse.status === 404) {
-        avatarFailures.set(fbId, Date.now());
-        return res.status(404).end();
+    // 1) Direct picture endpoint (redirect=false -> JSON).
+    const pictureUrl = new URL(`https://graph.facebook.com/v21.0/${fbId}/picture`);
+    pictureUrl.searchParams.set("type", "small");
+    pictureUrl.searchParams.set("redirect", "false");
+    pictureUrl.searchParams.set("access_token", pageToken);
+    const graphResponse = await fetch(pictureUrl);
+    if (graphResponse.ok) {
+      const payload = await graphResponse.json();
+      const picture = payload?.data?.url;
+      if (picture) {
+        const imageResponse = await fetch(picture);
+        const contentType = imageResponse.headers.get("content-type") || "";
+        const contentLength = Number(imageResponse.headers.get("content-length") || 0);
+        if (imageResponse.ok && contentType.startsWith("image/") && contentLength <= MAX_AVATAR_BYTES) {
+          const body = Buffer.from(await imageResponse.arrayBuffer());
+          if (body.length <= MAX_AVATAR_BYTES) {
+            const value = { body, contentType: contentType.split(";", 1)[0], expiresAt: Date.now() + AVATAR_CACHE_MS };
+            avatarCache.set(fbId, value);
+            avatarFailures.delete(fbId);
+            return sendCached(value);
+          }
+        }
       }
-      throw new Error(`Graph API ${graphResponse.status}`);
     }
-    const payload = await graphResponse.json();
-    const picture = payload?.data?.url;
-    if (!picture) throw new Error("Avatar URL missing");
 
-    const imageResponse = await fetch(picture);
-    const contentType = imageResponse.headers.get("content-type") || "";
-    const contentLength = Number(imageResponse.headers.get("content-length") || 0);
-    if (!imageResponse.ok || !contentType.startsWith("image/")) throw new Error("Avatar image unavailable");
-    if (contentLength > MAX_AVATAR_BYTES) throw new Error("Avatar image too large");
-    const body = Buffer.from(await imageResponse.arrayBuffer());
-    if (body.length > MAX_AVATAR_BYTES) throw new Error("Avatar image too large");
+    // 2) Fallback: Messenger Profile API exposes profile_pic for PSIDs.
+    const profileUrl = new URL(`https://graph.facebook.com/v21.0/${fbId}`);
+    profileUrl.searchParams.set("fields", "profile_pic,first_name,last_name");
+    profileUrl.searchParams.set("access_token", pageToken);
+    const profileResponse = await fetch(profileUrl);
+    if (profileResponse.ok) {
+      const profile = await profileResponse.json();
+      const picture = profile?.profile_pic;
+      if (picture) {
+        const imageResponse = await fetch(picture);
+        const contentType = imageResponse.headers.get("content-type") || "";
+        if (imageResponse.ok && contentType.startsWith("image/")) {
+          const body = Buffer.from(await imageResponse.arrayBuffer());
+          if (body.length <= MAX_AVATAR_BYTES) {
+            const value = { body, contentType: contentType.split(";", 1)[0], expiresAt: Date.now() + AVATAR_CACHE_MS };
+            avatarCache.set(fbId, value);
+            avatarFailures.delete(fbId);
+            return sendCached(value);
+          }
+        }
+      }
+    }
 
-    const value = { body, contentType: contentType.split(";", 1)[0], expiresAt: Date.now() + AVATAR_CACHE_MS };
-    avatarCache.set(fbId, value);
-    return sendCached(value);
+    // Neither source worked — remember the miss briefly so we don't hammer Graph.
+    avatarFailures.set(fbId, Date.now());
+    return res.status(404).end();
   } catch (error) {
     avatarFailures.set(fbId, Date.now());
     console.warn(`[admin-avatar] ${fbId}: ${error.message}`);

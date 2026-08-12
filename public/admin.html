@@ -401,6 +401,7 @@
 
   <script>
     let token = localStorage.getItem('admin_token') || '';
+    let avatarQueue = Promise.resolve(); // serializes avatar fetches (Graph rate limits)
     let currentDataPage = 1;
     let totalDataCount = 0;
     let syncProgressTimer = null;
@@ -796,16 +797,23 @@
 
     async function loadAvatar(image, fallback, url) {
       try {
-        const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!response.ok) return;
-        const blob = await response.blob();
-        if (!blob.type.startsWith('image/')) return;
-        image.src = URL.createObjectURL(blob);
-        image.onload = () => {
-          image.classList.remove('hidden');
-          fallback.classList.add('hidden');
-        };
+        // Avoid hammering the Graph API when the admin page lists many users at once.
+        await avatarQueue; // wait for the previous request in the queue
       } catch {}
+      avatarQueue = (async () => {
+        try {
+          const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+          if (!response.ok) return;
+          const blob = await response.blob();
+          if (!blob.type.startsWith('image/')) return;
+          image.src = URL.createObjectURL(blob);
+          image.onload = () => {
+            image.classList.remove('hidden');
+            fallback.classList.add('hidden');
+          };
+        } catch {}
+      })();
+      await avatarQueue;
     }
 
     async function loadSettings() {
