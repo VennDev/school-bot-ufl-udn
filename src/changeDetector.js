@@ -76,7 +76,6 @@ function detectGrades(oldData, newData) {
   });
   // First run after multi-semester format migration: old snapshot has one
   // unlabelled table, new snapshot has every year/semester. Do not spam old rows.
-  const hasComparableSemesterMetadata = hasSemesterMetadata(newTables) && hasSemesterMetadata(oldTables);
   if (hasSemesterMetadata(newTables) && !hasSemesterMetadata(oldTables)) return [];
 
   // Snapshots scraped before the rowspan/colspan fix have rows whose cell
@@ -101,11 +100,6 @@ function detectGrades(oldData, newData) {
   const componentIdx = findHeader(/diem thanh phan|diem chuyen can|diem giua ky|diem thuc hanh|diem bai tap|diem thuong xuyen|diem tieu luan/);
   // Final exam score: "Điểm thi" (separate from TBCHP)
   const examIdx = findHeader(/^diem thi$|diem thi(?!.*tk)|diem cuoi ky/);
-  const yearIdx = findHeader(/nam hoc/);
-  const semesterIdx = findHeader(/hoc ky/);
-  const rowKey = row => [_normCell(row[keyIdx]), _normCell(row[nameIdx]), yearIdx >= 0 ? _normalizeYear(row[yearIdx]) : "", semesterIdx >= 0 ? _normalizeSemester(row[semesterIdx]) : ""].join("|");
-
-  const oldBaseRows = new Map();
   const oldBaseRowsByKey = new Map();
   const baseKey = row => [_normCell(row[keyIdx]), _normCell(row[nameIdx])].join("|");
   // Portal renders the same numeric grade with varying string forms between
@@ -117,7 +111,6 @@ function detectGrades(oldData, newData) {
     return Number.isFinite(numeric) ? numeric : text;
   };
   oldTables.flatMap(t => t.rows || []).forEach(row => {
-    oldBaseRows.set(baseKey(row), row);
     // Keep the highest TBCHP among duplicate subject rows (retake → best grade).
     const existing = oldBaseRowsByKey.get(baseKey(row));
     if (!existing || normScore(row[scoreIdx]) > normScore(existing[scoreIdx])) {

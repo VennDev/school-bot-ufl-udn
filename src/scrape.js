@@ -10,6 +10,7 @@ const db = require("./db");
 const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { checkAndNotify } = require("./changeDetector");
+const { mergeGradeSnapshots, isLikelyGradeBaselineExpansion } = require("./scrapeMerge");
 const syncProgress = require("./syncProgress");
 
 let progressRunId = null;
@@ -64,7 +65,7 @@ async function loadResult(account) {
   };
 }
 
-async function saveResult(account, result, baselineOldData, runNotify = false) {
+async function saveResult(account, result, baselineOldData, runNotify = false, options = {}) {
   // baselineOldData: original snapshot before any scraping this session.
   // Prevents partial-save pollution: if scrape runs multiple batches,
   // every checkAndNotify compares against the same original baseline,
@@ -85,6 +86,7 @@ async function saveResult(account, result, baselineOldData, runNotify = false) {
 
   if (runNotify) {
     const settings = await db.getSettings(account.fb_id);
+    if (options.suppressGradeAlerts) settings.notify_gpa = 0;
     await checkAndNotify(account.fb_id, oldData, result, settings);
   }
 }
@@ -334,7 +336,11 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
     }
 
     const gotNew = Object.keys(scraped).length > 0;
-    Object.assign(result, scraped);
+    for (const [key, value] of Object.entries(scraped)) {
+      result[key] = key === "ketQuaHocTap"
+        ? mergeGradeSnapshots(result[key], value)
+        : value;
+    }
     Object.keys(scraped).forEach(key => syncedThisRun.add(key));
     await saveResult(account, result, baselineOldData, false);
 
@@ -380,7 +386,14 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
   // Trigger change detection only after complete sync. Incomplete snapshots
   // must not produce false alerts from partial semester data.
   if (!pending.length) {
-    await saveResult(account, result, baselineOldData, true);
+    const suppressGradeAlerts = isLikelyGradeBaselineExpansion(
+      baselineOldData.ketQuaHocTap,
+      result.ketQuaHocTap,
+    );
+    if (suppressGradeAlerts) {
+      console.log(`  [${account.username}] Grade snapshot expanded materially; saving complete baseline without grade alerts.`);
+    }
+    await saveResult(account, result, baselineOldData, true, { suppressGradeAlerts });
   }
 
   if (progressRunId) {
