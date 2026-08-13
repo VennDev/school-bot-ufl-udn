@@ -2,6 +2,7 @@ const assert = require("assert");
 const {
   mergeGradeSnapshots,
   isLikelyGradeBaselineExpansion,
+  isLikelyGradeSnapshotShrink,
 } = require("../src/scrapeMerge");
 
 const headers = [
@@ -41,6 +42,16 @@ assert.strictEqual(
   isLikelyGradeBaselineExpansion(oldData, partialNewData),
   false,
   "Small/partial scrape must not trigger expansion suppression"
+);
+assert.strictEqual(
+  isLikelyGradeSnapshotShrink(oldData, partialNewData),
+  true,
+  "A snapshot losing a semester must be rejected for retry"
+);
+assert.strictEqual(
+  isLikelyGradeSnapshotShrink(oldData, oldData),
+  false,
+  "An unchanged snapshot must not be rejected"
 );
 
 console.log("Scrape baseline regression tests passed OK!");

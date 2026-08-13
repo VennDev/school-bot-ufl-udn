@@ -10,7 +10,8 @@ const db = require("./db");
 const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { checkAndNotify } = require("./changeDetector");
-const { mergeGradeSnapshots, isLikelyGradeBaselineExpansion } = require("./scrapeMerge");
+const { mergeGradeSnapshots, isLikelyGradeBaselineExpansion, isLikelyGradeSnapshotShrink } = require("./scrapeMerge");
+const { withSchoolScrapeLock } = require("./scrapeLock");
 const syncProgress = require("./syncProgress");
 
 let progressRunId = null;
@@ -291,7 +292,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
   return { scraped, blocked };
 }
 
-async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLoginFailure = false) {
+async function scrapeAccountUnlocked(account, torIdx, useTor, silent = false, notifyLoginFailure = false) {
   if (progressRunId) syncProgress.accountStart(progressRunId, account.fb_id);
   let result = await loadResult(account);
   // Snapshot original DB state ONCE before any scraping.
@@ -308,6 +309,7 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
   let attempt = 0;
   let consecutiveFails = 0;
   const syncedThisRun = new Set();
+  let suspectGradeSnapshot = false;
   const proxy = useTor ? socksUrl(torIdx) : null;
   const accountTimeoutMs = Number.parseInt(process.env.SCRAPER_ACCOUNT_TIMEOUT_MS || "0", 10) || 0;
   const deadline = accountTimeoutMs > 0 ? Date.now() + accountTimeoutMs : 0;
@@ -336,16 +338,29 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
     }
 
     const gotNew = Object.keys(scraped).length > 0;
+    let gradeSnapshotShrankThisAttempt = false;
     for (const [key, value] of Object.entries(scraped)) {
+      if (key === "ketQuaHocTap" && isLikelyGradeSnapshotShrink(baselineOldData.ketQuaHocTap, value)) {
+        gradeSnapshotShrankThisAttempt = true;
+        suspectGradeSnapshot = true;
+        console.warn(`  [${account.username}] ketQuaHocTap snapshot shrank versus baseline; retrying before marking sync complete.`);
+      }
       result[key] = key === "ketQuaHocTap"
         ? mergeGradeSnapshots(result[key], value)
         : value;
+      if (key !== "ketQuaHocTap" || !gradeSnapshotShrankThisAttempt) syncedThisRun.add(key);
     }
-    Object.keys(scraped).forEach(key => syncedThisRun.add(key));
+    if (!gradeSnapshotShrankThisAttempt && scraped.ketQuaHocTap) {
+      suspectGradeSnapshot = false;
+      syncedThisRun.add("ketQuaHocTap");
+    }
     await saveResult(account, result, baselineOldData, false);
 
     // Old DB values do not count as a successful scrape this run.
     pending = PAGES.filter((p) => !syncedThisRun.has(p.key));
+    if (suspectGradeSnapshot && !pending.some(p => p.key === "ketQuaHocTap")) {
+      pending.push(PAGES.find(p => p.key === "ketQuaHocTap"));
+    }
     console.log(`  [${account.username}] Progress: ${syncedThisRun.size}/${PAGES.length}`);
 
     if (!pending.length) break;
@@ -405,6 +420,15 @@ async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLogi
     );
   }
   return result;
+}
+
+// School portal sessions are keyed by school username, not Facebook ID.
+// Serialize all Facebook accounts sharing the same school credentials across
+// scraper processes, otherwise one login can invalidate the other session.
+async function scrapeAccount(account, torIdx, useTor, silent = false, notifyLoginFailure = false) {
+  return withSchoolScrapeLock(account.username, () =>
+    scrapeAccountUnlocked(account, torIdx, useTor, silent, notifyLoginFailure)
+  );
 }
 
 async function main() {

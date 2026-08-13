@@ -102,8 +102,15 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
   const settleSelection = async (selector, value) => {
     try {
       await page.selectOption(selector, value);
-      // Avoid networkidle; school portal keeps background XHR open causing 30s hangs.
-      await page.waitForTimeout(300);
+      // selectOption resolves before portal onchange/AJAX finishes. Confirm the
+      // DOM accepted the value, then give the dependent table time to settle.
+      await page.waitForFunction(({ selector, value }) => {
+        const select = document.querySelector(selector);
+        return Boolean(select && String(select.value) === String(value));
+      }, { selector, value }, { timeout: 5000 });
+      // Avoid networkidle; school portal keeps background XHR open. This delay
+      // is deliberate: reading at 300ms can capture the previous semester.
+      await page.waitForTimeout(900);
       return true;
     } catch {
       return false;

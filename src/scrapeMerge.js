@@ -64,6 +64,14 @@ function isLikelyGradeBaselineExpansion(oldData, newData) {
     (newOnlyGroups.size >= 2 || (onlyHistorical && newOnlyKeys.size >= 2));
 }
 
+function isLikelyGradeSnapshotShrink(oldData, newData) {
+  const oldStats = snapshotStats(oldData);
+  const newStats = snapshotStats(newData);
+  if (!oldStats.rows || !newStats.rows) return false;
+  return newStats.rows < oldStats.rows &&
+    (newStats.rows < oldStats.rows * 0.9 || newStats.tables.length < oldStats.tables.length);
+}
+
 // Keep historical grade rows when portal returns only a subset of semesters.
 // New rows with the same subject key replace old rows, allowing score updates.
 function mergeGradeSnapshots(oldData, newData) {
@@ -97,6 +105,7 @@ function mergeGradeSnapshots(oldData, newData) {
 module.exports = {
   mergeGradeSnapshots,
   isLikelyGradeBaselineExpansion,
+  isLikelyGradeSnapshotShrink,
   snapshotStats,
   isGradeTable,
   gradeKey,
