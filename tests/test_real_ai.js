@@ -6,7 +6,7 @@ const path = require("path");
 async function testReal() {
   const rules = fs.readFileSync(path.resolve(__dirname, "../rules.txt"), "utf8");
   const cleanData = {
-    user: { username: "411230510" },
+    user: { username: process.env.TEST_USERNAME || "test-user" },
     current_time: "2026-07-25",
     gpa_summary: {
       gpaSemester: 3.2,

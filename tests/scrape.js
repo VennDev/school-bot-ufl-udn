@@ -4,7 +4,11 @@ const path = require("path");
 const net = require("net");
 
 const BASE = "https://sinhvien.ufl.udn.vn";
-const CREDS = { UserName: "411230510", Password: "kimhoang@54" };
+const CREDS = { UserName: process.env.SCHOOL_USERNAME, Password: process.env.SCHOOL_PASSWORD };
+if (!CREDS.UserName || !CREDS.Password) {
+  console.error("Missing SCHOOL_USERNAME and SCHOOL_PASSWORD");
+  process.exit(1);
+}
 const TOR_PROXY = "socks5://127.0.0.1:9050";
 const DELAY = 5000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

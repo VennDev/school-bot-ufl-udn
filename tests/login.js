@@ -3,6 +3,13 @@ const https = require("https");
 const querystring = require("querystring");
 
 const HOST = "sinhvien.ufl.udn.vn";
+const USERNAME = process.env.SCHOOL_USERNAME;
+const PASSWORD = process.env.SCHOOL_PASSWORD;
+
+if (!USERNAME || !PASSWORD) {
+  console.error("Missing SCHOOL_USERNAME and SCHOOL_PASSWORD");
+  process.exit(1);
+}
 
 function request(opts, postBody) {
   return new Promise((resolve, reject) => {
@@ -20,8 +27,8 @@ function request(opts, postBody) {
 (async () => {
   const postData = querystring.stringify({
     Role: "0",
-    UserName: "411230510",
-    Password: "kimhoang@54",
+    UserName: USERNAME,
+    Password: PASSWORD,
   });
 
   const loginRes = await request({

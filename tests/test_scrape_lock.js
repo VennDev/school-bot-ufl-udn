@@ -11,16 +11,17 @@ process.env.SCHOOL_SCRAPE_LOCK_STALE_MS = "2000";
 const { acquireSchoolScrapeLock, lockKey } = require("../src/scrapeLock");
 
 (async () => {
-  assert.strictEqual(lockKey(" 411230510 "), lockKey("411230510"));
-  assert.notStrictEqual(lockKey("411230510"), lockKey("411230511"));
+  const username = "test-student";
+  assert.strictEqual(lockKey(` ${username} `), lockKey(username));
+  assert.notStrictEqual(lockKey(username), lockKey("test-student-2"));
 
-  const release = await acquireSchoolScrapeLock("411230510");
+  const release = await acquireSchoolScrapeLock(username);
   assert.ok(release, "first process must acquire lock");
-  const blocked = await acquireSchoolScrapeLock("411230510");
+  const blocked = await acquireSchoolScrapeLock(username);
   assert.strictEqual(blocked, null, "second process must not acquire active lock");
 
   release();
-  const next = await acquireSchoolScrapeLock("411230510");
+  const next = await acquireSchoolScrapeLock(username);
   assert.ok(next, "lock must be reusable after release");
   next();
   fs.rmSync(lockDir, { recursive: true, force: true });

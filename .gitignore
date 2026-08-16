@@ -3,6 +3,11 @@ data/
 logs/
 accounts.json
 tests/data.json
+tests/.env
+tests/*credentials*
+*.local
+*.secret
+*.secrets
 .tor-instances/
 .env
 .pi/
