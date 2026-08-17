@@ -22,6 +22,10 @@ const pastOld = [headers, row({ 3: "27/06/2024", 9: "A302(LNH)" })];
 const pastNew = [headers, row({ 3: "27/06/2024", 9: "C101(LNH)" })];
 assert.deepStrictEqual(detectExams(pastOld, pastNew), []);
 
+// Historical placeholder rows without an exam date must not notify.
+const placeholder = row({ 1: "4113582", 2: "Luyện âm tiếng Anh", 3: "", 8: "411230505", 9: "F202(LD)", 11: "2023-2024", 12: "Kỳ 1" });
+assert.deepStrictEqual(detectExams([headers, row()], [headers, row(), placeholder]), []);
+
 // Real future reschedule still notifies.
 const movedOld = [headers, row({ 9: "B102(LNH)" })];
 const movedNew = [headers, row({ 9: "D404(LNH)" })];

@@ -234,14 +234,23 @@ function detectExams(oldData, newData) {
   // historical row never resurfaces as a notification.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const isPast = (value) => {
-    const parts = String(value || "").trim().split(/[\/\-]/).map(Number);
-    if (parts.length !== 3 || parts.some(part => !part)) return false;
-    return new Date(parts[2], parts[1] - 1, parts[0]) < today;
+  const parseExamDate = value => {
+    const match = String(value || "").trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (!match) return null;
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    let year = Number(match[3]);
+    if (year < 100) year += 2000;
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+      ? date : null;
   };
 
   newData.slice(1).forEach((r) => {
-    if (isPast(r[3])) return;
+    const examDate = parseExamDate(r[3]);
+    // Portal includes historical placeholder rows without an exam date.
+    // They are not actionable exams and must never trigger a notification.
+    if (!examDate || examDate < today) return;
     const known = oldSlots.get(examKey(r));
     if (!known) {
       alerts.push(`[~] Lịch thi mới môn: ${r[2]} ngày ${r[3]} phòng ${r[9]}`);
