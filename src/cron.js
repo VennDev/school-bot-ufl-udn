@@ -175,10 +175,14 @@ async function runScraper() {
 
 let schedulerTimeout = null;
 
-function scheduleNextRun() {
-  // Use configured scraper_interval (hours), default 4h.
+async function getIntervalHours() {
+  const intervalHours = parseInt(await db.getSystemSetting("scraper_interval", "4"), 10);
+  return Number.isFinite(intervalHours) && intervalHours > 0 ? intervalHours : 4;
+}
+
+async function scheduleNextRun() {
   // With full-page refresh, 1-5min is too aggressive — school server will rate-limit.
-  const intervalHours = parseInt(process.env.SCRAPER_INTERVAL_HOURS || "4", 10);
+  const intervalHours = await getIntervalHours();
   const minMs = Math.max(intervalHours * 60 * 60 * 1000, 30 * 60 * 1000); // min 30min
   // Add 0-15min random jitter to avoid all users hitting at same second
   const jitterMs = Math.floor(Math.random() * 15 * 60 * 1000);
@@ -190,12 +194,12 @@ function scheduleNextRun() {
   if (schedulerTimeout) clearTimeout(schedulerTimeout);
   schedulerTimeout = setTimeout(async () => {
     await runScraper();
-    scheduleNextRun();
+    await scheduleNextRun();
   }, delayMs);
 }
 
 async function startScheduler() {
-  const intervalHours = parseInt(process.env.SCRAPER_INTERVAL_HOURS || "4", 10);
+  const intervalHours = await getIntervalHours();
   const syncOnStart = /^(1|true|yes)$/i.test(process.env.SCRAPER_SYNC_ON_START || "false");
   console.log(`[cron] Scheduler started (full-page refresh every ~${intervalHours}h + 0-15min jitter).`);
 
@@ -206,7 +210,7 @@ async function startScheduler() {
   }
   await checkExamReminders();
 
-  scheduleNextRun();
+  await scheduleNextRun();
 
   if (reminderInterval) clearInterval(reminderInterval);
   reminderInterval = setInterval(checkExamReminders, 60 * 60 * 1000);
