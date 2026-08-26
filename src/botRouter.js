@@ -26,13 +26,16 @@ const scrapingInProgress = new Set();
 const SCRAPED_DB_KEYS = {
   canhBao: "canh_bao", thongTinSV: "thong_tin_sv", ketQuaHocTap: "ket_qua_hoc_tap",
   diemRenLuyen: "diem_ren_luyen", lichThi: "lich_thi", hocBongKTKL: "hoc_bong_ktkl",
-  lichHoc: "lich_hoc", hocPhi: "hoc_phi"
+  lichHoc: "lich_hoc", hocPhi: "hoc_phi", chuyenNganhChinh: "chuyen_nganh_chinh",
+  chuyenNganh2: "chuyen_nganh_2", soSanhChuyenNganh: "so_sanh_chuyen_nganh"
 };
+const OPTIONAL_SCRAPED_PAGES = new Set(["chuyenNganh2", "soSanhChuyenNganh"]);
 
 async function isSyncComplete(fbId) {
   const raw = await db.getScrapedData(fbId);
   if (!raw) return false;
   return PAGES.every(page => {
+    if (OPTIONAL_SCRAPED_PAGES.has(page.key)) return true;
     const value = raw[SCRAPED_DB_KEYS[page.key]];
     try { return hasUsableData(page.key, value ? JSON.parse(value) : null); } catch { return false; }
   });
@@ -589,6 +592,29 @@ function getScheduleEntries(data, options = {}) {
     if (entry.room && !rooms.includes(entry.room)) existing.room = [...rooms, entry.room].join(", ");
   });
   return merged;
+}
+
+function extractMakeupSchedule(data) {
+  if (!Array.isArray(data)) return [];
+  return data.filter(table => (table.headers || []).some(header => /dạy bù|lý do|dạy thay/i.test(String(header))))
+    .flatMap(table => {
+      const headers = table.headers || [];
+      const index = aliases => aliases.map(alias => headers.findIndex(header => String(header).toLowerCase().includes(alias))).find(index => index >= 0);
+      const subject = index(["tên môn", "tên học phần", "môn học"]);
+      const original = index(["thời gian học"]);
+      const makeup = index(["thời gian dự kiến dạy bù"]);
+      const room = index(["số phòng", "phòng"]);
+      const reason = index(["lý do"]);
+      const substitute = index(["cán bộ dạy thay"]);
+      return (table.rows || []).map(row => ({
+        subject: subject >= 0 ? row[subject] : "",
+        original_time: original >= 0 ? row[original] : "",
+        makeup_time: makeup >= 0 ? row[makeup] : "",
+        room: room >= 0 ? row[room] : "",
+        reason: reason >= 0 ? row[reason] : "",
+        substitute_teacher: substitute >= 0 ? row[substitute] : ""
+      })).filter(item => item.subject || item.makeup_time || item.reason);
+    });
 }
 
 function formatScheduleDay(day) {
@@ -1446,6 +1472,31 @@ async function processMessage(senderPsid, messageText) {
   // Quick keywords
   const data = await db.getScrapedData(senderPsid) || {};
   console.log(`[botRouter] Querying data for keywords. Message: "${text}"`);
+  const parseStored = key => { try { return data[key] ? JSON.parse(data[key]) : null; } catch { return null; } };
+  const curriculumData = parseStored("chuyen_nganh_chinh");
+
+  const wantsCurriculum = /chuyên ngành|chuong trinh dao tao|chương trình đào tạo|môn còn lại|môn chưa học|tín chỉ còn|tín chỉ phải học|còn bao nhiêu môn/i.test(text);
+  if (wantsCurriculum) {
+    const profile = data.thong_tin_sv ? parseStored("thong_tin_sv") : {};
+    const major = profile?.["Ngành"] || profile?.["Chuyên ngành"] || "chuyên ngành chính";
+    if (!curriculumData?.length) return messenger.sendTextMessage(senderPsid, "Chưa có dữ liệu chương trình đào tạo chuyên ngành. Hãy gõ /sync để đồng bộ lại.");
+    const table = curriculumData.find(item => Array.isArray(item.rows));
+    const headers = table?.headers || [];
+    const codeIndex = headers.findIndex(h => /mã học phần/i.test(h));
+    const nameIndex = headers.findIndex(h => /tên học phần/i.test(h));
+    const rows = (table?.rows || []).filter(row => row.filter(Boolean).length >= 2 && (codeIndex < 0 || /^\d/.test(String(row[codeIndex] || ""))));
+    const grades = parseStored("ket_qua_hoc_tap") || [];
+    const gradeText = JSON.stringify(grades).toLowerCase();
+    const uniqueRows = [...new Map(rows.map(row => [String(row[codeIndex] || "").trim(), row])).values()];
+    const remaining = uniqueRows.filter(row => !gradeText.includes(String(row[codeIndex] || "").toLowerCase()));
+    const framework = await lookupProgramFramework(major);
+    const gradeTables = grades.filter(isGradeTable);
+    const completedCredits = gradeTables.length ? calculateGPA(gradeRows(gradeTables)).creditsAccumulated : 0;
+    const totalCredits = framework?.totalCredits || null;
+    const remainingCredits = totalCredits === null ? null : Math.max(0, totalCredits - completedCredits);
+    const names = remaining.slice(0, 12).map(row => row[nameIndex >= 0 ? nameIndex : 1]).filter(Boolean);
+    return messenger.sendTextMessage(senderPsid, `📚 CHƯƠNG TRÌNH ${major.toUpperCase()}\n- Học phần trong khung: ${uniqueRows.length} môn${totalCredits !== null ? ` / ${totalCredits} TC toàn khóa` : ""}\n- Đã tích lũy theo bảng điểm: ${completedCredits} TC${remainingCredits !== null ? `\n- Tín chỉ còn lại ước tính: ${remainingCredits} TC` : ""}\n- Chưa thấy trong bảng điểm: ${remaining.length} môn\n${names.length ? `- Một số môn còn lại: ${names.join(", ")}` : "- Cần xem chi tiết trên chương trình đào tạo."}\n\nLưu ý: môn tương đương/tự chọn có thể làm số môn còn lại thay đổi; tín chỉ còn lại dùng tổng TC chương trình và bảng điểm thực tế.`);
+  }
 
   // Load system rules early so all AI-calling paths can use them
   let systemPrompt = "";
@@ -1727,7 +1778,9 @@ async function processMessage(senderPsid, messageText) {
           return dateStr.includes(currentYear) || dateStr.includes("/" + currentYear.slice(2));
         }).slice(0, 3),
     tuition: data.hoc_phi ? JSON.parse(data.hoc_phi) : [],
-    schedule: requestedSchedule
+    schedule: requestedSchedule,
+    curriculum: curriculumData,
+    makeup_schedule: extractMakeupSchedule(filteredSchedule)
   };
 
   // Look up program framework from student's major

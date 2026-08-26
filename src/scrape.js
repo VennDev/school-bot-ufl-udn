@@ -63,6 +63,9 @@ async function loadResult(account) {
     hocBongKTKL: row.hoc_bong_ktkl ? JSON.parse(row.hoc_bong_ktkl) : null,
     lichHoc: row.lich_hoc ? JSON.parse(row.lich_hoc) : null,
     hocPhi: row.hoc_phi ? JSON.parse(row.hoc_phi) : null,
+    chuyenNganhChinh: row.chuyen_nganh_chinh ? JSON.parse(row.chuyen_nganh_chinh) : null,
+    chuyenNganh2: row.chuyen_nganh_2 ? JSON.parse(row.chuyen_nganh_2) : null,
+    soSanhChuyenNganh: row.so_sanh_chuyen_nganh ? JSON.parse(row.so_sanh_chuyen_nganh) : null,
   };
 }
 
@@ -83,6 +86,9 @@ async function saveResult(account, result, baselineOldData, runNotify = false, o
     hoc_bong_ktkl: result.hocBongKTKL,
     lich_hoc: result.lichHoc,
     hoc_phi: result.hocPhi,
+    chuyen_nganh_chinh: result.chuyenNganhChinh,
+    chuyen_nganh_2: result.chuyenNganh2,
+    so_sanh_chuyen_nganh: result.soSanhChuyenNganh,
   });
 
   if (runNotify) {
@@ -259,7 +265,10 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
                            p.key === "diemRenLuyen" ? "Điểm rèn luyện" : 
                            p.key === "lichThi" ? "Lịch thi" : 
                            p.key === "hocBongKTKL" ? "Học bổng & Khen thưởng" : 
-                           p.key === "lichHoc" ? "Lịch học" : "Học phí"}`);
+                           p.key === "lichHoc" ? "Lịch học" :
+                           p.key === "chuyenNganhChinh" ? "Chuyên ngành chính" :
+                           p.key === "chuyenNganh2" ? "Chuyên ngành 2" :
+                           p.key === "soSanhChuyenNganh" ? "So sánh chuyên ngành" : "Học phí"}`);
         }
       } catch (e) {
         const msg = e.message || "";

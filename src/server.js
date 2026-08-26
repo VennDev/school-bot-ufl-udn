@@ -108,6 +108,9 @@ app.get("/api/admin/user-detail", requireAdmin, async (req, res) => {
       hocBongKTKL: parse(rawData.hoc_bong_ktkl),
       lichHoc: parse(rawData.lich_hoc),
       hocPhi: parse(rawData.hoc_phi),
+      chuyenNganhChinh: parse(rawData.chuyen_nganh_chinh),
+      chuyenNganh2: parse(rawData.chuyen_nganh_2),
+      soSanhChuyenNganh: parse(rawData.so_sanh_chuyen_nganh),
       updatedAt: rawData.updated_at
     };
     const coverage = Object.fromEntries(PAGES.map(page => [page.key, hasUsableData(page.key, parsedData[page.key])]));
@@ -125,7 +128,8 @@ app.get("/api/admin/stats", requireAdmin, async (req, res) => {
       const dbKey = {
         canhBao: "canh_bao", thongTinSV: "thong_tin_sv", ketQuaHocTap: "ket_qua_hoc_tap",
         diemRenLuyen: "diem_ren_luyen", lichThi: "lich_thi", hocBongKTKL: "hoc_bong_ktkl",
-        lichHoc: "lich_hoc", hocPhi: "hoc_phi"
+        lichHoc: "lich_hoc", hocPhi: "hoc_phi", chuyenNganhChinh: "chuyen_nganh_chinh",
+        chuyenNganh2: "chuyen_nganh_2", soSanhChuyenNganh: "so_sanh_chuyen_nganh"
       }[p.key];
       try { return hasUsableData(p.key, data[dbKey] ? JSON.parse(data[dbKey]) : null); } catch { return false; }
     }).length;

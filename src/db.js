@@ -66,6 +66,9 @@ const scrapedDataSchema = new mongoose.Schema({
   hoc_bong_ktkl: String,
   lich_hoc: String,
   hoc_phi: String,
+  chuyen_nganh_chinh: String,
+  chuyen_nganh_2: String,
+  so_sanh_chuyen_nganh: String,
   updated_at: Number,
 });
 
@@ -225,6 +228,9 @@ module.exports = {
       hoc_bong_ktkl: data.hoc_bong_ktkl ? JSON.stringify(data.hoc_bong_ktkl) : null,
       lich_hoc: data.lich_hoc ? JSON.stringify(data.lich_hoc) : null,
       hoc_phi: data.hoc_phi ? JSON.stringify(data.hoc_phi) : null,
+      chuyen_nganh_chinh: data.chuyen_nganh_chinh ? JSON.stringify(data.chuyen_nganh_chinh) : null,
+      chuyen_nganh_2: data.chuyen_nganh_2 ? JSON.stringify(data.chuyen_nganh_2) : null,
+      so_sanh_chuyen_nganh: data.so_sanh_chuyen_nganh ? JSON.stringify(data.so_sanh_chuyen_nganh) : null,
       updated_at: Date.now(),
     };
     await ScrapedData.findOneAndUpdate(

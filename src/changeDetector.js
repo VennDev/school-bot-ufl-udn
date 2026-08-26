@@ -307,7 +307,8 @@ function detectSchedule(oldData, newData) {
     const hasRegistrationColumns = headers.some(header =>
       /so tin chi|ten lop tin chi|duong dan/.test(header)
     );
-    return hasSubject && hasRegistrationColumns;
+    const isMakeupTable = headers.some(header => /thoi gian du kien day bu|ly do|can bo day thay/.test(header));
+    return (hasSubject && hasRegistrationColumns) || isMakeupTable;
   };
   const tableDates = table => {
     const headers = (table?.headers || []).map(norm);
@@ -389,22 +390,29 @@ function detectSchedule(oldData, newData) {
     const name = findColumn(headers, ["Tên học phần", "Tên môn học", "Tên môn", "Môn học", "Học phần"]);
     const day = findColumn(headers, ["Thứ", "Ngày"]);
     const period = findColumn(headers, ["Tiết", "Tiết học"]);
-    if (name === undefined || day === undefined || period === undefined) return [];
-    const room = findColumn(headers, ["Phòng", "Phòng học"]);
-    const className = findColumn(headers, ["Tên lớp tín chỉ", "Lớp học phần", "Lớp tín chỉ", "Lớp"]);
-    const time = findColumn(headers, ["Thời gian", "Ngày học"]);
+    const isMakeupTable = headers.some(header => /thoi gian du kien day bu|ly do|can bo day thay/.test(header));
+    if (name === undefined || (!isMakeupTable && (day === undefined || period === undefined))) return [];
+    const room = findColumn(headers, ["Phòng", "Phòng học", "Số phòng"]);
+    const className = findColumn(headers, ["Tên lớp tín chỉ", "Tên lớp học phần", "Lớp học phần", "Lớp tín chỉ", "Lớp"]);
+    const time = findColumn(headers, ["Thời gian", "Ngày học", "Thời gian học"]);
+    const makeupTime = findColumn(headers, ["Thời gian dự kiến dạy bù"]);
+    const reason = findColumn(headers, ["Lý do"]);
+    const substituteTeacher = findColumn(headers, ["Cán bộ dạy thay"]);
     const year = findColumn(headers, ["Năm học"]);
     const semester = findColumn(headers, ["Học kỳ"]);
     return (table.rows || []).map(row => ({
       name: clean(row[name]),
       className: className === undefined ? "" : clean(row[className]),
-      day: clean(row[day]),
-      period: clean(row[period]),
+      day: day === undefined ? "" : clean(row[day]),
+      period: period === undefined ? "" : clean(row[period]),
       room: room === undefined ? "" : clean(row[room]),
       time: time === undefined ? "" : clean(row[time]),
+      makeupTime: makeupTime === undefined ? "" : clean(row[makeupTime]),
+      reason: reason === undefined ? "" : clean(row[reason]),
+      substituteTeacher: substituteTeacher === undefined ? "" : clean(row[substituteTeacher]),
       year: year === undefined ? clean(table.year || table.yearValue) : clean(row[year]),
       semester: semester === undefined ? clean(table.semester || table.semesterValue) : clean(row[semester]),
-    })).filter(entry => entry.name && entry.day && entry.period && !/^tên học phần|^tên môn/i.test(entry.name));
+    })).filter(entry => entry.name && (isMakeupTable || (entry.day && entry.period)) && !/^tên học phần|^tên môn/i.test(entry.name));
   };
 
   const oldEntries = oldTables.flatMap(extract);
@@ -437,15 +445,19 @@ function detectSchedule(oldData, newData) {
   // looks like a new or changed schedule.
   const normTime = value => norm(value).replace(/\s*-\s*/g, "-").replace(/\s*[/.,;|]\s*/g, " ").replace(/\s+/g, " ");
   const key = entry => [norm(entry.name), norm(entry.className), group(entry), normTime(entry.time)].join("|");
-  const value = entry => [norm(entry.day), norm(entry.period), norm(entry.room), normTime(entry.time)].join("|");
+  const value = entry => [norm(entry.day), norm(entry.period), norm(entry.room), normTime(entry.time), normTime(entry.makeupTime), norm(entry.reason), norm(entry.substituteTeacher)].join("|");
   const oldRows = new Map(oldEntries.map(entry => [key(entry), entry]));
   const alerts = [];
   comparableNewEntries.forEach(entry => {
     const oldEntry = oldRows.get(key(entry));
     if (!oldEntry) {
-      alerts.push(`[~] Lịch học mới: ${entry.name} - Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
+      alerts.push(entry.makeupTime || entry.reason
+        ? `[!] Lịch dạy bù/dạy thay mới: ${entry.name} | Dạy bù: ${entry.makeupTime || "chưa rõ"} | Phòng: ${entry.room || "chưa rõ"} | Lý do: ${entry.reason || "không có"}${entry.substituteTeacher ? ` | GV dạy thay: ${entry.substituteTeacher}` : ""}`
+        : `[~] Lịch học mới: ${entry.name} - Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
     } else if (value(oldEntry) !== value(entry)) {
-      alerts.push(`(->) Thay đổi lịch học môn: ${entry.name} -> Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
+      alerts.push(entry.makeupTime || entry.reason
+        ? `[!] Cập nhật lịch dạy bù/dạy thay: ${entry.name} | Dạy bù: ${entry.makeupTime || "chưa rõ"} | Phòng: ${entry.room || "chưa rõ"} | Lý do: ${entry.reason || "không có"}${entry.substituteTeacher ? ` | GV dạy thay: ${entry.substituteTeacher}` : ""}`
+        : `(->) Thay đổi lịch học môn: ${entry.name} -> Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
     }
   });
   return [...new Set(alerts)];

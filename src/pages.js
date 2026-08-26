@@ -301,7 +301,9 @@ function _extractScheduleTables() {
     // contain subject/time columns, but lack credits and class columns.
     const hasCourse = normalizedHeaders.some(header => /ten hoc phan|ten mon/.test(header));
     const hasRegistrationColumns = normalizedHeaders.some(header => /so tin chi|ten lop tin chi|duong dan/.test(header));
-    if (hasCourse && hasRegistrationColumns && rows.some(row => row.some(cell => cell.length > 2 && !/STT/i.test(cell)))) {
+    const hasRows = rows.some(row => row.some(cell => cell.length > 2 && !/STT/i.test(cell)));
+    const isMakeup = normalizedHeaders.some(header => /thoi gian du kien day bu|ly do|can bo day thay/.test(header));
+    if ((hasCourse && hasRegistrationColumns || isMakeup) && hasRows) {
       tables.push({ headers, rows });
     }
   });
@@ -339,6 +341,16 @@ function parseMajorFromClassName(className) {
 
 function hasUsableData(key, value) {
   if (value == null) return false;
+  if (key === "chuyenNganh2") {
+    // An empty table is valid: it means the student has no second major.
+    return Array.isArray(value) && value.some(table => Array.isArray(table?.headers) && table.headers.length >= 2);
+  }
+  if (key === "chuyenNganhChinh") {
+    return Array.isArray(value) && value.some(table => Array.isArray(table?.headers) && table.headers.length >= 2 && table.rows?.some(row => Array.isArray(row) && row.filter(Boolean).length >= 2));
+  }
+  if (key === "soSanhChuyenNganh") {
+    return value && typeof value === "object" && Array.isArray(value.controls);
+  }
   if (key === "thongTinSV") {
     if (!value || typeof value !== "object") return false;
     const validEntries = Object.entries(value).filter(([f, v]) => !f.startsWith("_") && String(v ?? "").trim().length > 0);
@@ -655,6 +667,86 @@ const PAGES = [
       }
       return tables;
     },
+  },
+  {
+    key: "chuyenNganhChinh",
+    url: `${BASE}/SinhVien/ChuyenNganhChinh`,
+    label: "Chương trình đào tạo - chuyên ngành chính",
+    extract: () => {
+      const table = [...document.querySelectorAll("table")].find(table =>
+        [...table.querySelectorAll("th")].some(th => /mã học phần|tên học phần/i.test(th.innerText))
+      );
+      if (!table) return [];
+      const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
+      const rows = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")]
+        .map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.trim()))
+        .filter(row => row.some(Boolean));
+      return [{ headers, rows }];
+    },
+  },
+  {
+    key: "chuyenNganh2",
+    url: `${BASE}/SinhVien/ChuyenNganh2`,
+    label: "Chương trình đào tạo - chuyên ngành 2",
+    extract: () => {
+      const table = [...document.querySelectorAll("table")].find(table =>
+        [...table.querySelectorAll("th")].some(th => /mã học phần|tên học phần/i.test(th.innerText))
+      );
+      if (!table) return [];
+      const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
+      const rows = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")]
+        .map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.trim()))
+        .filter(row => row.some(Boolean));
+      return [{ headers, rows }];
+    },
+  },
+  {
+    key: "soSanhChuyenNganh",
+    url: `${BASE}/SoSanhChuyenNganh/Index`,
+    label: "So sánh chương trình đào tạo",
+    extract: () => ({
+      controls: [...document.querySelectorAll("select")].map(select => ({
+        id: select.id,
+        options: [...select.options].map(option => option.textContent.trim()).filter(Boolean),
+      })),
+      tables: [...document.querySelectorAll("table")].map(table => ({
+        headers: [...table.querySelectorAll("th")].map(th => th.innerText.trim()),
+        rows: [...table.querySelectorAll("tr")].map(tr => [...tr.querySelectorAll("td,th")].map(td => td.innerText.trim())).filter(row => row.some(Boolean)),
+      })),
+    }),
+  },
+  {
+    key: "chuyenNganhChinh",
+    url: `${BASE}/SinhVien/ChuyenNganhChinh`,
+    label: "Chương trình đào tạo - chuyên ngành chính",
+    extract: () => {
+      const table = [...document.querySelectorAll("table")].find(table => [...table.querySelectorAll("th")].some(th => /mã học phần|tên học phần/i.test(th.innerText)));
+      if (!table) return [];
+      const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
+      const rows = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")].map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.trim())).filter(row => row.some(Boolean));
+      return [{ headers, rows }];
+    },
+  },
+  {
+    key: "chuyenNganh2",
+    url: `${BASE}/SinhVien/ChuyenNganh2`,
+    label: "Chương trình đào tạo - chuyên ngành 2",
+    extract: () => {
+      const table = [...document.querySelectorAll("table")].find(table => [...table.querySelectorAll("th")].some(th => /mã học phần|tên học phần/i.test(th.innerText)));
+      if (!table) return [];
+      const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
+      const rows = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")].map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.trim())).filter(row => row.some(Boolean));
+      return [{ headers, rows }];
+    },
+  },
+  {
+    key: "soSanhChuyenNganh",
+    url: `${BASE}/SoSanhChuyenNganh/Index`,
+    label: "So sánh chương trình đào tạo",
+    extract: () => ({
+      controls: [...document.querySelectorAll("select")].map(select => ({ id: select.id, options: [...select.options].map(option => option.textContent.trim()).filter(Boolean) })),
+      tables: [...document.querySelectorAll("table")].map(table => ({ headers: [...table.querySelectorAll("th")].map(th => th.innerText.trim()), rows: [...table.querySelectorAll("tr")].map(tr => [...tr.querySelectorAll("td,th")].map(td => td.innerText.trim())).filter(row => row.some(Boolean)) })),
+    }),
   },
   {
     key: "hocPhi",
