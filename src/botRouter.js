@@ -1491,7 +1491,11 @@ async function processMessage(senderPsid, messageText) {
     const remaining = uniqueRows.filter(row => !gradeText.includes(String(row[codeIndex] || "").toLowerCase()));
     const framework = await lookupProgramFramework(major);
     const gradeTables = grades.filter(isGradeTable);
-    const completedCredits = gradeTables.length ? calculateGPA(gradeRows(gradeTables)).creditsAccumulated : 0;
+    const completedCredits = gradeTables.length ? calculateGPA(gradeRows(gradeTables).map((r) => ({
+      name: r[2] || "",
+      credits: r[3],
+      score10: r[6]
+    }))).creditsAccumulated : 0;
     const totalCredits = framework?.totalCredits || null;
     const remainingCredits = totalCredits === null ? null : Math.max(0, totalCredits - completedCredits);
     const names = remaining.slice(0, 12).map(row => row[nameIndex >= 0 ? nameIndex : 1]).filter(Boolean);

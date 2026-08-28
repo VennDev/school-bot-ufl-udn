@@ -20,7 +20,7 @@ function calculateGPA(courses) {
   let weightedPointsAccumulated = 0;
 
   courses.forEach((c) => {
-    const nameLower = c.name.toLowerCase();
+    const nameLower = String(c?.name || "").toLowerCase();
     
     // Ngoại lệ: Không tính GDQP và GDTC vào GPA
     if (nameLower.includes("giáo dục quốc phòng") || nameLower.includes("giáo dục thể chất") || nameLower.includes("gdqp") || nameLower.includes("gdtc")) {

@@ -36,7 +36,7 @@ async function callOpenCode(systemPrompt, userPrompt) {
       ],
       temperature: 0.0
     }),
-  }, 25000);
+  }, 90000);
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
