@@ -284,7 +284,7 @@ function detectAnnouncements(oldData, newData) {
     const key = _annItemKey(item);
     const known = oldTexts.some(old => old === key || old.includes(key) || (key.length > 20 && key.includes(old)));
     if (!known) {
-      alerts.push(`[!] Báo nghỉ/Học vụ mới: ${key.substring(0, 150)}...`);
+      alerts.push(`[!] Báo nghỉ/Học vụ mới: ${key}`);
     }
   });
   return alerts;
