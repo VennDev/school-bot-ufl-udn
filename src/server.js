@@ -582,7 +582,7 @@ app.get("/api/admin/settings", requireAdmin, async (req, res) => {
   res.json({
     ai_provider: await db.getSystemSetting("ai_provider", process.env.AI_PROVIDER || "opencode"),
     opencode_api_key: await db.getSystemSetting("opencode_api_key", process.env.OPENCODE_API_KEY || "public"),
-    opencode_model: await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "deepseek-v4-flash-free"),
+    opencode_model: await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "mimo-v2.5-free"),
     scraper_interval: await db.getSystemSetting("scraper_interval", "4"), // hours
     scraper_mode: await db.getSystemSetting("scraper_mode", "parallel"), // parallel / sequential
     fb_page_token: await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || ""),

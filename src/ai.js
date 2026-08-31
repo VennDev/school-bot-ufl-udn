@@ -19,7 +19,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
 
 async function callOpenCode(systemPrompt, userPrompt) {
   const apiKey = await db.getSystemSetting("opencode_api_key", process.env.OPENCODE_API_KEY || "public");
-  const model = await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "deepseek-v4-flash-free");
+  const model = await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "mimo-v2.5-free");
 
   const res = await fetchWithTimeout(OPENCODE_URL, {
     method: "POST",
