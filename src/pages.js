@@ -716,39 +716,6 @@ const PAGES = [
     }),
   },
   {
-    key: "chuyenNganhChinh",
-    url: `${BASE}/SinhVien/ChuyenNganhChinh`,
-    label: "Chương trình đào tạo - chuyên ngành chính",
-    extract: () => {
-      const table = [...document.querySelectorAll("table")].find(table => [...table.querySelectorAll("th")].some(th => /mã học phần|tên học phần/i.test(th.innerText)));
-      if (!table) return [];
-      const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
-      const rows = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")].map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.trim())).filter(row => row.some(Boolean));
-      return [{ headers, rows }];
-    },
-  },
-  {
-    key: "chuyenNganh2",
-    url: `${BASE}/SinhVien/ChuyenNganh2`,
-    label: "Chương trình đào tạo - chuyên ngành 2",
-    extract: () => {
-      const table = [...document.querySelectorAll("table")].find(table => [...table.querySelectorAll("th")].some(th => /mã học phần|tên học phần/i.test(th.innerText)));
-      if (!table) return [];
-      const headers = [...table.querySelectorAll("thead th, tr:first-child th")].map(th => th.innerText.trim());
-      const rows = [...table.querySelectorAll("tbody tr, tr:not(:first-child)")].map(tr => [...tr.querySelectorAll("td")].map(td => td.innerText.trim())).filter(row => row.some(Boolean));
-      return [{ headers, rows }];
-    },
-  },
-  {
-    key: "soSanhChuyenNganh",
-    url: `${BASE}/SoSanhChuyenNganh/Index`,
-    label: "So sánh chương trình đào tạo",
-    extract: () => ({
-      controls: [...document.querySelectorAll("select")].map(select => ({ id: select.id, options: [...select.options].map(option => option.textContent.trim()).filter(Boolean) })),
-      tables: [...document.querySelectorAll("table")].map(table => ({ headers: [...table.querySelectorAll("th")].map(th => th.innerText.trim()), rows: [...table.querySelectorAll("tr")].map(tr => [...tr.querySelectorAll("td,th")].map(td => td.innerText.trim())).filter(row => row.some(Boolean)) })),
-    }),
-  },
-  {
     key: "hocPhi",
     url: `${BASE}/TraCuuHocPhiSV/Index`,
     label: "Học phí và tài chính",
