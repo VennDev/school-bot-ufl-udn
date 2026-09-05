@@ -270,9 +270,7 @@ app.post("/api/admin/sync-all", requireAdmin, (req, res) => {
   }
   globalSyncRunning = true;
   const scraperPath = path.resolve(__dirname, "./scrape.js");
-  exec(`node ${scraperPath} --silent --parallel`, {
-    env: { ...process.env, SCRAPER_MAX_PARALLEL: process.env.SCRAPER_MAX_PARALLEL || "2" },
-  }, (err) => {
+  exec(`node ${scraperPath} --silent --parallel`, (err) => {
     globalSyncRunning = false;
     if (err) console.error("[admin-sync] Global failed:", err.message);
   });

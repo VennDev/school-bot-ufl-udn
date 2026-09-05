@@ -19,7 +19,12 @@ const BATCH_SIZE = 8; // Scrape all 8 pages in one login session to prevent dupl
 const DELAY = 2000; // Reduce delay to speed up scraping
 const MAX_RETRIES = 20;
 const BACKOFF_BASE = 30000;
-const MAX_PARALLEL = Math.max(1, Math.min(3, Number.parseInt(process.env.SCRAPER_MAX_PARALLEL || "2", 10) || 2));
+function computeMaxParallel(totalAccounts) {
+  if (process.env.SCRAPER_MAX_PARALLEL) {
+    return Math.max(1, Number.parseInt(process.env.SCRAPER_MAX_PARALLEL, 10) || 1);
+  }
+  return Math.max(1, Math.floor((totalAccounts || 0) / 10));
+}
 const PAGE_TIMEOUT_MS = Math.max(30000, Number.parseInt(process.env.SCRAPER_PAGE_TIMEOUT_MS || "120000", 10) || 120000);
 const BROWSER_CLOSED_RE = /(?:Target page|context or browser has been closed|Browser has been closed|Target closed|Browser closed)/i;
 
@@ -476,8 +481,9 @@ async function main() {
   console.log(`Scraping ${accounts.length} account(s), Tor: ${useTor ? "ON" : "OFF"}, Mode: ${mode}, Silent: ${silent}\n`);
 
   if (parallel && useTor) {
-    const needed = Math.min(accounts.length, MAX_PARALLEL);
-    console.log(`Starting ${needed} Tor instances...\n`);
+    const maxParallel = computeMaxParallel(accounts.length);
+    const needed = Math.min(accounts.length, maxParallel);
+    console.log(`Starting ${needed} Tor instances (scale: 1 per 10 users, max: ${maxParallel})...\n`);
     const instances = await startMultipleTor(needed);
     if (!instances.length) {
       console.log("Failed to start Tor instances. Run: sudo pacman -S tor");
@@ -559,17 +565,22 @@ async function main() {
   }
 }
 
-main()
-  .catch((err) => {
-    if (progressRunId) syncProgress.finishRun(progressRunId, "failed", err.message);
-    console.error(err);
-    process.exit(1);
-  })
-  .finally(async () => {
-    // Disconnect MongoDB to prevent connection pool leak in child processes
-    try {
-      const mongoose = require("mongoose");
-      await mongoose.disconnect();
-      console.log("[scrape] MongoDB disconnected.");
-    } catch {}
-  });
+module.exports = { computeMaxParallel };
+
+if (require.main === module) {
+  main()
+    .catch((err) => {
+      if (progressRunId) syncProgress.finishRun(progressRunId, "failed", err.message);
+      console.error(err);
+      process.exit(1);
+    })
+    .finally(async () => {
+      // Disconnect MongoDB to prevent connection pool leak in child processes
+      try {
+        const mongoose = require("mongoose");
+        await mongoose.disconnect();
+        console.log("[scrape] MongoDB disconnected.");
+      } catch {}
+    });
+}
+
