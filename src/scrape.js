@@ -496,6 +496,7 @@ async function main() {
     }
 
     for (const chunk of chunks) {
+      if (progressRunId) syncProgress.touchRun(progressRunId);
       const promises = chunk.map((account, i) => {
         const torIdx = instances[i % instances.length].idx;
         return scrapeAccount(account, torIdx, true, silent, notifyLoginFailure);
@@ -505,6 +506,7 @@ async function main() {
       for (const inst of instances) {
         await rotateIP(inst.idx);
       }
+      if (progressRunId) syncProgress.touchRun(progressRunId);
     }
 
     stopAllTor();

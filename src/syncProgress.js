@@ -74,6 +74,7 @@ function updateAccount(runId, fbId, mutate) {
   account.percent = calculatePercent(account);
   account.updatedAt = now();
   writeJSON(accountPath(runId, fbId), account);
+  touchRun(runId);
   return account;
 }
 
@@ -198,6 +199,13 @@ function finishRun(runId, status = "complete", error = null) {
   writeJSON(metaPath(runId), meta);
 }
 
+function touchRun(runId) {
+  const meta = readMeta(runId);
+  if (!meta || meta.status !== "running") return;
+  meta.updatedAt = now();
+  writeJSON(metaPath(runId), meta);
+}
+
 function listRuns() {
   let dirs = [];
   try { dirs = fs.readdirSync(PROGRESS_DIR); } catch { return []; }
@@ -209,7 +217,8 @@ function listRuns() {
       try { fs.rmSync(runDir(run.runId), { recursive: true, force: true }); } catch {}
       return false;
     }
-    if (run.status === "running" && nowMs - updatedMs > RUN_HEARTBEAT_TIMEOUT_MS) {
+    const hasActiveAccount = (run.accounts || []).some(acc => acc.status === "running");
+    if (run.status === "running" && !hasActiveAccount && nowMs - updatedMs > RUN_HEARTBEAT_TIMEOUT_MS) {
       run.status = "failed";
       run.error = "Scraper process stopped unexpectedly or timed out";
       run.updatedAt = new Date().toISOString();
@@ -242,4 +251,5 @@ module.exports = {
   pageFailed,
   accountFinished,
   finishRun,
+  touchRun,
 };

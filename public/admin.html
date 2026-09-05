@@ -934,7 +934,7 @@
     }
 
     function renderSyncRuns(runs) {
-      const run = runs.find(item => item.status === 'running') || runs[0];
+      const run = runs.find(item => item.status === 'running') || runs.find(item => item.status !== 'failed') || runs[0];
       const summary = document.getElementById('sync-progress-summary');
       const bar = document.getElementById('sync-progress-bar');
       const tree = document.getElementById('sync-progress-tree');
