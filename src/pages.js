@@ -364,6 +364,7 @@ function hasUsableData(key, value) {
     return hasProfileField || validEntries.length >= 2;
   }
   if (key === "canhBao") return Array.isArray(value);
+  if (key === "lichThi") return Array.isArray(value);
   if (key === "hocBongKTKL") return value != null && typeof value === "object";
   if (Array.isArray(value)) {
     return value.some(item => {

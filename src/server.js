@@ -578,9 +578,14 @@ app.get("/api/admin/usage-stats", requireAdmin, async (req, res) => {
 
 app.get("/api/admin/settings", requireAdmin, async (req, res) => {
   res.json({
-    ai_provider: await db.getSystemSetting("ai_provider", process.env.AI_PROVIDER || "opencode"),
+    ai_provider: await db.getSystemSetting("ai_provider", process.env.AI_PROVIDER || "custom"),
+    custom_ai_url: await db.getSystemSetting("custom_ai_url", process.env.CUSTOM_AI_URL || "https://api.xah.io"),
+    custom_ai_key: await db.getSystemSetting("custom_ai_key", process.env.CUSTOM_AI_KEY || "sk-fd9b9e1238c55a1e034267163a5b4ec8fa72e8fa8b1516879ecfd7300896ebaf"),
+    custom_ai_model: await db.getSystemSetting("custom_ai_model", process.env.CUSTOM_AI_MODEL || "phatchau036/gpt-5.6-luna"),
     opencode_api_key: await db.getSystemSetting("opencode_api_key", process.env.OPENCODE_API_KEY || "public"),
     opencode_model: await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "mimo-v2.5-free"),
+    openai_api_key: await db.getSystemSetting("openai_api_key", process.env.OPENAI_API_KEY || ""),
+    gemini_api_key: await db.getSystemSetting("gemini_api_key", process.env.GEMINI_API_KEY || ""),
     scraper_interval: await db.getSystemSetting("scraper_interval", "4"), // hours
     scraper_mode: await db.getSystemSetting("scraper_mode", "parallel"), // parallel / sequential
     fb_page_token: await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || ""),
@@ -597,11 +602,37 @@ app.get("/api/admin/settings", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/settings", requireAdmin, async (req, res) => {
-  const { ai_provider, opencode_api_key, opencode_model, scraper_interval, scraper_mode, fb_page_token, fb_page_id, fb_user_token, fb_verify_token, fb_app_secret, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from } = req.body;
+  const {
+    ai_provider,
+    custom_ai_url,
+    custom_ai_key,
+    custom_ai_model,
+    opencode_api_key,
+    opencode_model,
+    openai_api_key,
+    gemini_api_key,
+    scraper_interval,
+    scraper_mode,
+    fb_page_token,
+    fb_page_id,
+    fb_user_token,
+    fb_verify_token,
+    fb_app_secret,
+    smtp_host,
+    smtp_port,
+    smtp_user,
+    smtp_pass,
+    smtp_from
+  } = req.body;
   
   if (ai_provider) await db.saveSystemSetting("ai_provider", ai_provider);
-  if (opencode_api_key) await db.saveSystemSetting("opencode_api_key", opencode_api_key);
-  if (opencode_model) await db.saveSystemSetting("opencode_model", opencode_model);
+  if (custom_ai_url !== undefined) await db.saveSystemSetting("custom_ai_url", custom_ai_url);
+  if (custom_ai_key !== undefined) await db.saveSystemSetting("custom_ai_key", custom_ai_key);
+  if (custom_ai_model !== undefined) await db.saveSystemSetting("custom_ai_model", custom_ai_model);
+  if (opencode_api_key !== undefined) await db.saveSystemSetting("opencode_api_key", opencode_api_key);
+  if (opencode_model !== undefined) await db.saveSystemSetting("opencode_model", opencode_model);
+  if (openai_api_key !== undefined) await db.saveSystemSetting("openai_api_key", openai_api_key);
+  if (gemini_api_key !== undefined) await db.saveSystemSetting("gemini_api_key", gemini_api_key);
   if (scraper_interval) await db.saveSystemSetting("scraper_interval", scraper_interval);
   if (scraper_mode) await db.saveSystemSetting("scraper_mode", scraper_mode);
   if (fb_page_token) await db.saveSystemSetting("fb_page_token", fb_page_token);

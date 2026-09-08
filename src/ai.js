@@ -17,6 +17,38 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   }
 }
 
+async function callCustomAI(systemPrompt, userPrompt) {
+  const endpoint = await db.getSystemSetting("custom_ai_url", process.env.CUSTOM_AI_URL || "https://api.xah.io");
+  const apiKey = await db.getSystemSetting("custom_ai_key", process.env.CUSTOM_AI_KEY || "sk-fd9b9e1238c55a1e034267163a5b4ec8fa72e8fa8b1516879ecfd7300896ebaf");
+  const model = await db.getSystemSetting("custom_ai_model", process.env.CUSTOM_AI_MODEL || "phatchau036/gpt-5.6-luna");
+
+  if (!endpoint || !apiKey) throw new Error("Custom AI not configured");
+
+  const url = endpoint.replace(/\/+$/, "") + (endpoint.includes("/v1") ? "/chat/completions" : "/v1/chat/completions");
+
+  const res = await fetchWithTimeout(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.0
+    })
+  }, 30000);
+
+  if (!res.ok) throw new Error(`Custom AI HTTP ${res.status}`);
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content === "string" && content.trim()) return content.trim();
+  throw new Error("Empty or invalid Custom AI response");
+}
+
 async function callOpenCode(systemPrompt, userPrompt) {
   const apiKey = await db.getSystemSetting("opencode_api_key", process.env.OPENCODE_API_KEY || "public");
   const model = await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "mimo-v2.5-free");
@@ -141,22 +173,44 @@ async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
 }
 
 async function askAI(systemPrompt, userPrompt) {
+  const provider = await db.getSystemSetting("ai_provider", process.env.AI_PROVIDER || "custom");
   let reply = "";
-  try {
-    reply = await withRetry(() => callOpenCode(systemPrompt, userPrompt));
-  } catch (e) {
-    console.error("[ai] OpenCode failed, trying Gemini...", e.message);
+
+  const providers = [];
+  if (provider === "custom") {
+    providers.push({ name: "Custom AI", fn: () => callCustomAI(systemPrompt, userPrompt) });
+    providers.push({ name: "OpenCode", fn: () => callOpenCode(systemPrompt, userPrompt) });
+    providers.push({ name: "Gemini", fn: () => callGemini(systemPrompt, userPrompt) });
+    providers.push({ name: "OpenAI", fn: () => callOpenAI(systemPrompt, userPrompt) });
+  } else if (provider === "opencode") {
+    providers.push({ name: "OpenCode", fn: () => callOpenCode(systemPrompt, userPrompt) });
+    providers.push({ name: "Custom AI", fn: () => callCustomAI(systemPrompt, userPrompt) });
+    providers.push({ name: "Gemini", fn: () => callGemini(systemPrompt, userPrompt) });
+    providers.push({ name: "OpenAI", fn: () => callOpenAI(systemPrompt, userPrompt) });
+  } else if (provider === "gemini") {
+    providers.push({ name: "Gemini", fn: () => callGemini(systemPrompt, userPrompt) });
+    providers.push({ name: "Custom AI", fn: () => callCustomAI(systemPrompt, userPrompt) });
+    providers.push({ name: "OpenCode", fn: () => callOpenCode(systemPrompt, userPrompt) });
+    providers.push({ name: "OpenAI", fn: () => callOpenAI(systemPrompt, userPrompt) });
+  } else {
+    providers.push({ name: "OpenAI", fn: () => callOpenAI(systemPrompt, userPrompt) });
+    providers.push({ name: "Custom AI", fn: () => callCustomAI(systemPrompt, userPrompt) });
+    providers.push({ name: "OpenCode", fn: () => callOpenCode(systemPrompt, userPrompt) });
+    providers.push({ name: "Gemini", fn: () => callGemini(systemPrompt, userPrompt) });
+  }
+
+  for (const p of providers) {
     try {
-      reply = await withRetry(() => callGemini(systemPrompt, userPrompt));
-    } catch (e2) {
-      console.error("[ai] Gemini failed, trying OpenAI...", e2.message);
-      try {
-        reply = await withRetry(() => callOpenAI(systemPrompt, userPrompt));
-      } catch (e3) {
-        console.error("[ai] All providers exhausted:", e3.message);
-        return "Trợ lý AI đang bận, vui lòng thử lại sau.";
-      }
+      reply = await withRetry(p.fn);
+      if (reply) break;
+    } catch (e) {
+      console.error(`[ai] ${p.name} failed:`, e.message);
     }
+  }
+
+  if (!reply) {
+    console.error("[ai] All providers exhausted");
+    return "Trợ lý AI đang bận, vui lòng thử lại sau.";
   }
   const cleanReply = stripMarkdown(reply);
   if (!cleanReply) return "Trợ lý AI đang bận, vui lòng thử lại sau.";

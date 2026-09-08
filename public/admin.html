@@ -214,11 +214,38 @@
         <h3 class="text-lg font-bold text-gray-800 mb-6">[*] Cấu hình hệ thống</h3>
         <form id="sys-settings-form" class="space-y-6">
           <div>
-            <h4 class="text-sm font-semibold text-gray-700 border-b pb-2 mb-4">[AI] Cài đặt AI Provider (OpenCode)</h4>
+            <h4 class="text-sm font-semibold text-gray-700 border-b pb-2 mb-4">[AI] Cài đặt AI Provider</h4>
             <div class="space-y-4">
               <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Nhà cung cấp AI ưu tiên</label>
+                <select id="ai_provider" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="custom">Custom AI Provider (OpenAI Compatible - api.xah.io)</option>
+                  <option value="opencode">OpenCode Zen</option>
+                  <option value="openai">OpenAI (Official)</option>
+                  <option value="gemini">Google Gemini</option>
+                </select>
+              </div>
+
+              <!-- Custom AI Settings -->
+              <div class="p-3 bg-gray-50 border rounded space-y-3">
+                <span class="block text-xs font-semibold text-gray-700">Tùy chọn Custom AI (OpenAI format, hỗ trợ https://api.xah.io):</span>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Endpoint Base URL</label>
+                  <input type="text" id="custom_ai_url" placeholder="https://api.xah.io" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">API Key</label>
+                  <input type="text" id="custom_ai_key" placeholder="sk-..." class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Model Name</label>
+                  <input type="text" id="custom_ai_model" placeholder="phatchau036/gpt-5.6-luna" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+              </div>
+
+              <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">OpenCode API Key</label>
-                <input type="text" id="opencode_api_key" required class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="text" id="opencode_api_key" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
               </div>
               <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">Model AI (OpenCode Zen)</label>
@@ -874,6 +901,10 @@
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
+      if (document.getElementById('ai_provider')) document.getElementById('ai_provider').value = data.ai_provider || 'custom';
+      if (document.getElementById('custom_ai_url')) document.getElementById('custom_ai_url').value = data.custom_ai_url || '';
+      if (document.getElementById('custom_ai_key')) document.getElementById('custom_ai_key').value = data.custom_ai_key || '';
+      if (document.getElementById('custom_ai_model')) document.getElementById('custom_ai_model').value = data.custom_ai_model || 'phatchau036/gpt-5.6-luna';
       document.getElementById('opencode_api_key').value = data.opencode_api_key;
       document.getElementById('opencode_model').value = data.opencode_model;
       document.getElementById('scraper_interval').value = data.scraper_interval;
@@ -900,6 +931,10 @@
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
+          ai_provider: document.getElementById('ai_provider') ? document.getElementById('ai_provider').value : 'custom',
+          custom_ai_url: document.getElementById('custom_ai_url') ? document.getElementById('custom_ai_url').value : '',
+          custom_ai_key: document.getElementById('custom_ai_key') ? document.getElementById('custom_ai_key').value : '',
+          custom_ai_model: document.getElementById('custom_ai_model') ? document.getElementById('custom_ai_model').value : 'phatchau036/gpt-5.6-luna',
           opencode_api_key: document.getElementById('opencode_api_key').value,
           opencode_model: document.getElementById('opencode_model').value,
           scraper_interval: document.getElementById('scraper_interval').value,
