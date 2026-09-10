@@ -1787,9 +1787,9 @@ async function processMessage(senderPsid, messageText) {
     makeup_schedule: extractMakeupSchedule(filteredSchedule)
   };
 
-  // Look up program framework from student's major
+  // Look up program framework from student's major / specialization
   const studentProfile = cleanData.student_profile || {};
-  let majorName = studentProfile["Ngành"] || studentProfile["ngành"] || studentProfile["nganh"] || "";
+  let majorName = studentProfile["Chuyên ngành"] || studentProfile["Ngành"] || studentProfile["ngành"] || studentProfile["nganh"] || "";
   // Fallback: parse major from class name if not in profile
   if (!majorName && studentProfile["Lớp"]) {
     majorName = parseMajorFromClassName(studentProfile["Lớp"]) || "";
@@ -1820,7 +1820,11 @@ async function processMessage(senderPsid, messageText) {
   // Classify query intent to scope RAG search to correct category in hdsd site content
   let detectedCategory = null;
   const lowerQuery = messageText.toLowerCase();
-  if (lowerQuery.includes("học bổng") || lowerQuery.includes("khen thưởng") || lowerQuery.includes("tiêu chuẩn xét")) {
+  const isTrainingPointsQuery = lowerQuery.includes("điểm rèn luyện") || lowerQuery.includes("đánh giá rèn luyện") || lowerQuery.includes("kết quả rèn luyện") || lowerQuery.includes("tiêu chí rèn luyện");
+
+  if (isTrainingPointsQuery) {
+    detectedCategory = "training_points";
+  } else if (lowerQuery.includes("học bổng") || lowerQuery.includes("khen thưởng") || lowerQuery.includes("tiêu chuẩn xét")) {
     detectedCategory = "scholarship";
   } else if (lowerQuery.includes("cảnh báo") || lowerQuery.includes("buộc thôi học") || lowerQuery.includes("kỷ luật")) {
     detectedCategory = "warning";
@@ -1839,8 +1843,13 @@ async function processMessage(senderPsid, messageText) {
   }
 
   // RAG: Query matching regulation nodes from DB and hdsd crawl file.
-  // When student's major is known, also search for program-specific teaching plan.
-  const regs = await db.searchRegNodes(messageText, 4, detectedCategory);
+  let regs = [];
+  if (isTrainingPointsQuery) {
+    // Specifically fetch criteria from Chapter II (Articles 4-8) & Chapter III (Article 9)
+    regs = await db.searchRegNodes("Khung điểm đánh giá kết quả rèn luyện Điều 4 Điều 5 Điều 6 Điều 7 Điều 8", 6);
+  } else {
+    regs = await db.searchRegNodes(messageText, 4, detectedCategory);
+  }
   let majorRegs = [];
   if (majorName) {
     majorRegs = await db.searchRegNodes(`${majorName} kế hoạch giảng dạy`, 3, "teaching_plan");

@@ -751,8 +751,10 @@ async function handleMessage(sender_psid, received_message) {
     return;
   }
 
-  if (Array.isArray(received_message.attachments) && received_message.attachments.length) {
-    const image = received_message.attachments.find((attachment) =>
+  // Handle actual file/media attachments, but ignore Facebook auto-generated link preview "fallback" attachments
+  const mediaAttachments = (received_message.attachments || []).filter((att) => att && att.type !== "fallback");
+  if (mediaAttachments.length) {
+    const image = mediaAttachments.find((attachment) =>
       attachment.type === "image" && attachment.payload?.url
     );
     if (!image) {

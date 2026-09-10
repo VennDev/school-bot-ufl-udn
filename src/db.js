@@ -297,10 +297,20 @@ module.exports = {
 
     // 1. Search in MongoDB/Mongoose database if initialized and has records
     try {
-      results = await RegNode.find(
-        { ...filter, $text: { $search: queryText } },
-        { score: { $meta: "textScore" } }
-      ).sort({ score: { $meta: "textScore" } }).limit(limit).lean();
+      const isDrlSearch = /rèn luyện|ý thức công dân|điều 7|điều 4|điều 5|điều 6|điều 8/i.test(queryText);
+      if (isDrlSearch) {
+        // Query directly for criteria nodes
+        results = await RegNode.find({
+          content: { $regex: /(?:Khung điểm đánh giá kết quả rèn luyện|Điều [4-8]\. Đánh giá về)/i }
+        }).limit(limit).lean();
+      }
+
+      if (!results.length) {
+        results = await RegNode.find(
+          { ...filter, $text: { $search: queryText } },
+          { score: { $meta: "textScore" } }
+        ).sort({ score: { $meta: "textScore" } }).limit(limit).lean();
+      }
 
       if (!results.length) {
         const keywords = queryText.split(" ").filter(w => w.length > 2);

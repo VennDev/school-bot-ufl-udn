@@ -16,14 +16,15 @@ const syncProgress = require("./syncProgress");
 
 let progressRunId = null;
 const BATCH_SIZE = 8; // Scrape all 8 pages in one login session to prevent duplicate logins
-const DELAY = 2000; // Reduce delay to speed up scraping
+const DELAY = 800; // Reduce delay to speed up scraping
 const MAX_RETRIES = 20;
 const BACKOFF_BASE = 30000;
 function computeMaxParallel(totalAccounts) {
   if (process.env.SCRAPER_MAX_PARALLEL) {
     return Math.max(1, Number.parseInt(process.env.SCRAPER_MAX_PARALLEL, 10) || 1);
   }
-  return Math.max(1, Math.floor((totalAccounts || 0) / 10));
+  // Default: Scale to 1 per 5 users (up from 1 per 10) to better utilize excess CPU
+  return Math.max(2, Math.floor((totalAccounts || 0) / 5));
 }
 const PAGE_TIMEOUT_MS = Math.max(30000, Number.parseInt(process.env.SCRAPER_PAGE_TIMEOUT_MS || "120000", 10) || 120000);
 const BROWSER_CLOSED_RE = /(?:Target page|context or browser has been closed|Browser has been closed|Target closed|Browser closed)/i;

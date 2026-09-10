@@ -17,10 +17,17 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   }
 }
 
+async function getTemperature() {
+  const setting = await db.getSystemSetting("ai_temperature", process.env.AI_TEMPERATURE || "0.35");
+  const parsed = parseFloat(setting);
+  return Number.isFinite(parsed) ? Math.max(0.0, Math.min(1.0, parsed)) : 0.35;
+}
+
 async function callCustomAI(systemPrompt, userPrompt) {
   const endpoint = await db.getSystemSetting("custom_ai_url", process.env.CUSTOM_AI_URL || "https://api.xah.io");
   const apiKey = await db.getSystemSetting("custom_ai_key", process.env.CUSTOM_AI_KEY || "sk-fd9b9e1238c55a1e034267163a5b4ec8fa72e8fa8b1516879ecfd7300896ebaf");
   const model = await db.getSystemSetting("custom_ai_model", process.env.CUSTOM_AI_MODEL || "phatchau036/gpt-5.6-luna");
+  const temp = await getTemperature();
 
   if (!endpoint || !apiKey) throw new Error("Custom AI not configured");
 
@@ -38,7 +45,7 @@ async function callCustomAI(systemPrompt, userPrompt) {
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.0
+      temperature: temp
     })
   }, 30000);
 
@@ -52,6 +59,7 @@ async function callCustomAI(systemPrompt, userPrompt) {
 async function callOpenCode(systemPrompt, userPrompt) {
   const apiKey = await db.getSystemSetting("opencode_api_key", process.env.OPENCODE_API_KEY || "public");
   const model = await db.getSystemSetting("opencode_model", process.env.OPENCODE_MODEL || "mimo-v2.5-free");
+  const temp = await getTemperature();
 
   const res = await fetchWithTimeout(OPENCODE_URL, {
     method: "POST",
@@ -66,7 +74,7 @@ async function callOpenCode(systemPrompt, userPrompt) {
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.0
+      temperature: temp
     }),
   }, 90000);
 
@@ -80,6 +88,7 @@ async function callOpenCode(systemPrompt, userPrompt) {
 async function callOpenAI(systemPrompt, userPrompt) {
   const apiKey = await db.getSystemSetting("openai_api_key", process.env.OPENAI_API_KEY);
   if (!apiKey) throw new Error("No OpenAI API key");
+  const temp = await getTemperature();
 
   const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -93,7 +102,7 @@ async function callOpenAI(systemPrompt, userPrompt) {
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.0
+      temperature: temp
     })
   }, 15000);
 
@@ -107,6 +116,7 @@ async function callOpenAI(systemPrompt, userPrompt) {
 async function callGemini(systemPrompt, userPrompt) {
   const apiKey = await db.getSystemSetting("gemini_api_key", process.env.GEMINI_API_KEY);
   if (!apiKey) throw new Error("No Gemini API key");
+  const temp = await getTemperature();
 
   const res = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
     method: "POST",
@@ -121,7 +131,7 @@ async function callGemini(systemPrompt, userPrompt) {
         }
       ],
       generationConfig: {
-        temperature: 0.0
+        temperature: temp
       }
     })
   }, 15000);
