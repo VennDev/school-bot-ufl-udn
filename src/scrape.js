@@ -357,14 +357,17 @@ async function scrapeAccountUnlocked(account, torIdx, useTor, silent = false, no
     const gotNew = Object.keys(scraped).length > 0;
     let gradeSnapshotShrankThisAttempt = false;
     for (const [key, value] of Object.entries(scraped)) {
-      if (key === "ketQuaHocTap" && isLikelyGradeSnapshotShrink(baselineOldData.ketQuaHocTap, value)) {
-        gradeSnapshotShrankThisAttempt = true;
-        suspectGradeSnapshot = true;
-        console.warn(`  [${account.username}] ketQuaHocTap snapshot shrank versus baseline; retrying before marking sync complete.`);
+      if (key === "ketQuaHocTap") {
+        result.ketQuaHocTap = mergeGradeSnapshots(result.ketQuaHocTap || baselineOldData.ketQuaHocTap, value);
+        // After merging with baseline, check if merged result still shrank versus baseline
+        if (isLikelyGradeSnapshotShrink(baselineOldData.ketQuaHocTap, result.ketQuaHocTap)) {
+          gradeSnapshotShrankThisAttempt = true;
+          suspectGradeSnapshot = true;
+          console.warn(`  [${account.username}] ketQuaHocTap snapshot shrank versus baseline; retrying before marking sync complete.`);
+        }
+      } else {
+        result[key] = value;
       }
-      result[key] = key === "ketQuaHocTap"
-        ? mergeGradeSnapshots(result[key], value)
-        : value;
       if (key !== "ketQuaHocTap" || !gradeSnapshotShrankThisAttempt) syncedThisRun.add(key);
     }
     if (!gradeSnapshotShrankThisAttempt && scraped.ketQuaHocTap) {
