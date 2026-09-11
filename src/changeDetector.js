@@ -365,14 +365,19 @@ function detectSchedule(oldData, newData) {
     }
     // Historical-only fixtures and old snapshots: compare latest stored term,
     // never every historical table. This prevents old courses being announced.
+    // If the tables have academic year text (e.g. "2026-2027"), prioritize the current
+    // or upcoming academic year (currentYear >= now.getFullYear()) over old completed years.
     const datedOrMeta = windows.filter(item => item.year !== null);
     if (!datedOrMeta.length) return source;
     const latestYear = Math.max(...datedOrMeta.map(item => item.year));
     const latestYearItems = datedOrMeta.filter(item => item.year === latestYear);
-    const semesters = latestYearItems.map(item => item.semester).filter(Number.isFinite);
-    if (!semesters.length) return latestYearItems.map(item => item.table);
-    const latestSemester = Math.max(...semesters);
-    return latestYearItems.filter(item => item.semester === latestSemester).map(item => item.table);
+    // Prefer regular semester 1/2 over summer semester (Kỳ 3 / học hè) when selecting latest term
+    const regularSemesters = latestYearItems.map(item => item.semester).filter(s => s === 1 || s === 2);
+    const targetSemester = regularSemesters.length
+      ? Math.max(...regularSemesters)
+      : Math.max(...latestYearItems.map(item => item.semester).filter(Number.isFinite));
+    if (!Number.isFinite(targetSemester)) return latestYearItems.map(item => item.table);
+    return latestYearItems.filter(item => item.semester === targetSemester).map(item => item.table);
   };
   const oldTables = relevantTables(oldData);
   const newTables = relevantTables(newData);
@@ -446,18 +451,30 @@ function detectSchedule(oldData, newData) {
   const normTime = value => norm(value).replace(/\s*-\s*/g, "-").replace(/\s*[/.,;|]\s*/g, " ").replace(/\s+/g, " ");
   const key = entry => [norm(entry.name), norm(entry.className), group(entry), normTime(entry.time)].join("|");
   const value = entry => [norm(entry.day), norm(entry.period), norm(entry.room), normTime(entry.time), normTime(entry.makeupTime), norm(entry.reason), norm(entry.substituteTeacher)].join("|");
+  const cleanList = value => {
+    const parts = String(value || "")
+      .split(/[\n;]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (!parts.length) return "";
+    return [...new Set(parts)].join(", ");
+  };
+
   const oldRows = new Map(oldEntries.map(entry => [key(entry), entry]));
   const alerts = [];
   comparableNewEntries.forEach(entry => {
     const oldEntry = oldRows.get(key(entry));
+    const dayStr = cleanList(entry.day);
+    const periodStr = cleanList(entry.period);
+    const roomStr = cleanList(entry.room);
     if (!oldEntry) {
       alerts.push(entry.makeupTime || entry.reason
-        ? `[!] Lịch dạy bù/dạy thay mới: ${entry.name} | Dạy bù: ${entry.makeupTime || "chưa rõ"} | Phòng: ${entry.room || "chưa rõ"} | Lý do: ${entry.reason || "không có"}${entry.substituteTeacher ? ` | GV dạy thay: ${entry.substituteTeacher}` : ""}`
-        : `[~] Lịch học mới: ${entry.name} - Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
+        ? `[!] Lịch dạy bù/dạy thay mới: ${entry.name} | Dạy bù: ${entry.makeupTime || "chưa rõ"} | Phòng: ${roomStr || "chưa rõ"} | Lý do: ${entry.reason || "không có"}${entry.substituteTeacher ? ` | GV dạy thay: ${entry.substituteTeacher}` : ""}`
+        : `[~] Lịch học mới: ${entry.name} - Thứ ${dayStr} tiết ${periodStr} phòng ${roomStr}`);
     } else if (value(oldEntry) !== value(entry)) {
       alerts.push(entry.makeupTime || entry.reason
-        ? `[!] Cập nhật lịch dạy bù/dạy thay: ${entry.name} | Dạy bù: ${entry.makeupTime || "chưa rõ"} | Phòng: ${entry.room || "chưa rõ"} | Lý do: ${entry.reason || "không có"}${entry.substituteTeacher ? ` | GV dạy thay: ${entry.substituteTeacher}` : ""}`
-        : `(->) Thay đổi lịch học môn: ${entry.name} -> Thứ ${entry.day} tiết ${entry.period} phòng ${entry.room}`);
+        ? `[!] Cập nhật lịch dạy bù/dạy thay: ${entry.name} | Dạy bù: ${entry.makeupTime || "chưa rõ"} | Phòng: ${roomStr || "chưa rõ"} | Lý do: ${entry.reason || "không có"}${entry.substituteTeacher ? ` | GV dạy thay: ${entry.substituteTeacher}` : ""}`
+        : `(->) Thay đổi lịch học môn: ${entry.name} -> Thứ ${dayStr} tiết ${periodStr} phòng ${roomStr}`);
     }
   });
   return [...new Set(alerts)];

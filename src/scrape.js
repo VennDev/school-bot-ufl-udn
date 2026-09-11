@@ -23,8 +23,9 @@ function computeMaxParallel(totalAccounts) {
   if (process.env.SCRAPER_MAX_PARALLEL) {
     return Math.max(1, Number.parseInt(process.env.SCRAPER_MAX_PARALLEL, 10) || 1);
   }
-  // Default: Scale to 1 per 5 users (up from 1 per 10) to better utilize excess CPU
-  return Math.max(2, Math.floor((totalAccounts || 0) / 5));
+  // On 1 vCPU servers, running > 3 Playwright instances simultaneously starves CPU & RAM (maxing out resources).
+  // Cap default parallel to 2-3 to keep system responsive and prevent OOM/CPU lockups.
+  return Math.min(3, Math.max(1, Math.floor((totalAccounts || 0) / 15)));
 }
 const PAGE_TIMEOUT_MS = Math.max(30000, Number.parseInt(process.env.SCRAPER_PAGE_TIMEOUT_MS || "120000", 10) || 120000);
 const BROWSER_CLOSED_RE = /(?:Target page|context or browser has been closed|Browser has been closed|Target closed|Browser closed)/i;

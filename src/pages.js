@@ -121,11 +121,12 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
   const yearValueOf = (y) => parseInt(String(y.value || "").trim(), 10);
   const sortedYears = years.slice().sort((a, b) => yearValueOf(b) - yearValueOf(a) || String(b.text).localeCompare(String(a.text)));
   // Portal may list a decade of academic years; each combination costs ~1-2s and a
-  // full enumeration makes the page more likely to be closed mid-scrape. Only the
-  // most recent years matter for change detection, so cap the work.
+  // full enumeration makes the page more likely to be closed mid-scrape.
+  // Cap to the current academic year and at most 1 previous year (or top 2 recent years)
+  // to avoid iterating 12+ combinations that cause timeouts (>120s) and leak old semesters.
   const currentYear = new Date().getFullYear();
-  const recentYears = sortedYears.filter((y) => !isNaN(yearValueOf(y)) && yearValueOf(y) >= currentYear - 3);
-  const yearsToIterate = recentYears.length ? recentYears : sortedYears.slice(0, 5);
+  const recentYears = sortedYears.filter((y) => !isNaN(yearValueOf(y)) && yearValueOf(y) >= currentYear - 1);
+  const yearsToIterate = recentYears.length ? recentYears.slice(0, 2) : sortedYears.slice(0, 2);
   const collectedTables = [];
   const collectedRows = [];
   const seenTables = new Set();
