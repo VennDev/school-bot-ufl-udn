@@ -120,13 +120,17 @@ async function _collectMultiSemester(page, extractInBrowserFn, mode = "tables") 
   const years = await readOptions("#cmbNamHoc");
   const yearValueOf = (y) => parseInt(String(y.value || "").trim(), 10);
   const sortedYears = years.slice().sort((a, b) => yearValueOf(b) - yearValueOf(a) || String(b.text).localeCompare(String(a.text)));
-  // Portal may list a decade of academic years; each combination costs ~1-2s and a
-  // full enumeration makes the page more likely to be closed mid-scrape.
-  // Cap to the current academic year and at most 1 previous year (or top 2 recent years)
-  // to avoid iterating 12+ combinations that cause timeouts (>120s) and leak old semesters.
+  // Portal may list future years (e.g. 2031-2032) or a decade of past academic years.
+  // We only care about the current academic year (e.g. 2026-2027 where value is 2026)
+  // and at most 1 previous year (2025-2026 where value is 2025).
+  // Filter strictly to currentYear and currentYear - 1 so future dummy years (2031, 2030...)
+  // don't get selected and cause EMPTY_DATA!
   const currentYear = new Date().getFullYear();
-  const recentYears = sortedYears.filter((y) => !isNaN(yearValueOf(y)) && yearValueOf(y) >= currentYear - 1);
-  const yearsToIterate = recentYears.length ? recentYears.slice(0, 2) : sortedYears.slice(0, 2);
+  const recentYears = sortedYears.filter((y) => {
+    const v = yearValueOf(y);
+    return !isNaN(v) && v >= currentYear - 1 && v <= currentYear;
+  });
+  const yearsToIterate = recentYears.length ? recentYears : sortedYears.slice(0, 2);
   const collectedTables = [];
   const collectedRows = [];
   const seenTables = new Set();
@@ -366,6 +370,7 @@ function hasUsableData(key, value) {
   }
   if (key === "canhBao") return Array.isArray(value);
   if (key === "lichThi") return Array.isArray(value);
+  if (key === "lichHoc") return Array.isArray(value); // An empty array is valid if student has not registered or term has no schedule yet
   if (key === "hocBongKTKL") return value != null && typeof value === "object";
   if (Array.isArray(value)) {
     return value.some(item => {
