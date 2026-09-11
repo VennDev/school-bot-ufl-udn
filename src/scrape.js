@@ -1,3 +1,4 @@
+require("dotenv").config();
 const { chromium } = require("playwright");
 if (!global.crypto) {
   global.crypto = require("crypto").webcrypto || require("crypto");
