@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 const { chromium } = require("playwright");
 if (!global.crypto) {
   global.crypto = require("crypto").webcrypto || require("crypto");
