@@ -297,7 +297,20 @@ module.exports = {
 
     // 1. Search in MongoDB/Mongoose database if initialized and has records
     try {
-      const isDrlSearch = /rèn luyện|ý thức công dân|điều 7|điều 4|điều 5|điều 6|điều 8/i.test(queryText);
+      // Direct exact matches for official documents (công văn/quyết định/thông báo số ...) or appendices (phụ lục ...)
+      const docMatch = queryText.match(/(?:công văn|quyết định|thông báo)\s*(?:số)?\s*([0-9]+\/[a-zđ\-]+)/i);
+      const appendixMatch = queryText.match(/phụ lục\s*([ivx0-9]+(?:\.[0-9]+)?)/i);
+      if (docMatch) {
+        const escaped = docMatch[1].replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+        const docNodes = await RegNode.find({ content: { $regex: new RegExp(escaped, "i") } }).limit(limit).lean();
+        if (docNodes.length) results = docNodes;
+      } else if (appendixMatch) {
+        const escaped = appendixMatch[1].replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+        const appNodes = await RegNode.find({ content: { $regex: new RegExp(`PHỤ\\s+LỤC\\s+${escaped}`, "i") } }).limit(limit).lean();
+        if (appNodes.length) results = appNodes;
+      }
+
+      const isDrlSearch = !results.length && /rèn luyện|ý thức công dân|điều 7|điều 4|điều 5|điều 6|điều 8/i.test(queryText);
       if (isDrlSearch) {
         // Query directly for criteria nodes
         results = await RegNode.find({
