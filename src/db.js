@@ -297,10 +297,17 @@ module.exports = {
 
     // 1. Search in MongoDB/Mongoose database if initialized and has records
     try {
+      // Normalize common abbreviations
+      const normalizedQuery = queryText
+        .replace(/\bcdr\b/gi, "chuẩn đầu ra")
+        .replace(/\bnn\b/gi, "ngoại ngữ")
+        .replace(/\bdrl\b/gi, "điểm rèn luyện");
+
       // Direct exact matches for official documents (công văn/quyết định/thông báo số ...) or appendices (phụ lục ...)
       const docMatch = queryText.match(/(?:công văn|quyết định|thông báo)\s*(?:số)?\s*([0-9]+\/[a-zđ\-]+)/i);
       const appendixMatch = queryText.match(/phụ lục\s*([ivx0-9]+(?:\.[0-9]+)?)/i);
-      const isCdrQuery = /chuẩn đầu ra\s*(?:ngoại ngữ|tin học)?/i.test(queryText);
+      const isCdrQuery = /chuẩn đầu ra\s*(?:ngoại ngữ|tin học)?/i.test(normalizedQuery);
+      const langMatch = normalizedQuery.match(/\b(pháp|nhật|trung|hàn|nga|anh|thái)\b/i);
 
       if (docMatch) {
         const escaped = docMatch[1].replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
@@ -310,9 +317,27 @@ module.exports = {
         const escaped = appendixMatch[1].replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
         const appNodes = await RegNode.find({ content: { $regex: new RegExp(`PHỤ\\s+LỤC\\s+${escaped}`, "i") } }).limit(limit).lean();
         if (appNodes.length) results = appNodes;
+      } else if (isCdrQuery && langMatch) {
+        // Query asks for certificates / CĐR for a specific language (e.g. "tên các chứng chỉ cho cdr pháp / nhật / trung")
+        const lang = langMatch[1].toLowerCase();
+        const langMap = {
+          "pháp": /2\.\s*Tiếng Pháp|DELF|TCF/i,
+          "nhật": /JLPT|NAT-TEST|J[\.-]TEST|tiếng Nhật/i,
+          "trung": /HSK|TOCFL|tiếng Trung/i,
+          "hàn": /TOPIK|tiếng Hàn/i,
+          "nga": /ТРКИ|ТБУ|ТЭУ|tiếng Nga/i,
+          "anh": /TOEIC|IELTS|TOEFL|VSTEP|tiếng Anh/i,
+        };
+        const langRegex = langMap[lang] || new RegExp(lang, "i");
+        // Look in category vstep for conversion tables (Phụ lục II.1, II.2, II.3, II.4)
+        const langNodes = await RegNode.find({
+          category: "vstep",
+          content: { $regex: langRegex }
+        }).limit(limit).lean();
+        if (langNodes.length) results = langNodes;
       } else if (isCdrQuery) {
         // Specifically look for Phụ lục I.1 (2021 trở về trước) or I.2 (2022 trở về sau) or general CĐR tables
-        const wants2021OrOlder = /2021|2020|2019|trước/i.test(queryText);
+        const wants2021OrOlder = /2021|2020|2019|trước/i.test(normalizedQuery);
         const targetAppendix = wants2021OrOlder ? /PHỤ LỤC I\.1/i : /PHỤ LỤC I\.2/i;
         const cdrNodes = await RegNode.find({ content: { $regex: targetAppendix } }).limit(2).lean();
         // Also include the other appendix or general CĐR rules for completeness
