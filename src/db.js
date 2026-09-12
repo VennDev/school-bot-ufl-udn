@@ -300,6 +300,8 @@ module.exports = {
       // Direct exact matches for official documents (công văn/quyết định/thông báo số ...) or appendices (phụ lục ...)
       const docMatch = queryText.match(/(?:công văn|quyết định|thông báo)\s*(?:số)?\s*([0-9]+\/[a-zđ\-]+)/i);
       const appendixMatch = queryText.match(/phụ lục\s*([ivx0-9]+(?:\.[0-9]+)?)/i);
+      const isCdrQuery = /chuẩn đầu ra\s*(?:ngoại ngữ|tin học)?/i.test(queryText);
+
       if (docMatch) {
         const escaped = docMatch[1].replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
         const docNodes = await RegNode.find({ content: { $regex: new RegExp(escaped, "i") } }).limit(limit).lean();
@@ -308,6 +310,16 @@ module.exports = {
         const escaped = appendixMatch[1].replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
         const appNodes = await RegNode.find({ content: { $regex: new RegExp(`PHỤ\\s+LỤC\\s+${escaped}`, "i") } }).limit(limit).lean();
         if (appNodes.length) results = appNodes;
+      } else if (isCdrQuery) {
+        // Specifically look for Phụ lục I.1 (2021 trở về trước) or I.2 (2022 trở về sau) or general CĐR tables
+        const wants2021OrOlder = /2021|2020|2019|trước/i.test(queryText);
+        const targetAppendix = wants2021OrOlder ? /PHỤ LỤC I\.1/i : /PHỤ LỤC I\.2/i;
+        const cdrNodes = await RegNode.find({ content: { $regex: targetAppendix } }).limit(2).lean();
+        // Also include the other appendix or general CĐR rules for completeness
+        const otherAppendix = wants2021OrOlder ? /PHỤ LỤC I\.2/i : /PHỤ LỤC I\.1/i;
+        const moreCdr = await RegNode.find({ content: { $regex: otherAppendix } }).limit(2).lean();
+        const combined = [...cdrNodes, ...moreCdr];
+        if (combined.length) results = combined.slice(0, limit);
       }
 
       const isDrlSearch = !results.length && /rèn luyện|ý thức công dân|điều 7|điều 4|điều 5|điều 6|điều 8/i.test(queryText);
