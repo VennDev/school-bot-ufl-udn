@@ -124,7 +124,23 @@ function gradeRows(gradeTables) {
     if (!current) return void best.set(key, row);
     const score = parseFloat(row[6]);
     const currentScore = parseFloat(current[6]);
-    if (!isNaN(score) && (isNaN(currentScore) || score > currentScore)) best.set(key, row);
+    const currentGrade = String(current[8] || "").trim().toUpperCase();
+    const newGrade = String(row[8] || "").trim().toUpperCase();
+
+    // R or P (miễn học / công nhận tín chỉ / đạt) overrides F or previous non-pass
+    if ((newGrade === "R" || newGrade === "P") && (currentGrade === "F" || isNaN(currentScore) || currentScore < 5.0)) {
+      return void best.set(key, row);
+    }
+    if ((currentGrade === "R" || currentGrade === "P") && (newGrade === "F" || isNaN(score) || score < 5.0)) {
+      return;
+    }
+
+    if (!isNaN(score) && (isNaN(currentScore) || score > currentScore)) {
+      best.set(key, row);
+    } else if (isNaN(score) && isNaN(currentScore)) {
+      if (!currentGrade && newGrade) best.set(key, row);
+      else if (newGrade === "R" || newGrade === "P") best.set(key, row);
+    }
   });
   return [...best.values()];
 }
@@ -144,7 +160,8 @@ function formatKetQuaHocTap(scrapedData) {
     courses = gradeRows(gradeTables).map((r) => ({
       name: r[2],
       credits: r[3],
-      score10: r[6]
+      score10: r[6],
+      grade: r[8]
     }));
   }
 
@@ -202,6 +219,20 @@ function formatKetQuaHocTap(scrapedData) {
     });
   }
 
+  if (evalResult.subjectsPostponed && evalResult.subjectsPostponed.length > 0) {
+    txt += `\n⏳ Môn hoãn thi / chưa có điểm (Điểm I, X):\n`;
+    evalResult.subjectsPostponed.forEach(m => {
+      txt += `  + ${m}\n`;
+    });
+  }
+
+  if (evalResult.subjectsExempted && evalResult.subjectsExempted.length > 0) {
+    txt += `\n✨ Môn miễn học / công nhận tín chỉ (Điểm R):\n`;
+    evalResult.subjectsExempted.forEach(m => {
+      txt += `  + ${m}\n`;
+    });
+  }
+
   if (evalResult.warning) {
     txt += `\n${evalResult.warning}\n`;
   }
@@ -223,7 +254,12 @@ function formatKetQuaHocTap(scrapedData) {
 
     txt += `\n📝 Chi tiết điểm môn gần đây:`;
     gradeRows(gradeTables).slice(0, 5).forEach((r) => {
-      const parts = [`${r[2]}: TBCHP ${r[6]} (${r[8] || "?"})`];
+      const letterGrade = String(r[8] || "").trim().toUpperCase();
+      let tbchpDisplay = `TBCHP ${r[6] || "?"}`;
+      if (letterGrade === "R") tbchpDisplay = "Miễn học & công nhận TC";
+      else if (letterGrade === "I") tbchpDisplay = "Hoãn thi";
+      else if (letterGrade === "X") tbchpDisplay = "Chưa đủ dữ liệu";
+      const parts = [`${r[2]}: ${tbchpDisplay} (${letterGrade || "?"})`];
       if (componentIdx >= 0 && r[componentIdx]) {
         const tp = String(r[componentIdx]).trim().split(/\s*[-–]\s*/).filter(Boolean).join(" | ");
         parts.push(`TP: ${tp}`);
@@ -888,7 +924,8 @@ function formatTienDo(scrapedData) {
     courses = gradeRows(gradeTables).map((r) => ({
       name: r[2],
       credits: r[3],
-      score10: r[6]
+      score10: r[6],
+      grade: r[8]
     }));
   }
 
@@ -907,11 +944,11 @@ function formatTienDo(scrapedData) {
   const rows = gradeRows(gradeTables);
   const earned = rows.filter((r) => {
     const grade = (r[8] || "").toLowerCase();
-    return grade && !["f", "chưa đạt"].includes(grade) && r[6] !== "0";
+    return grade && !["f", "chưa đạt", "i", "x"].includes(grade) && (r[6] !== "0" || grade === "r" || grade === "p");
   });
   const remaining = rows.filter((r) => {
     const grade = (r[8] || "").toLowerCase();
-    return !grade || grade === "f" || grade === "chưa đạt" || r[6] === "0";
+    return !grade || ["f", "chưa đạt", "i", "x"].includes(grade) || (r[6] === "0" && grade !== "r" && grade !== "p");
   });
   const remainingCredits = remaining.reduce((sum, r) => sum + (parseFloat(r[3]) || 0), 0);
 
@@ -956,6 +993,20 @@ function formatTienDo(scrapedData) {
   if (evalResult.subjectsToImprove.length > 0) {
     txt += `\n⚠️ Môn cần cải thiện (Điểm thấp):\n`;
     evalResult.subjectsToImprove.forEach(m => {
+      txt += `  + ${m}\n`;
+    });
+  }
+
+  if (evalResult.subjectsPostponed && evalResult.subjectsPostponed.length > 0) {
+    txt += `\n⏳ Môn hoãn thi / chưa có điểm (Điểm I, X):\n`;
+    evalResult.subjectsPostponed.forEach(m => {
+      txt += `  + ${m}\n`;
+    });
+  }
+
+  if (evalResult.subjectsExempted && evalResult.subjectsExempted.length > 0) {
+    txt += `\n✨ Môn miễn học / công nhận tín chỉ (Điểm R):\n`;
+    evalResult.subjectsExempted.forEach(m => {
       txt += `  + ${m}\n`;
     });
   }
@@ -1330,14 +1381,19 @@ async function processMessage(senderPsid, messageText) {
     return processMessage(senderPsid, "/settings");
   }
 
-  // Handle email save
-  if (normalizedLowerText.startsWith("email ")) {
-    console.log(`[botRouter] Processing email save for "${senderPsid}"`);
-    const email = text.replace(/email /i, "").trim();
+  // Handle email save (requires valid email format, e.g. "email sv@gmail.com")
+  const emailSaveMatch = text.match(/^\s*(?:\/email|email)\s*[:=]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*$/i);
+  if (emailSaveMatch) {
+    const email = emailSaveMatch[1].trim();
+    console.log(`[botRouter] Processing email save for "${senderPsid}": ${email}`);
     const s = await db.getSettings(senderPsid);
     s.email = email;
     await db.saveSettings(senderPsid, s);
     return messenger.sendTextMessage(senderPsid, `Đã cập nhật email nhận thông báo: ${email}`);
+  }
+
+  if (/^\/email\b/i.test(text)) {
+    return messenger.sendTextMessage(senderPsid, "Cú pháp cập nhật email nhận thông báo: email <địa chỉ email>\nVí dụ: email sinhvien@gmail.com");
   }
 
   // Handle Login State Machine
@@ -1494,7 +1550,8 @@ async function processMessage(senderPsid, messageText) {
     const completedCredits = gradeTables.length ? calculateGPA(gradeRows(gradeTables).map((r) => ({
       name: r[2] || "",
       credits: r[3],
-      score10: r[6]
+      score10: r[6],
+      grade: r[8]
     }))).creditsAccumulated : 0;
     const totalCredits = framework?.totalCredits || null;
     const remainingCredits = totalCredits === null ? null : Math.max(0, totalCredits - completedCredits);
@@ -1687,7 +1744,8 @@ async function processMessage(senderPsid, messageText) {
     const courses = gradesRows.map((r) => ({
       name: r[2],
       credits: r[3],
-      score10: r[6]
+      score10: r[6],
+      grade: r[8]
     }));
 
     let gpa = extractGPA(rawGrades);
@@ -1707,7 +1765,9 @@ async function processMessage(senderPsid, messageText) {
       creditsAccumulated: gpa.creditsAccumulated,
       rank: evalResult.rank,
       subjectsToRelearn: evalResult.subjectsToRelearn,
-      subjectsToImprove: evalResult.subjectsToImprove
+      subjectsToImprove: evalResult.subjectsToImprove,
+      subjectsPostponed: evalResult.subjectsPostponed,
+      subjectsExempted: evalResult.subjectsExempted
     };
     // Send all deduplicated courses so AI and the profile use the same total.
     recentGradesFiltered = gradesRows.map(r => ({
@@ -1822,8 +1882,15 @@ async function processMessage(senderPsid, messageText) {
   const lowerQuery = messageText.toLowerCase();
   const isTrainingPointsQuery = lowerQuery.includes("điểm rèn luyện") || lowerQuery.includes("đánh giá rèn luyện") || lowerQuery.includes("kết quả rèn luyện") || lowerQuery.includes("tiêu chí rèn luyện");
 
+  // Chứng chỉ ngoại ngữ quốc tế / quy đổi điểm / miễn học - miễn thi (QĐ 1221)
+  const CERTIFICATE_INTENT = /(quy đổi|miễn học|miễn thi|chứng chỉ|hskk?|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|cambridge|vstep|trình độ\s*(?:bậc|b1|b2|c1|c2))/i;
+  const isCertificateQuery = CERTIFICATE_INTENT.test(lowerQuery) &&
+    /(quy đổi|miễn|chứng chỉ|ngoại ngữ|chuẩn đầu ra|bậc|hsk|hskk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|cambridge|vstep)/i.test(lowerQuery);
+
   if (isTrainingPointsQuery) {
     detectedCategory = "training_points";
+  } else if (isCertificateQuery) {
+    detectedCategory = "certificate_conversion";
   } else if (lowerQuery.includes("học bổng") || lowerQuery.includes("khen thưởng") || lowerQuery.includes("tiêu chuẩn xét")) {
     detectedCategory = "scholarship";
   } else if (lowerQuery.includes("cảnh báo") || lowerQuery.includes("buộc thôi học") || lowerQuery.includes("kỷ luật")) {
@@ -1974,7 +2041,7 @@ function isImmediateMessage(text) {
     normalized.startsWith("testpage") ||
     normalized.startsWith("toggle ") ||
     normalized.startsWith("toggle_") ||
-    normalized.startsWith("email ") ||
+    /^(?:\/email|email)\s*[:=]?\s*[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/i.test(normalized) ||
     normalized.startsWith("lịch học thứ") ||
     normalized.startsWith("lịch học t") ||
     normalized.startsWith("lịch học cn") ||
@@ -2010,5 +2077,6 @@ module.exports = {
   getExamRows,
   formatHocPhi,
   formatKetQuaHocTap,
+  formatTienDo,
   formatTietHoc,
 };

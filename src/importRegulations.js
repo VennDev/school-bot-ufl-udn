@@ -6,9 +6,13 @@ if (!global.crypto) {
 const db = require("./db");
 
 const FILE_PATH = path.resolve(__dirname, "../docs/UFLS.txt");
+const QD1221_PATH = path.resolve(__dirname, "../docs/QD-1221.txt");
 
 function detectCategory(pageText) {
   const lower = pageText.toLowerCase();
+  if (/quyết định\s*(?:số\s*)?1221|miễn học, miễn thi|quy đổi điểm|chứng chỉ ngoại ngữ quốc tế|hsk|hskk|tocfl|topik|jlpt|nat-test|delf|dalf|tcf/i.test(lower)) {
+    if (/miễn học|miễn thi|quy đổi điểm/i.test(lower)) return "certificate_conversion";
+  }
   if (/phụ lục ii\.[1-4]|vstep|chuẩn đầu ra ngoại ngữ|cefr|toeic|toefl|jlpt|topik|hsk|nat-test|j-test/i.test(lower)) {
     return "vstep";
   }
@@ -111,7 +115,37 @@ async function importRegs() {
     }
   });
 
-  console.log(`[import] Created ${nodes.length} nodes across ${pages.length} pages. Saving to database...`);
+  console.log(`[import] Created ${nodes.length} nodes across ${pages.length} pages.`);
+
+  if (fs.existsSync(QD1221_PATH)) {
+    console.log(`[import] Reading QD-1221 from: ${QD1221_PATH}`);
+    const qdContent = fs.readFileSync(QD1221_PATH, "utf-8");
+    const sections = qdContent.split(/\n(?=Điều \d+\.|Khoản \d+\.|Khoản \d+\.)/);
+    const qdNodes = [];
+    sections.forEach((section, idx) => {
+      const trimmed = section.trim();
+      if (trimmed.length < 40) return;
+      const firstLine = trimmed.split("\n")[0].substring(0, 120);
+      qdNodes.push({
+        title: `Quyết định 1221/QĐ-ĐHNN: ${firstLine}`,
+        category: /miễn học|miễn thi|quy đổi điểm|hsk|topik|jlpt|delf|tcf|ielts/i.test(trimmed)
+          ? "certificate_conversion"
+          : "academic_rules",
+        source_url: "https://nnvhhanquoc.ufl.udn.vn/wp-content/uploads/2023/12/QD-1221-quy-doi-diem-chung-chi-quoc-te-Truong-DHNN.pdf",
+        content: trimmed,
+        start_page: 1,
+        end_page: 16,
+        start_line: idx + 1,
+        end_line: idx + 1,
+      });
+    });
+    console.log(`[import] Created ${qdNodes.length} nodes from QD-1221.`);
+    nodes.push(...qdNodes);
+  } else {
+    console.warn(`[import] QD-1221 file not found at ${QD1221_PATH}, skipping.`);
+  }
+
+  console.log(`[import] Saving ${nodes.length} nodes to database...`);
   await db.saveRegNodes(nodes);
   console.log("[import] Regulations imported successfully!");
   process.exit(0);

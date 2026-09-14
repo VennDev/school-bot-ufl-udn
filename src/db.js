@@ -288,6 +288,20 @@ module.exports = {
       insertOne: { document: n }
     }));
     await RegNode.bulkWrite(ops);
+
+    // Mirror to file fallback so searchRegNodes works even without MongoDB.
+    try {
+      const dataDir = path.resolve(__dirname, "../data");
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dataDir, "rag_nodes.json"),
+        JSON.stringify(nodes, null, 2),
+        "utf8"
+      );
+      console.log(`[db] Wrote ${nodes.length} nodes to data/rag_nodes.json fallback.`);
+    } catch (err) {
+      console.warn("[db] Failed to write rag_nodes.json fallback:", err.message);
+    }
   },
 
   async searchRegNodes(queryText, limit = 4, category = null) {
@@ -301,13 +315,30 @@ module.exports = {
       const normalizedQuery = queryText
         .replace(/\bcdr\b/gi, "chuẩn đầu ra")
         .replace(/\bnn\b/gi, "ngoại ngữ")
-        .replace(/\bdrl\b/gi, "điểm rèn luyện");
+        .replace(/\bdrl\b/gi, "điểm rèn luyện")
+        // Tách mức chứng chỉ dính liền: "hsk5" -> "hsk 5", "ielts5.5" -> "ielts 5.5"
+        .replace(/\b(hsk|hskk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\s*(\d)/gi, "$1 $2");
 
       // Direct exact matches for official documents (công văn/quyết định/thông báo số ...) or appendices (phụ lục ...)
-      const docMatch = queryText.match(/(?:công văn|quyết định|thông báo)\s*(?:số)?\s*([0-9]+\/[a-zđ\-]+)/i);
+      const docMatch = queryText.match(/(?:công văn|quyết định|thông báo)\s*(?:số)?\s*([0-9]+\/[a-zđ\-]+)/i)
+        || queryText.match(/\b(?:qđ|qd)[\s-]*(\d{3,4})\b/i);
       const appendixMatch = queryText.match(/phụ lục\s*([ivx0-9]+(?:\.[0-9]+)?)/i);
+      const certMatch = normalizedQuery.match(/\b(hskk|hsk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\b/i)
+        || normalizedQuery.match(/\b(?:chứng chỉ|quy đổi|miễn học|miễn thi)\b/i);
       const isCdrQuery = /chuẩn đầu ra\s*(?:ngoại ngữ|tin học)?/i.test(normalizedQuery);
       const langMatch = normalizedQuery.match(/\b(pháp|nhật|trung|hàn|nga|anh|thái)\b/i);
+
+      // Certificate conversion queries (QD 1221 / quy đổi điểm chứng chỉ quốc tế)
+      const certLangMap = {
+        "anh": /IELTS|TOEIC|TOEFL|Cambridge|tiếng Anh/i,
+        "pháp": /DELF|DALF|TCF|tiếng Pháp/i,
+        "trung": /HSK|HSKK|TOCFL|tiếng Trung/i,
+        "nhật": /JLPT|NAT-?Test|tiếng Nhật/i,
+        "hàn": /TOPIK|tiếng Hàn/i,
+        "nga": /ТРКИ|ТБУ|ТЭУ|tiếng Nga/i,
+        "thái": /tiếng Thái/i,
+      };
+      const certNameMatch = normalizedQuery.match(/\b(hskk|hsk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\b/i);
 
       if (docMatch) {
         const escaped = docMatch[1].replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
@@ -317,6 +348,40 @@ module.exports = {
         const escaped = appendixMatch[1].replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
         const appNodes = await RegNode.find({ content: { $regex: new RegExp(`PHỤ\\s+LỤC\\s+${escaped}`, "i") } }).limit(limit).lean();
         if (appNodes.length) results = appNodes;
+      } else if (certNameMatch) {
+        // Cụ thể theo tên chứng chỉ (HSK 5, IELTS 5.5, TOPIK II, JLPT N3...):
+        // ưu tiên node quy đổi điểm (QĐ 1221) trước, sau đó mới tới các node khác.
+        const certRegex = new RegExp(certNameMatch[1].replace(/[.\-]/g, "[.\\-]?"), "i");
+        const rankCert = n => {
+          const content = n.content || "";
+          const mentions = (content.match(new RegExp(certRegex.source, "gi")) || []).length;
+          const conversionBonus = /quy đổi điểm|miễn học|miễn thi/i.test(content) ? 4 : 0;
+          const tableBonus = /(\d+\s*[-–~]\s*\d+|\d+\/\d+)/.test(content) ? 2 : 0;
+          const categoryBonus = n.category === "certificate_conversion" ? 6 : 0;
+          return mentions + conversionBonus + tableBonus + categoryBonus;
+        };
+        // Ưu tiên tìm trong category quy đổi điểm trước (QĐ 1221 + phụ lục quy đổi).
+        const certInCategory = await RegNode.find({
+          category: "certificate_conversion",
+          content: { $regex: certRegex }
+        }).limit(40).lean();
+        let certNodes = certInCategory;
+        if (certNodes.length < limit) {
+          const more = await RegNode.find({ content: { $regex: certRegex } }).limit(60).lean();
+          const seen = new Set(certNodes.map(n => n._id?.toString()));
+          for (const n of more) {
+            if (!seen.has(n._id?.toString())) certNodes.push(n);
+          }
+        }
+        const ranked = certNodes.sort((a, b) => rankCert(b) - rankCert(a));
+        if (ranked.length) results = ranked.slice(0, limit);
+      } else if (certMatch && langMatch) {
+        // Ví dụ: "quy đổi điểm chứng chỉ tiếng Hàn"
+        const langRegex = certLangMap[langMatch[1].toLowerCase()] || new RegExp(langMatch[1], "i");
+        const langNodes = await RegNode.find({
+          content: { $regex: langRegex }
+        }).limit(limit).lean();
+        if (langNodes.length) results = langNodes;
       } else if (isCdrQuery && langMatch) {
         // Query asks for certificates / CĐR for a specific language (e.g. "tên các chứng chỉ cho cdr pháp / nhật / trung")
         const lang = langMatch[1].toLowerCase();
@@ -382,25 +447,38 @@ module.exports = {
       try {
         const fileContent = fs.readFileSync(ragPath, "utf8");
         const nodes = JSON.parse(fileContent);
-        
-        // Split queries into keywords
-        const keywords = queryText.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-        
+
+        // Tách mức chứng chỉ dính liền ("hsk5" -> "hsk 5") và bỏ từ nhiễu
+        const normalizedQuery = queryText.toLowerCase()
+          .replace(/\b(hsk|hskk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\s*(\d)/gi, "$1 $2");
+        const stopWords = new Set(["cho", "cua", "được", "duoc", "bao", "nhiêu", "nhieu", "nào", "nao", "gì", "gi", "là", "la", "thì", "thi", "và", "va", "có", "co", "không", "khong", "tôi", "toi", "mình", "minh", "với", "voi", "như", "nhu", "thế", "the"]);
+        const keywords = normalizedQuery.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+        const certNameMatch = normalizedQuery.match(/\b(hskk|hsk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\b/i);
+
         if (keywords.length > 0) {
           const matchedNodes = nodes.filter(n => {
             // Apply category filter if specified
             if (category && n.category !== category) return false;
-            
-            // Text matching score based on keyword hits in content or title
+
             const contentLower = (n.content || "").toLowerCase();
             const titleLower = (n.title || "").toLowerCase();
-            
+
             let hits = 0;
             keywords.forEach(kw => {
               if (contentLower.includes(kw)) hits++;
               if (titleLower.includes(kw)) hits += 2; // Weight title match higher
             });
-            
+
+            // Ưu tiên node quy đổi điểm chứng chỉ (QĐ 1221) khi hỏi về chứng chỉ
+            if (certNameMatch && hits > 0) {
+              const certMentions = (contentLower.match(new RegExp(certNameMatch[1], "g")) || []).length;
+              if (certMentions > 0 || titleLower.includes(certNameMatch[1])) {
+                hits += Math.min(certMentions, 12) * 2;
+                if (n.category === "certificate_conversion") hits += 6;
+                if (/quy đổi điểm|miễn học|miễn thi/i.test(contentLower)) hits += 3;
+              }
+            }
+
             n.temp_score = hits;
             return hits > 0;
           });

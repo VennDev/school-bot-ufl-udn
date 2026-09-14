@@ -152,7 +152,16 @@ function detectGrades(oldData, newData) {
       const parts = [`[=] Điểm mới môn: ${name}`];
       if (componentIdx >= 0 && row[componentIdx]) parts.push(`TP: ${_normComponentScoreForDisplay(row[componentIdx])}`);
       if (examIdx >= 0 && row[examIdx]) parts.push(`Thi: ${row[examIdx]}`);
-      parts.push(`TBCHP: ${row[scoreIdx]} (${row[charIdx] || "?"})`);
+      const charGrade = String(row[charIdx] || "").trim().toUpperCase();
+      if (charGrade === "R") {
+        parts.push(`Miễn học / công nhận tín chỉ (Điểm R)`);
+      } else if (charGrade === "I") {
+        parts.push(`Hoãn thi (Điểm I)`);
+      } else if (charGrade === "X") {
+        parts.push(`Chưa đủ dữ liệu (Điểm X)`);
+      } else {
+        parts.push(`TBCHP: ${row[scoreIdx] || "(trống)"} (${row[charIdx] || "?"})`);
+      }
       alert = parts.join(" | ");
     } else {
       const changes = [];
@@ -161,6 +170,14 @@ function detectGrades(oldData, newData) {
         const oldVal = String(oldRow[scoreIdx] || "").trim() || "(trống)";
         const newVal = String(row[scoreIdx] || "").trim() || "(trống)";
         changes.push(`TBCHP: ${oldVal} -> ${newVal}`);
+      }
+      // Detect letter grade change (for I, X, R, P and grade adjustments)
+      if (charIdx >= 0) {
+        const oldChar = String(oldRow[charIdx] || "").trim().toUpperCase();
+        const newChar = String(row[charIdx] || "").trim().toUpperCase();
+        if (oldChar !== newChar && (oldChar || newChar)) {
+          changes.push(`Điểm chữ: ${oldChar || "(trống)"} -> ${newChar}`);
+        }
       }
       // Detect component score change
       if (componentIdx >= 0) {

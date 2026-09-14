@@ -1,20 +1,45 @@
+const https = require("https");
+const http = require("http");
 const db = require("./db");
 const OPENCODE_URL = "https://opencode.ai/zen/v1/chat/completions";
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
+function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const transport = u.protocol === "http:" ? http : https;
+    const req = transport.request({
+      protocol: u.protocol,
+      hostname: u.hostname,
+      port: u.port || (u.protocol === "http:" ? 80 : 443),
+      path: u.pathname + (u.search || ""),
+      method: options.method || "GET",
+      headers: options.headers || {},
+      family: 4,
+      timeout: timeoutMs
+    }, (res) => {
+      const chunks = [];
+      res.on("data", chunk => chunks.push(chunk));
+      res.on("end", () => {
+        const bodyText = Buffer.concat(chunks).toString("utf8");
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          text: async () => bodyText,
+          json: async () => JSON.parse(bodyText),
+        });
+      });
     });
-    clearTimeout(id);
-    return response;
-  } catch (error) {
-    clearTimeout(id);
-    throw error;
-  }
+
+    req.on("timeout", () => {
+      req.destroy(new Error(`Timeout after ${timeoutMs}ms`));
+    });
+    req.on("error", reject);
+
+    if (options.body) {
+      req.write(typeof options.body === "string" ? options.body : JSON.stringify(options.body));
+    }
+    req.end();
+  });
 }
 
 async function getTemperature() {
@@ -26,7 +51,7 @@ async function getTemperature() {
 async function callCustomAI(systemPrompt, userPrompt) {
   const endpoint = await db.getSystemSetting("custom_ai_url", process.env.CUSTOM_AI_URL || "https://api.xah.io");
   const apiKey = await db.getSystemSetting("custom_ai_key", process.env.CUSTOM_AI_KEY || "sk-fd9b9e1238c55a1e034267163a5b4ec8fa72e8fa8b1516879ecfd7300896ebaf");
-  const model = await db.getSystemSetting("custom_ai_model", process.env.CUSTOM_AI_MODEL || "phatchau036/gpt-5.6-luna");
+  const model = await db.getSystemSetting("custom_ai_model", process.env.CUSTOM_AI_MODEL || "cuong5a115a11/deepseek-v4.1-flash");
   const temp = await getTemperature();
 
   if (!endpoint || !apiKey) throw new Error("Custom AI not configured");
@@ -47,7 +72,7 @@ async function callCustomAI(systemPrompt, userPrompt) {
       ],
       temperature: temp
     })
-  }, 30000);
+  }, 25000);
 
   if (!res.ok) throw new Error(`Custom AI HTTP ${res.status}`);
   const data = await res.json();
@@ -76,7 +101,7 @@ async function callOpenCode(systemPrompt, userPrompt) {
       ],
       temperature: temp
     }),
-  }, 90000);
+  }, 25000);
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -158,7 +183,7 @@ function stripMarkdown(text) {
 // Retry wrapper: retries up to `maxRetries` times on transient errors
 // (abort, network, 429 rate-limit, 5xx server). Client errors (4xx except
 // 429) are not retried — they indicate a permanent problem.
-async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
+async function withRetry(fn, maxRetries = 1, delayMs = 1000) {
   let lastError;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -166,11 +191,20 @@ async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
     } catch (error) {
       lastError = error;
       const status = error.status || error.statusCode;
-      const isTransient = !status || status === 429 || status >= 500
+      const msg = error.message || "";
+      const isClientError = (status >= 400 && status < 500 && status !== 429) ||
+        /\b(?:400|401|403|404)\b/.test(msg) ||
+        msg.includes("No Gemini API key") ||
+        msg.includes("No OpenAI API key") ||
+        msg.includes("Custom AI not configured");
+      if (isClientError) throw error;
+
+      const isTransient = status === 429 || (status >= 500)
         || error.name === "AbortError"
         || error.code === "ENOTFOUND"
         || error.code === "ECONNRESET"
-        || error.code === "EPIPE";
+        || error.code === "EPIPE"
+        || msg.includes("fetch failed");
       if (!isTransient) throw error;
       if (attempt < maxRetries) {
         const backoff = delayMs * Math.pow(2, attempt);

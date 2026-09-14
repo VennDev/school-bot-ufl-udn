@@ -12,12 +12,13 @@ function parseScore(val) {
 }
 
 function calculateGPA(courses) {
-  // courses: array of { name, credits, score10 }
+  // courses: array of { name, credits, score10, grade }
   let totalCreditsSemester = 0;
   let weightedPointsSemester = 0;
 
-  let totalCreditsAccumulated = 0;
+  let totalCreditsGradedAccumulated = 0;
   let weightedPointsAccumulated = 0;
+  let totalCreditsAccumulated = 0;
 
   courses.forEach((c) => {
     const nameLower = String(c?.name || "").toLowerCase();
@@ -28,9 +29,38 @@ function calculateGPA(courses) {
     }
 
     const credits = parseInt(c.credits);
+    if (isNaN(credits) || credits <= 0) return;
+
+    const letterGrade = String(c?.grade || "").trim().toUpperCase();
+
+    // Điểm R (miễn học và công nhận tín chỉ) hoặc P (Đạt):
+    // Theo Điều 20.1.b UFLS: tính vào số tín chỉ tích lũy, không tính vào điểm trung bình học tập (GPA)
+    if (letterGrade === "R" || letterGrade === "P") {
+      totalCreditsAccumulated += credits;
+      return;
+    }
+
+    // Điểm I (hoãn thi, kiểm tra) hoặc X (chưa đủ dữ liệu):
+    // Theo Điều 2.c UFLS: không tính vào điểm trung bình học tập, chưa tính tích lũy
+    if (letterGrade === "I" || letterGrade === "X") {
+      return;
+    }
+
     const score10 = parseScore(c.score10);
-    
-    if (isNaN(credits) || score10 === null) return;
+    if (score10 === null) {
+      if (["A", "B", "C", "D"].includes(letterGrade)) {
+        const pointMap = { A: 4, B: 3, C: 2, D: 1 };
+        const point4 = pointMap[letterGrade];
+        totalCreditsSemester += credits;
+        weightedPointsSemester += point4 * credits;
+        totalCreditsGradedAccumulated += credits;
+        weightedPointsAccumulated += point4 * credits;
+        totalCreditsAccumulated += credits;
+      } else if (letterGrade === "F") {
+        totalCreditsSemester += credits;
+      }
+      return;
+    }
 
     const { letter, point4 } = getGradePoints(score10);
 
@@ -40,13 +70,14 @@ function calculateGPA(courses) {
 
     // Tính tích lũy (chỉ lấy A, B, C, D)
     if (letter !== "F") {
-      totalCreditsAccumulated += credits;
+      totalCreditsGradedAccumulated += credits;
       weightedPointsAccumulated += point4 * credits;
+      totalCreditsAccumulated += credits;
     }
   });
 
   const gpaSemester = totalCreditsSemester > 0 ? (weightedPointsSemester / totalCreditsSemester) : 0;
-  const gpaAccumulated = totalCreditsAccumulated > 0 ? (weightedPointsAccumulated / totalCreditsAccumulated) : 0;
+  const gpaAccumulated = totalCreditsGradedAccumulated > 0 ? (weightedPointsAccumulated / totalCreditsGradedAccumulated) : 0;
 
   return {
     gpaSemester: parseFloat(gpaSemester.toFixed(2)),
@@ -233,21 +264,43 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
   }
 
   // Lọc các môn điểm F (cần học lại) và các môn điểm thấp (cần cải thiện: D) từ danh sách môn học thực tế
+  // Đồng thời phát hiện môn điểm I, X (hoãn thi / chưa hoàn thiện) và R (miễn học / công nhận tín chỉ)
   let subjectsToRelearn = [];
   let subjectsToImprove = [];
+  let subjectsPostponed = []; // Điểm I, X
+  let subjectsExempted = [];  // Điểm R
 
   courses.forEach((c) => {
     const name = c.name;
-    const score10 = parseScore(c.score10);
-    if (score10 === null) return;
-
     const nameLower = name.toLowerCase();
     if (nameLower.includes("giáo dục quốc phòng") || nameLower.includes("giáo dục thể chất") || nameLower.includes("gdqp") || nameLower.includes("gdtc")) {
       return;
     }
 
+    const letterGrade = String(c?.grade || "").trim().toUpperCase();
+
+    if (letterGrade === "I" || letterGrade === "X") {
+      if (!subjectsPostponed.includes(name)) subjectsPostponed.push(name);
+      return;
+    }
+    if (letterGrade === "R") {
+      if (!subjectsExempted.includes(name)) subjectsExempted.push(name);
+      return;
+    }
+    if (letterGrade === "P") {
+      return;
+    }
+
+    const score10 = parseScore(c.score10);
+    if (score10 === null) {
+      if (letterGrade === "F" && !subjectsToRelearn.includes(name)) {
+        subjectsToRelearn.push(name);
+      }
+      return;
+    }
+
     const { letter } = getGradePoints(score10);
-    if (letter === "F") {
+    if (letter === "F" || letterGrade === "F") {
       if (!subjectsToRelearn.includes(name)) subjectsToRelearn.push(name);
     } else if (letter === "D" || (score10 >= 4.0 && score10 < 5.5)) {
       // D (điểm hệ 10 từ 4.0 đến dưới 5.5)
@@ -255,7 +308,7 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
     }
   });
 
-  return { rank, comment, warning, subjectsToRelearn, subjectsToImprove };
+  return { rank, comment, warning, subjectsToRelearn, subjectsToImprove, subjectsPostponed, subjectsExempted };
 }
 
 function getScholarshipAndActivityAdvice(gpaSemester10, gpaAccumulated, drlScore, credits) {
