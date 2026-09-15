@@ -7,6 +7,7 @@ async function run() {
   const cases = [
     { q: "HSK 5 quy đổi điểm bao nhiêu", expect: /tiếng Trung|Trung Quốc/i },
     { q: "IELTS 5.5 quy đổi điểm", expect: /tiếng Anh|Anh chuyên ngành|Quốc tế học/i },
+    { q: "IELTS 7.0 quy đổi điểm", expect: /Kỹ năng tiếng B1\.4/i },
     { q: "JLPT N3 miễn học phần nào", expect: /Nhật Bản|Nhật/i },
     { q: "TOPIK II quy đổi điểm", expect: /Hàn Quốc|Hàn/i },
     { q: "NAT-Test quy đổi", expect: /Nhật Bản|Nhật/i },
