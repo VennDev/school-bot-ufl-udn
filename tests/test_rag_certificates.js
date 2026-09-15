@@ -12,6 +12,7 @@ async function run() {
     { q: "TOPIK II quy đổi điểm", expect: /Hàn Quốc|Hàn/i },
     { q: "NAT-Test quy đổi", expect: /Nhật Bản|Nhật/i },
     { q: "quy đổi điểm chứng chỉ tiếng Pháp DELF", expect: /Pháp/i },
+    { q: "miễn học phần bằng chứng chỉ quốc tế ngành sư phạm anh", expect: /Sư phạm Ngoại ngữ|Sư phạm tiếng Anh/i },
   ];
 
   for (const c of cases) {

@@ -1918,7 +1918,7 @@ async function processMessage(senderPsid, messageText) {
     regs = await db.searchRegNodes(messageText, 4, detectedCategory);
   }
   let majorRegs = [];
-  if (majorName) {
+  if (majorName && !isCertificateQuery && !isTrainingPointsQuery) {
     majorRegs = await db.searchRegNodes(`${majorName} kế hoạch giảng dạy`, 3, "teaching_plan");
     // Also try without category filter if nothing found
     if (!majorRegs.length) {

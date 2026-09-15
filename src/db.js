@@ -152,6 +152,63 @@ async function ensureInit() {
   if (!User) initModels();
 }
 
+function rankConversionNodes(queryText, nodeList) {
+  const q = (queryText || "").toLowerCase();
+  const hasSuPham = /sư phạm/i.test(q);
+
+  const facultyWeights = [
+    { pattern: /sư phạm\s*(?:tiếng\s*)?anh|ngành sư phạm anh|khoa sư phạm|sư phạm/i, target: /Khoa Sư phạm Ngoại ngữ/i, weight: 35 },
+    { pattern: /tiếng anh chuyên ngành|chuyên ngành/i, target: /Khoa tiếng Anh chuyên ngành/i, weight: 35 },
+    { pattern: /quốc tế học/i, target: /Khoa Quốc tế học/i, weight: 35 },
+    { pattern: /khoa tiếng anh|ngành ngôn ngữ anh|ngôn ngữ anh/i, target: /Khoa tiếng Anh\b/i, weight: 30 },
+    { pattern: /tiếng pháp|ngôn ngữ pháp|pháp/i, target: /Khoa tiếng Pháp/i, weight: 25 },
+    { pattern: /tiếng trung|trung quốc|ngôn ngữ trung/i, target: /Khoa tiếng Trung Quốc/i, weight: 25 },
+    { pattern: /tiếng nhật|nhật bản|ngôn ngữ nhật/i, target: /Khoa Ngôn ngữ và Văn hóa Nhật Bản/i, weight: 25 },
+    { pattern: /tiếng hàn|hàn quốc|ngôn ngữ hàn/i, target: /Khoa Ngôn ngữ và Văn hóa Hàn Quốc/i, weight: 25 },
+    { pattern: /ngoại ngữ 2|nn2|ngoại ngữ ii/i, target: /Ngoại ngữ 2|Ngoại ngữ II/i, weight: 25 },
+  ];
+
+  const certWeights = [
+    { pattern: /ielts|toefl|toeic|cambridge/i, target: hasSuPham ? /Khoa Sư phạm Ngoại ngữ/i : /Khoa tiếng Anh\b|Khoa tiếng Anh chuyên ngành/i, weight: 15 },
+    { pattern: /delf|dalf|tcf/i, target: hasSuPham ? /Khoa Sư phạm Ngoại ngữ/i : /Khoa tiếng Pháp/i, weight: 20 },
+    { pattern: /hskk?|tocfl/i, target: hasSuPham ? /Khoa Sư phạm Ngoại ngữ/i : /Khoa tiếng Trung Quốc/i, weight: 20 },
+    { pattern: /jlpt|nat-?test/i, target: /Khoa Ngôn ngữ và Văn hóa Nhật Bản/i, weight: 25 },
+    { pattern: /topik/i, target: /Khoa Ngôn ngữ và Văn hóa Hàn Quốc/i, weight: 25 },
+  ];
+
+  const stopWords = new Set(["cho", "cua", "được", "duoc", "bao", "nhiêu", "nhieu", "nào", "nao", "gì", "gi", "là", "la", "thì", "thi", "và", "va", "có", "co", "không", "khong", "tôi", "toi", "mình", "minh", "với", "voi", "như", "nhu", "thế", "the", "bằng", "các"]);
+  const words = q.split(/\s+/).filter(w => w.length > 1 && !stopWords.has(w));
+
+  return nodeList.map(n => {
+    let score = 0;
+    const title = n.title || "";
+    const content = n.content || "";
+    const titleLower = title.toLowerCase();
+    const contentLower = content.toLowerCase();
+
+    for (const fw of facultyWeights) {
+      if (fw.pattern.test(q) && fw.target.test(title)) {
+        score += fw.weight;
+      }
+    }
+
+    for (const cw of certWeights) {
+      if (cw.pattern.test(q) && cw.target.test(title)) {
+        score += cw.weight;
+      }
+    }
+
+    for (const w of words) {
+      if (titleLower.includes(w)) score += 5;
+      if (contentLower.includes(w)) score += 1;
+    }
+
+    if (/Khoản \d+/i.test(title)) score += 3;
+
+    return { node: n, score };
+  }).sort((a, b) => b.score - a.score).map(r => r.node);
+}
+
 // ---------- Exported helpers (same API as SQLite version) ----------
 
 module.exports = {
@@ -306,18 +363,48 @@ module.exports = {
 
   async searchRegNodes(queryText, limit = 4, category = null) {
     await ensureInit();
+
+    // Normalize common abbreviations
+    const normalizedQuery = queryText
+      .replace(/\bcdr\b/gi, "chuẩn đầu ra")
+      .replace(/\bnn\b/gi, "ngoại ngữ")
+      .replace(/\bdrl\b/gi, "điểm rèn luyện")
+      // Tách mức chứng chỉ dính liền: "hsk5" -> "hsk 5", "ielts5.5" -> "ielts 5.5"
+      .replace(/\b(hsk|hskk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\s*(\d)/gi, "$1 $2");
+
+    const isCertConversion = category === "certificate_conversion" ||
+      /(?:quy đổi|miễn học|miễn thi).*?(?:chứng chỉ|hsk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|cambridge)|(?:chứng chỉ|hsk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|cambridge).*?(?:quy đổi|miễn học|miễn thi)/i.test(normalizedQuery) ||
+      /quyết định\s*(?:số\s*)?1221|qđ\s*1221/i.test(normalizedQuery);
+
+    if (isCertConversion) {
+      try {
+        const convNodes = await RegNode.find({ category: "certificate_conversion" }).lean();
+        if (convNodes.length > 0) {
+          const ranked = rankConversionNodes(normalizedQuery, convNodes).slice(0, limit);
+          if (ranked.length > 0) return ranked;
+        }
+      } catch (err) {
+        console.warn("[db] MongoDB conversion query failed:", err.message);
+      }
+      const ragPath = path.resolve(__dirname, "../data/rag_nodes.json");
+      if (fs.existsSync(ragPath)) {
+        try {
+          const allNodes = JSON.parse(fs.readFileSync(ragPath, "utf8"));
+          const convNodes = allNodes.filter(n => n.category === "certificate_conversion");
+          if (convNodes.length > 0) {
+            return rankConversionNodes(normalizedQuery, convNodes).slice(0, limit);
+          }
+        } catch (fErr) {
+          console.error("[db] rag_nodes.json read failed:", fErr.message);
+        }
+      }
+    }
+
     const filter = category ? { category } : {};
     let results = [];
 
     // 1. Search in MongoDB/Mongoose database if initialized and has records
     try {
-      // Normalize common abbreviations
-      const normalizedQuery = queryText
-        .replace(/\bcdr\b/gi, "chuẩn đầu ra")
-        .replace(/\bnn\b/gi, "ngoại ngữ")
-        .replace(/\bdrl\b/gi, "điểm rèn luyện")
-        // Tách mức chứng chỉ dính liền: "hsk5" -> "hsk 5", "ielts5.5" -> "ielts 5.5"
-        .replace(/\b(hsk|hskk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\s*(\d)/gi, "$1 $2");
 
       // Direct exact matches for official documents (công văn/quyết định/thông báo số ...) or appendices (phụ lục ...)
       const docMatch = queryText.match(/(?:công văn|quyết định|thông báo)\s*(?:số)?\s*([0-9]+\/[a-zđ\-]+)/i)
