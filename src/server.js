@@ -14,13 +14,6 @@ const { startScheduler } = require("./cron");
 const { PAGES, hasUsableData } = require("./pages");
 const syncProgress = require("./syncProgress");
 
-const avatarCache = new Map();
-const AVATAR_CACHE_MS = 15 * 60 * 1000;
-const avatarFailures = new Map();
-// Short TTL: a transient Graph error must not hide the avatar for a whole hour.
-const AVATAR_FAILURE_CACHE_MS = 2 * 60 * 1000;
-const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
-
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
@@ -162,100 +155,6 @@ app.get("/api/admin/stats", requireAdmin, async (req, res) => {
 
 app.get("/api/admin/sync-progress", requireAdmin, (req, res) => {
   res.json({ runs: syncProgress.listRuns() });
-});
-
-app.get("/api/admin/avatar/:fbId", requireAdmin, async (req, res) => {
-  const fbId = requireFbId(req.params.fbId);
-  if (!fbId) return res.status(400).end();
-
-  const sendCached = cached => {
-    res.set("Cache-Control", "private, max-age=900");
-    res.set("Content-Type", cached.contentType);
-    return res.send(cached.body);
-  };
-  const cached = avatarCache.get(fbId);
-  if (cached && cached.expiresAt > Date.now()) return sendCached(cached);
-  const failedAt = avatarFailures.get(fbId);
-  if (failedAt && failedAt > Date.now() - AVATAR_FAILURE_CACHE_MS) return res.status(404).end();
-
-  try {
-    const pageToken = await db.getSystemSetting("fb_page_token", process.env.FB_PAGE_TOKEN || "");
-    const userToken = await db.getSystemSetting("fb_user_token", process.env.FB_USER_TOKEN || "");
-    const appSecret = await db.getSystemSetting("fb_app_secret", process.env.FB_APP_SECRET || "");
-    const appId = await db.getSystemSetting("fb_app_id", process.env.FB_APP_ID || "");
-
-    const fetchAvatarImage = async (url) => {
-      const imageResponse = await fetch(url);
-      const contentType = imageResponse.headers.get("content-type") || "";
-      if (!imageResponse.ok || !contentType.startsWith("image/")) return null;
-      const body = Buffer.from(await imageResponse.arrayBuffer());
-      if (body.length > MAX_AVATAR_BYTES) return null;
-      return { body, contentType: contentType.split(";", 1)[0] };
-    };
-
-    const saveAvatar = (image, source) => {
-      if (!image) return null;
-      const value = { body: image.body, contentType: image.contentType, expiresAt: Date.now() + AVATAR_CACHE_MS };
-      avatarCache.set(fbId, value);
-      avatarFailures.delete(fbId);
-      console.log(`[admin-avatar] ${fbId}: loaded via ${source}`);
-      return sendCached(value);
-    };
-
-    // Tokens to try, in order of permission scope.
-    const tokens = [];
-    if (pageToken) tokens.push({ name: "page-token", token: pageToken });
-    if (userToken) tokens.push({ name: "user-token", token: userToken });
-    if (appSecret) tokens.push({ name: "app-token", token: appId ? `${appId}|${appSecret}` : null });
-
-    for (const { name, token } of tokens) {
-      if (!token) continue;
-
-      // A) picture endpoint (redirect=false -> JSON with CDN url).
-      const pictureUrl = new URL(`https://graph.facebook.com/v21.0/${fbId}/picture`);
-      pictureUrl.searchParams.set("type", "small");
-      pictureUrl.searchParams.set("redirect", "false");
-      pictureUrl.searchParams.set("access_token", token);
-      try {
-        const graphResponse = await fetch(pictureUrl);
-        if (graphResponse.ok) {
-          const payload = await graphResponse.json();
-          const picture = payload?.data?.url;
-          if (picture) {
-            const sent = saveAvatar(await fetchAvatarImage(picture), `${name} /picture`);
-            if (sent) return sent;
-          }
-        }
-      } catch {}
-
-      // B) User profile fields (profile_pic) — Messenger exposes it for users of the page.
-      const profileUrl = new URL(`https://graph.facebook.com/v21.0/${fbId}`);
-      profileUrl.searchParams.set("fields", "profile_pic,first_name,last_name,id");
-      profileUrl.searchParams.set("access_token", token);
-      try {
-        const profileResponse = await fetch(profileUrl);
-        if (profileResponse.ok) {
-          const profile = await profileResponse.json();
-          const picture = profile?.profile_pic;
-          if (picture) {
-            const sent = saveAvatar(await fetchAvatarImage(picture), `${name} /profile_pic`);
-            if (sent) return sent;
-          }
-        }
-      } catch {}
-    }
-
-    // Neither source worked — remember the miss briefly so we don't hammer Graph.
-    // Log the reason (400 = psid never messaged the page / invalid id, which is
-    // expected for seeded test accounts without Messenger history).
-    console.warn(`[admin-avatar] ${fbId}: no avatar via picture/profile_pic (tried ${tokens.length} token(s))`);
-    avatarFailures.set(fbId, Date.now());
-    return res.status(404).end();
-  } catch (error) {
-    avatarFailures.set(fbId, Date.now());
-    console.warn(`[admin-avatar] ${fbId}: ${error.message}`);
-    res.status(404).end();
-  }
 });
 
 app.get("/api/admin/sync-progress/:runId", requireAdmin, (req, res) => {

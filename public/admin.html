@@ -611,7 +611,6 @@
 
   <script>
     let token = localStorage.getItem('admin_token') || '';
-    let avatarQueue = Promise.resolve(); // serializes avatar fetches (Graph rate limits)
     let currentDataPage = 1;
     let totalDataCount = 0;
     let syncProgressTimer = null;
@@ -1141,18 +1140,8 @@
       tbody.innerHTML = '';
       data.users.forEach((u) => {
         const tr = document.createElement('tr');
-        const avatarUrl = `/api/admin/avatar/${encodeURIComponent(u.fb_id)}`;
-        const initials = escapeHTML(String(u.username || u.fb_id).slice(0, 2).toUpperCase());
         tr.innerHTML = `
-          <td class="px-4 py-3 whitespace-nowrap">
-            <div class="flex items-center gap-3">
-              <div class="relative h-9 w-9 shrink-0">
-                <span class="avatar-fallback absolute inset-0 flex items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">${initials}</span>
-                <img alt="" loading="lazy" class="avatar-image relative hidden h-9 w-9 rounded-full object-cover">
-              </div>
-              <span class="font-medium text-gray-900">${escapeHTML(u.username)}</span>
-            </div>
-          </td>
+          <td class="px-4 py-3 whitespace-nowrap font-medium text-gray-900">${escapeHTML(u.username)}</td>
           <td class="px-4 py-3 whitespace-nowrap text-gray-500">${escapeHTML(u.fb_id)}</td>
           <td class="px-4 py-3 whitespace-nowrap">
             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${u.complete ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
@@ -1168,29 +1157,7 @@
           </td>
         `;
         tbody.appendChild(tr);
-        loadAvatar(tr.querySelector('.avatar-image'), tr.querySelector('.avatar-fallback'), avatarUrl);
       });
-    }
-
-    async function loadAvatar(image, fallback, url) {
-      try {
-        // Avoid hammering the Graph API when the admin page lists many users at once.
-        await avatarQueue; // wait for the previous request in the queue
-      } catch {}
-      avatarQueue = (async () => {
-        try {
-          const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-          if (!response.ok) return;
-          const blob = await response.blob();
-          if (!blob.type.startsWith('image/')) return;
-          image.src = URL.createObjectURL(blob);
-          image.onload = () => {
-            image.classList.remove('hidden');
-            fallback.classList.add('hidden');
-          };
-        } catch {}
-      })();
-      await avatarQueue;
     }
 
     async function loadSettings() {
