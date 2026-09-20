@@ -1,0 +1,31 @@
+query_id,topic,gold_chunk,gold_rule,rank_1,rank_2,rank_3,rank_4,rank_5,rank_6,rank_7,rank_8,rank_9,rank_10,position,mrr,ndcg
+CA01,"Cảnh báo học tập",chunk_020,"Quy chế đào tạo, Điều 22 khoản 1(a)",chunk_020,chunk_018,chunk_014,chunk_019,chunk_114,chunk_025,chunk_446,chunk_449,chunk_451,chunk_455,1,1,1
+CA02,"Cảnh báo học tập",chunk_020,"Quy chế đào tạo, Điều 22 khoản 1(a)",chunk_020,chunk_018,chunk_025,chunk_011,chunk_019,chunk_012,chunk_114,chunk_016,chunk_023,chunk_021,1,1,1
+CA03,"Cảnh báo học tập",chunk_020,"Quy chế đào tạo, Điều 22 khoản 1(b)",chunk_020,chunk_018,chunk_025,chunk_019,chunk_024,chunk_016,chunk_395,chunk_155,chunk_179,chunk_393,1,1,1
+CA04,"Cảnh báo học tập",chunk_020,"Quy chế đào tạo, Điều 22 khoản 1(c)",chunk_020,chunk_024,chunk_019,chunk_050,chunk_143,chunk_018,chunk_026,chunk_025,chunk_114,chunk_116,1,1,1
+CA05,"Cảnh báo học tập",chunk_020,"Quy chế đào tạo, Điều 22 khoản 2(a)",chunk_020,chunk_025,chunk_012,chunk_114,chunk_050,chunk_132,chunk_026,chunk_063,chunk_317,chunk_013,1,1,1
+HB01,"Học bổng",chunk_154,"Mục 3.3.2, Điều 2 khoản 1",chunk_154,chunk_141,chunk_155,chunk_201,chunk_153,chunk_199,chunk_198,chunk_109,chunk_142,chunk_200,1,1,1
+HB02,"Học bổng",chunk_154,"Mục 3.3.2, Điều 2 khoản 2",chunk_154,chunk_201,chunk_141,chunk_155,chunk_014,chunk_012,chunk_024,chunk_021,chunk_212,chunk_199,1,1,1
+HB03,"Học bổng",chunk_154,"Mục 3.3.2, Điều 2 khoản 3",chunk_154,chunk_155,chunk_141,chunk_198,chunk_112,chunk_143,chunk_201,chunk_109,chunk_156,chunk_019,1,1,1
+HB04,"Học bổng",chunk_155,"Mục 3.3.2, Điều 2 khoản 5",chunk_155,chunk_154,chunk_141,chunk_201,chunk_153,chunk_143,chunk_198,chunk_142,chunk_199,chunk_147,1,1,1
+HB05,"Học bổng",chunk_154,"Mục 3.3.2, Điều 1",chunk_154,chunk_012,chunk_141,chunk_144,chunk_201,chunk_155,chunk_143,chunk_024,chunk_112,chunk_014,1,1,1
+HB06,"Học bổng",chunk_155,"Mục 3.3.2, Điều 3 khoản 2",chunk_155,chunk_141,chunk_154,chunk_201,chunk_156,chunk_142,chunk_143,chunk_136,chunk_147,chunk_153,1,1,1
+HB07,"Học bổng",chunk_155,"Mục 3.3.2, Điều 4",chunk_155,chunk_141,chunk_154,chunk_201,chunk_153,chunk_142,chunk_199,chunk_136,chunk_143,chunk_147,1,1,1
+THI01,"Dự thi và hoãn thi",chunk_037,"Quy định tổ chức thi, Điều 6 khoản 2",chunk_037,chunk_036,chunk_041,chunk_016,chunk_034,chunk_056,chunk_050,chunk_051,chunk_058,chunk_035,1,1,1
+THI02,"Dự thi và hoãn thi",chunk_037,"Quy định tổ chức thi, Điều 6 khoản 2",chunk_234,chunk_037,chunk_209,chunk_173,chunk_178,chunk_232,chunk_179,chunk_251,chunk_175,chunk_233,2,0.5,0.631
+THI03,"Dự thi và hoãn thi",chunk_037,"Quy định tổ chức thi, Điều 6 khoản 3",chunk_036,chunk_050,chunk_037,chunk_605,chunk_133,chunk_014,chunk_041,chunk_154,chunk_109,chunk_112,3,0.333,0.5
+THI04,"Dự thi và hoãn thi",chunk_037,"Quy định tổ chức thi, Điều 7 khoản 1",chunk_037,chunk_272,chunk_036,chunk_115,chunk_039,chunk_016,chunk_209,chunk_221,chunk_234,chunk_040,1,1,1
+THI05,"Dự thi và hoãn thi",chunk_037,"Quy định tổ chức thi, Điều 7 khoản 2",chunk_037,chunk_036,chunk_221,chunk_016,chunk_039,chunk_014,chunk_156,chunk_237,chunk_060,chunk_212,1,1,1
+THI06,"Dự thi và hoãn thi",chunk_036,"Quy định tổ chức thi, Điều 5 khoản 1",chunk_036,chunk_037,chunk_017,chunk_014,chunk_016,chunk_112,chunk_199,chunk_018,chunk_015,chunk_024,1,1,1
+THI07,"Dự thi và hoãn thi",chunk_038,"Quy định tổ chức thi, Điều 8 khoản 4",chunk_038,chunk_062,chunk_055,chunk_037,chunk_058,chunk_061,chunk_036,chunk_046,chunk_041,chunk_043,1,1,1
+NN01,"Chuẩn đầu ra ngoại ngữ",chunk_065,"Quy định chuẩn đầu ra ngoại ngữ, Điều 4 khoản 3",chunk_065,chunk_099,chunk_066,chunk_064,chunk_067,chunk_098,chunk_100,chunk_101,chunk_068,chunk_071,1,1,1
+NN02,"Chuẩn đầu ra ngoại ngữ",chunk_066,"Quy định chuẩn đầu ra ngoại ngữ, Điều 6",chunk_066,chunk_605,chunk_099,chunk_065,chunk_022,chunk_095,chunk_096,chunk_074,chunk_080,chunk_087,1,1,1
+NN03,"Chuẩn đầu ra ngoại ngữ",chunk_066,"Quy định chuẩn đầu ra ngoại ngữ, Điều 6",chunk_066,chunk_099,chunk_065,chunk_067,chunk_103,chunk_064,chunk_100,chunk_101,chunk_098,chunk_026,1,1,1
+NN04,"Chuẩn đầu ra ngoại ngữ",chunk_066,"Quy định chuẩn đầu ra ngoại ngữ, Điều 6",chunk_066,chunk_009,chunk_034,chunk_056,chunk_107,chunk_266,chunk_021,chunk_063,chunk_260,chunk_135,1,1,1
+NN05,"Chuẩn đầu ra ngoại ngữ",chunk_066,"Quy định chuẩn đầu ra ngoại ngữ, Điều 7",chunk_066,chunk_065,chunk_103,chunk_099,chunk_100,chunk_021,chunk_067,chunk_064,chunk_098,chunk_101,1,1,1
+NN06,"Chuẩn đầu ra ngoại ngữ",chunk_066,"Quy định chuẩn đầu ra ngoại ngữ, Điều 8",chunk_066,chunk_065,chunk_099,chunk_067,chunk_100,chunk_064,chunk_068,chunk_071,chunk_101,chunk_103,1,1,1
+E01,"Học lực, tín chỉ, tốt nghiệp",chunk_020,"Quy chế đào tạo, Điều 21 khoản 2",chunk_020,chunk_019,chunk_024,chunk_199,chunk_022,chunk_198,chunk_018,chunk_017,chunk_288,chunk_200,1,1,1
+E02,"Học lực, tín chỉ, tốt nghiệp",chunk_021,"Quy chế đào tạo, Điều 23 khoản 3",chunk_021,chunk_026,chunk_024,chunk_010,chunk_025,chunk_014,chunk_013,chunk_020,chunk_012,chunk_022,1,1,1
+E03,"Học lực, tín chỉ, tốt nghiệp",chunk_021,"Quy chế đào tạo, Điều 25 khoản 2",chunk_021,chunk_022,chunk_036,chunk_605,chunk_010,chunk_111,chunk_023,chunk_024,chunk_026,chunk_112,1,1,1
+E04,"Học lực, tín chỉ, tốt nghiệp",chunk_021,"Quy chế đào tạo, Điều 24 khoản 1",chunk_021,chunk_022,chunk_036,chunk_026,chunk_605,chunk_011,chunk_395,chunk_396,chunk_411,chunk_209,1,1,1
+E05,"Học lực, tín chỉ, tốt nghiệp",chunk_036,"Quy định tổ chức thi, Điều 5 khoản 2",chunk_036,chunk_016,chunk_037,chunk_050,chunk_041,chunk_056,chunk_034,chunk_058,chunk_043,chunk_059,1,1,1

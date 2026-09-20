@@ -1531,7 +1531,8 @@ async function processMessage(senderPsid, messageText) {
   const parseStored = key => { try { return data[key] ? JSON.parse(data[key]) : null; } catch { return null; } };
   const curriculumData = parseStored("chuyen_nganh_chinh");
 
-  const wantsCurriculum = /chuyên ngành|chuong trinh dao tao|chương trình đào tạo|môn còn lại|môn chưa học|tín chỉ còn|tín chỉ phải học|còn bao nhiêu môn/i.test(text);
+  const isAdvisoryQuery = /ưu tiên|vì sao|tại sao|nên làm gì|nên học|nên chọn|tư vấn|lời khuyên|lộ trình|chiến lược|kế hoạch|định hướng|nhận xét|đánh giá|giải thích|xử lý/i.test(text);
+  const wantsCurriculum = !isAdvisoryQuery && (/chuyên ngành|chuong trinh dao tao|chương trình đào tạo|môn còn lại|môn chưa học|tín chỉ còn|tín chỉ phải học|còn bao nhiêu môn/i.test(text));
   if (wantsCurriculum) {
     const profile = data.thong_tin_sv ? parseStored("thong_tin_sv") : {};
     const major = profile?.["Ngành"] || profile?.["Chuyên ngành"] || "chuyên ngành chính";
@@ -1887,18 +1888,20 @@ async function processMessage(senderPsid, messageText) {
   const isCertificateQuery = CERTIFICATE_INTENT.test(lowerQuery) &&
     /(quy đổi|miễn|chứng chỉ|ngoại ngữ|chuẩn đầu ra|bậc|hsk|hskk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|cambridge|vstep)/i.test(lowerQuery);
 
+  const isExamQuery = /(?:thi\s+kết\s+thúc|kthp|ôn\s+thi|hoãn\s+thi|dự\s+thi|lịch\s+thi|chấm\s+thi|phúc\s+khảo|phòng\s+thi|kỳ\s+thi|đợt\s+thi|vắng\s+thi|điểm\s+i\b)/i.test(lowerQuery);
+
   if (isTrainingPointsQuery) {
     detectedCategory = "training_points";
   } else if (isCertificateQuery) {
     detectedCategory = "certificate_conversion";
+  } else if (isExamQuery) {
+    detectedCategory = "exams";
   } else if (lowerQuery.includes("học bổng") || lowerQuery.includes("khen thưởng") || lowerQuery.includes("tiêu chuẩn xét")) {
     detectedCategory = "scholarship";
   } else if (lowerQuery.includes("cảnh báo") || lowerQuery.includes("buộc thôi học") || lowerQuery.includes("kỷ luật")) {
-    detectedCategory = "warning";
+    detectedCategory = "academic_rules";
   } else if (lowerQuery.includes("quy chế") || lowerQuery.includes("tín chỉ") || lowerQuery.includes("điểm số") || lowerQuery.includes("đào tạo")) {
     detectedCategory = "academic_rules";
-  } else if (lowerQuery.includes("thi kết thúc") || lowerQuery.includes("chấm thi") || lowerQuery.includes("phúc khảo") || lowerQuery.includes("exams")) {
-    detectedCategory = "exams";
   } else if (lowerQuery.includes("lms3") || lowerQuery.includes("teams") || lowerQuery.includes("email") || lowerQuery.includes("tài khoản")) {
     detectedCategory = "it_systems";
   } else if (lowerQuery.includes("học phí") || lowerQuery.includes("tiền học") || lowerQuery.includes("công nợ")) {
@@ -1916,6 +1919,17 @@ async function processMessage(senderPsid, messageText) {
     regs = await db.searchRegNodes("Khung điểm đánh giá kết quả rèn luyện Điều 4 Điều 5 Điều 6 Điều 7 Điều 8", 6);
   } else {
     regs = await db.searchRegNodes(messageText, 4, detectedCategory);
+    // Fallback if category search yielded fewer than 2 results
+    if (regs.length < 2 && detectedCategory) {
+      const fallbackRegs = await db.searchRegNodes(messageText, 4, null);
+      const seenKeys = new Set(regs.map(r => r.chunk_id || r.content));
+      for (const fr of fallbackRegs) {
+        if (!seenKeys.has(fr.chunk_id || fr.content)) {
+          regs.push(fr);
+          seenKeys.add(fr.chunk_id || fr.content);
+        }
+      }
+    }
   }
   let majorRegs = [];
   if (majorName && !isCertificateQuery && !isTrainingPointsQuery) {

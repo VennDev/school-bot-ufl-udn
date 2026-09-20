@@ -116,6 +116,7 @@ const conversationSchema = new mongoose.Schema({
 conversationSchema.index({ fb_id: 1, createdAt: -1 });
 
 const regNodeSchema = new mongoose.Schema({
+  chunk_id: { type: String, index: true },
   title: String,
   category: { type: String, index: true },
   source_url: String,
@@ -535,25 +536,86 @@ module.exports = {
         const fileContent = fs.readFileSync(ragPath, "utf8");
         const nodes = JSON.parse(fileContent);
 
-        // Tách mức chứng chỉ dính liền ("hsk5" -> "hsk 5") và bỏ từ nhiễu
-        const normalizedQuery = queryText.toLowerCase()
-          .replace(/\b(hsk|hskk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\s*(\d)/gi, "$1 $2");
-        const stopWords = new Set(["cho", "cua", "được", "duoc", "bao", "nhiêu", "nhieu", "nào", "nao", "gì", "gi", "là", "la", "thì", "thi", "và", "va", "có", "co", "không", "khong", "tôi", "toi", "mình", "minh", "với", "voi", "như", "nhu", "thế", "the"]);
-        const keywords = normalizedQuery.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+        // Normalize text and extract phrases/expansions for precision scoring
+        const normalize = (str) => String(str || "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[đĐ]/g, "d")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+
+        const queryNorm = normalize(normalizedQuery);
+        const stopWords = new Set([
+          "cho", "cua", "duoc", "bao", "nhieu", "nao", "gi", "la",
+          "va", "co", "khong", "toi", "minh", "voi", "nhu", "the",
+          "nhung", "cac", "mot", "trong", "tai", "khi", "de", "hay",
+          "neu", "se", "ra", "ve", "o"
+        ]);
+        const keywords = queryNorm.split(/\s+/).filter(w => w.length >= 2 && !stopWords.has(w));
+
+        // Multi-word phrases
+        const rawTokens = queryNorm.split(/\s+/).filter(w => w.length >= 2);
+        const phrases = [];
+        for (let i = 0; i < rawTokens.length - 1; i++) {
+          phrases.push(`${rawTokens[i]} ${rawTokens[i + 1]}`);
+        }
+        for (let i = 0; i < rawTokens.length - 2; i++) {
+          phrases.push(`${rawTokens[i]} ${rawTokens[i + 1]} ${rawTokens[i + 2]}`);
+        }
+
+        // Domain synonym expansions
+        const expansions = [];
+        if (queryNorm.includes("ket thuc hoc phan")) expansions.push("kthp");
+        if (queryNorm.includes("kthp")) expansions.push("ket thuc hoc phan");
+        if (queryNorm.includes("chuan dau ra")) expansions.push("cdr");
+        if (queryNorm.includes("diem ren luyen")) expansions.push("drl");
+        if (queryNorm.includes("hoc bong")) expansions.push("hbkkht", "khuyen khich hoc tap");
+        if (queryNorm.includes("on thi")) expansions.push("on thi kthp", "thoi gian danh cho on thi");
+        if (queryNorm.includes("hoan thi")) expansions.push("diem i", "xin hoan thi");
+        if (queryNorm.includes("canh bao")) expansions.push("canh bao hoc tap", "buoc thoi hoc", "xu ly ket qua hoc tap");
+        if (queryNorm.includes("no bao nhieu tin chi") || queryNorm.includes("no tin chi")) expansions.push("no dong", "no dong vuot qua 24");
+        if (queryNorm.includes("binh thuong")) expansions.push("hang binh thuong", "thang diem 4,0");
+        if (queryNorm.includes("khoa luan")) expansions.push("khoa luan tot nghiep", "hoc phan chuyen mon");
+        if (queryNorm.includes("thuc tap")) expansions.push("thuc tap tot nghiep");
+        if (queryNorm.includes("chuyen doi tin chi") || queryNorm.includes("cong nhan")) expansions.push("chuyen doi sang tin chi", "khoi luong toi da");
+        if (queryNorm.includes("co ten") || queryNorm.includes("danh sach")) expansions.push("danh sach thi", "co ten trong danh sach");
+
+        // Number words & student years
+        if (queryNorm.includes("nam hai")) expansions.push("nam thu hai", "trinh do nam thu hai");
+        if (queryNorm.includes("nam nhat")) expansions.push("nam thu nhat", "trinh do nam thu nhat");
+        if (queryNorm.includes("nam ba")) expansions.push("nam thu ba", "trinh do nam thu ba");
+        if (queryNorm.includes("gpa")) expansions.push("diem trung binh", "diem trung binh tich luy");
+        if (queryNorm.includes("dong hoc phi") || queryNorm.includes("chua the dong")) expansions.push("nop hoc phi", "hoan thanh hoc phi", "gia han thoi gian nop hoc phi");
+
         const certNameMatch = normalizedQuery.match(/\b(hskk|hsk|tocfl|topik|jlpt|nat-?test|delf|dalf|tcf|ielts|toeic|toefl|vstep)\b/i);
+        const numbersInQuery = queryNorm.match(/\b(?:\d+[\/.,]\d+|\d+)\b/g) || [];
 
         if (keywords.length > 0) {
           const matchedNodes = nodes.filter(n => {
-            // Apply category filter if specified
             if (category && n.category !== category) return false;
 
-            const contentLower = (n.content || "").toLowerCase();
-            const titleLower = (n.title || "").toLowerCase();
+            const contentLower = normalize(n.content || "");
+            const titleLower = normalize(n.title || "");
 
             let hits = 0;
+            // 1. Phrase hits
+            phrases.forEach(p => {
+              if (contentLower.includes(p)) hits += 4;
+              if (titleLower.includes(p)) hits += 8;
+            });
+            // 2. Expansion hits
+            expansions.forEach(exp => {
+              if (contentLower.includes(exp)) hits += 6;
+              if (titleLower.includes(exp)) hits += 10;
+            });
+            // 3. Keyword hits
             keywords.forEach(kw => {
-              if (contentLower.includes(kw)) hits++;
-              if (titleLower.includes(kw)) hits += 2; // Weight title match higher
+              if (contentLower.includes(kw)) hits += 1;
+              if (titleLower.includes(kw)) hits += 3;
+            });
+            // 4. Number / threshold match
+            numbersInQuery.forEach(num => {
+              if (contentLower.includes(num)) hits += 3;
             });
 
             // Ưu tiên node quy đổi điểm chứng chỉ (QĐ 1221) khi hỏi về chứng chỉ
@@ -562,7 +624,7 @@ module.exports = {
               if (certMentions > 0 || titleLower.includes(certNameMatch[1])) {
                 hits += Math.min(certMentions, 12) * 2;
                 if (n.category === "certificate_conversion") hits += 6;
-                if (/quy đổi điểm|miễn học|miễn thi/i.test(contentLower)) hits += 3;
+                if (/quy doi diem|mien hoc|mien thi/i.test(contentLower)) hits += 3;
               }
             }
 
@@ -573,17 +635,22 @@ module.exports = {
           // Sort by hits descending and take top matching nodes
           matchedNodes.sort((a, b) => b.temp_score - a.temp_score);
           const topFileNodes = matchedNodes.slice(0, limit).map(n => ({
+            chunk_id: n.chunk_id,
             title: n.title,
             category: n.category,
             source_url: n.source_url,
-            content: n.content
+            content: n.content,
+            start_page: n.start_page,
+            end_page: n.end_page
           }));
 
           // Merge and avoid duplicate content chunks
-          const existingContents = new Set(results.map(r => r.content));
+          const existingKeys = new Set(results.map(r => r.chunk_id || r.content));
           topFileNodes.forEach(fn => {
-            if (!existingContents.has(fn.content)) {
+            const key = fn.chunk_id || fn.content;
+            if (!existingKeys.has(key)) {
               results.push(fn);
+              existingKeys.add(key);
             }
           });
         }
@@ -595,9 +662,17 @@ module.exports = {
     // Trim results to limit
     results = results.slice(0, limit);
 
-    // 3. Fallback: if category filtered returned nothing, search all nodes without category filter
-    if (!results.length && category) {
-      return this.searchRegNodes(queryText, limit, null);
+    // 3. Fallback: if category filter returned fewer than 2 results, search all nodes without category filter
+    if (results.length < 2 && category) {
+      const fallbackResults = await this.searchRegNodes(queryText, limit, null);
+      const seen = new Set(results.map(r => r.chunk_id || r.content));
+      for (const fr of fallbackResults) {
+        if (!seen.has(fr.chunk_id || fr.content)) {
+          results.push(fr);
+          seen.add(fr.chunk_id || fr.content);
+        }
+      }
+      results = results.slice(0, limit);
     }
 
     return results;

@@ -230,6 +230,18 @@ function extractDRL(drlData) {
   return null;
 }
 
+function getElectiveGroup(courseName) {
+  const norm = String(courseName || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d")
+    .toLowerCase().trim();
+  const nnMatch = norm.match(/(?:ngoai ngu|nn)\s*(?:ii|2)(?:\.([1-4]))?/i);
+  if (nnMatch) {
+    const level = nnMatch[1] || "1";
+    return `ngoai_ngu_2_${level}`;
+  }
+  return null;
+}
+
 function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
   let rank = "Chưa xếp loại";
   let comment = "";
@@ -270,6 +282,22 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
   let subjectsPostponed = []; // Điểm I, X
   let subjectsExempted = [];  // Điểm R
 
+  // Xác định các nhóm môn tự chọn/thay thế (ví dụ Ngoại ngữ 2) đã có môn đạt yêu cầu
+  const passedElectiveGroups = new Set();
+  courses.forEach((c) => {
+    const group = getElectiveGroup(c.name);
+    if (!group) return;
+    const letterGrade = String(c?.grade || "").trim().toUpperCase();
+    const score10 = parseScore(c.score10);
+    const letter = score10 !== null ? getGradePoints(score10).letter : null;
+    const isPassed = letterGrade === "R" || letterGrade === "P" ||
+      ["A", "B", "C"].includes(letter) || ["A", "B", "C"].includes(letterGrade) ||
+      (score10 !== null && score10 >= 5.5);
+    if (isPassed) {
+      passedElectiveGroups.add(group);
+    }
+  });
+
   courses.forEach((c) => {
     const name = c.name;
     const nameLower = name.toLowerCase();
@@ -288,6 +316,12 @@ function getAcademicEvaluation(gpaAccumulated, gpaSemester, courses = []) {
       return;
     }
     if (letterGrade === "P") {
+      return;
+    }
+
+    const group = getElectiveGroup(name);
+    if (group && passedElectiveGroups.has(group)) {
+      // Nhóm tự chọn này đã hoàn thành bằng môn học khác (ví dụ: học tiếng Pháp thay tiếng Trung)
       return;
     }
 
