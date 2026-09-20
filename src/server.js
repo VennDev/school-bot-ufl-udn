@@ -649,6 +649,50 @@ app.post("/api/admin/settings", requireAdmin, async (req, res) => {
   res.json({ success: true, message: "Cấu hình hệ thống đã được lưu." });
 });
 
+// ---------- RAG Benchmark APIs (Lubis et al. 2026 Protocol) ----------
+const { runBenchmark } = require("../tests/benchmark_retrieval");
+let cachedBenchmark = null;
+
+app.get("/api/admin/rag-benchmark", requireAdmin, async (req, res) => {
+  try {
+    if (!cachedBenchmark) {
+      cachedBenchmark = runBenchmark();
+    }
+    res.json(cachedBenchmark);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/rag-benchmark/run", requireAdmin, async (req, res) => {
+  try {
+    cachedBenchmark = runBenchmark();
+    res.json(cachedBenchmark);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/rag-benchmark/csv", requireAdmin, (req, res) => {
+  const csvPath = path.resolve(__dirname, "../docs/retrieval_benchmark_results.csv");
+  if (fs.existsSync(csvPath)) {
+    res.setHeader("Content-Disposition", 'attachment; filename="retrieval_benchmark_results.csv"');
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    return res.sendFile(csvPath);
+  }
+  res.status(404).send("CSV report not found. Please run benchmark first.");
+});
+
+app.get("/api/admin/rag-benchmark/report", requireAdmin, (req, res) => {
+  const mdPath = path.resolve(__dirname, "../docs/retrieval_benchmark_report.md");
+  if (fs.existsSync(mdPath)) {
+    res.setHeader("Content-Disposition", 'attachment; filename="retrieval_benchmark_report.md"');
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    return res.sendFile(mdPath);
+  }
+  res.status(404).send("Markdown report not found. Please run benchmark first.");
+});
+
 // Messenger Webhook Validation
 app.get("/webhook", async (req, res) => {
   const mode = req.query["hub.mode"];

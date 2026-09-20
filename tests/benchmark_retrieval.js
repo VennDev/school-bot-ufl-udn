@@ -274,7 +274,20 @@ function runBenchmark() {
   fs.writeFileSync(mdOutPath, md, "utf8");
   console.log(`[benchmark] Exported thesis report to: ${mdOutPath}`);
 
-  return { overallR1, overallR3, overallR5, overallMRR, overallNDCG };
+  return {
+    totalN,
+    overallR1: Number(overallR1.toFixed(3)),
+    overallR3: Number(overallR3.toFixed(3)),
+    overallR5: Number(overallR5.toFixed(3)),
+    overallMRR: Number(overallMRR.toFixed(3)),
+    overallNDCG: Number(overallNDCG.toFixed(3)),
+    wilsonR1: {
+      lower: Number(wilsonR1.lower.toFixed(3)),
+      upper: Number(wilsonR1.upper.toFixed(3))
+    },
+    topicStats,
+    detailedRows
+  };
 }
 
 if (require.main === module) {

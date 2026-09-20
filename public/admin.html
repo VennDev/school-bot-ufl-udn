@@ -35,6 +35,7 @@
           <button onclick="switchTab('data')" id="tab-data" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Dữ liệu MongoDB</button>
           <button onclick="switchTab('stats')" id="tab-stats" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Thống kê</button>
           <button onclick="switchTab('settings')" id="tab-settings" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Cài đặt hệ thống</button>
+          <button onclick="switchTab('benchmark')" id="tab-benchmark" class="px-3 py-1 rounded hover:bg-blue-600 transition font-medium">Đánh giá RAG</button>
         </nav>
       </div>
       <button onclick="logout()" class="text-sm bg-red-600 px-3 py-1.5 rounded hover:bg-red-700 transition">Đăng xuất</button>
@@ -447,6 +448,135 @@
       </div>
     </main>
 
+    <!-- RAG Benchmark Tab Content -->
+    <main id="content-benchmark" class="max-w-7xl w-full mx-auto p-4 md:p-6 hidden flex-1 flex flex-col space-y-6">
+      <!-- Loading indicator -->
+      <div id="benchmark-loading" class="bg-white p-12 rounded-xl shadow text-center">
+        <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent mb-4"></div>
+        <div class="text-gray-700 font-semibold">Đang tải kết quả Benchmark RAG...</div>
+      </div>
+
+      <!-- Main Benchmark Container -->
+      <div id="benchmark-content-area" class="space-y-6 hidden">
+        <!-- Header Banner -->
+        <div class="bg-white p-6 rounded-xl shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-blue-600">
+          <div>
+            <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <span>Đánh Giá Hiệu Năng Truy Xuất RAG (Retrieval Evaluation)</span>
+            </h2>
+            <p class="text-sm text-gray-600 mt-1">
+              Protocol: <strong>Lubis et al. (2026)</strong> · Sổ tay sinh viên 2025 · Tập mẫu <strong>n = 30 queries</strong> có nhãn ground truth duy nhất
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btn-run-benchmark" onclick="runBenchmarkAgain()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5">
+              <span>Chạy lại Benchmark</span>
+            </button>
+            <a href="/api/admin/rag-benchmark/csv" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5">
+              <span>Tải CSV</span>
+            </a>
+            <a href="/api/admin/rag-benchmark/report" class="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5">
+              <span>Tải Báo cáo MD</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- 5 Key Metrics Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div class="bg-white rounded-xl p-5 shadow border-t-4 border-green-500">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recall@1</div>
+            <div id="bm-stat-r1" class="text-3xl font-extrabold text-green-600 mt-1">0%</div>
+            <div id="bm-stat-r1-sub" class="text-xs text-gray-500 mt-1">0/30 đúng top 1</div>
+          </div>
+          <div class="bg-white rounded-xl p-5 shadow border-t-4 border-blue-500">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recall@3</div>
+            <div id="bm-stat-r3" class="text-3xl font-extrabold text-blue-600 mt-1">0%</div>
+            <div id="bm-stat-r3-sub" class="text-xs text-gray-500 mt-1">0/30 trong top 3</div>
+          </div>
+          <div class="bg-white rounded-xl p-5 shadow border-t-4 border-indigo-500">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recall@5</div>
+            <div id="bm-stat-r5" class="text-3xl font-extrabold text-indigo-600 mt-1">0%</div>
+            <div id="bm-stat-r5-sub" class="text-xs text-gray-500 mt-1">0/30 trong top 5</div>
+          </div>
+          <div class="bg-white rounded-xl p-5 shadow border-t-4 border-purple-500">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">MRR@10</div>
+            <div id="bm-stat-mrr" class="text-3xl font-extrabold text-purple-600 mt-1">0.000</div>
+            <div class="text-xs text-gray-500 mt-1">Mean Reciprocal Rank</div>
+          </div>
+          <div class="bg-white rounded-xl p-5 shadow border-t-4 border-teal-500">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">nDCG@5</div>
+            <div id="bm-stat-ndcg" class="text-3xl font-extrabold text-teal-600 mt-1">0.000</div>
+            <div class="text-xs text-gray-500 mt-1">Discounted Cum. Gain</div>
+          </div>
+        </div>
+
+        <!-- Wilson Interval Banner -->
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="text-sm text-blue-900">
+            <strong>Khoảng tin cậy:</strong> 95% Wilson Score Interval cho Recall@1: <code id="bm-wilson-interval" class="bg-white px-2 py-0.5 rounded font-mono text-blue-800 font-bold">[0.000, 0.000]</code> (n = 30)
+          </div>
+          <div class="text-xs text-blue-700">Protocol: Lubis et al. (2026) Section 12</div>
+        </div>
+
+        <!-- Topic Breakdown Table -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h3 class="font-bold text-gray-800">1. Tổng Hợp Chỉ Số Theo Chủ Đề (Topic Breakdown)</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="bg-gray-100 text-gray-700 uppercase text-xs font-semibold">
+                <tr>
+                  <th class="px-6 py-3">Chủ đề quy chế</th>
+                  <th class="px-6 py-3 text-center">Số Query</th>
+                  <th class="px-6 py-3 text-center">Recall@1</th>
+                  <th class="px-6 py-3 text-center">Recall@3</th>
+                  <th class="px-6 py-3 text-center">Recall@5</th>
+                  <th class="px-6 py-3 text-center">MRR@10</th>
+                  <th class="px-6 py-3 text-center">nDCG@5</th>
+                </tr>
+              </thead>
+              <tbody id="bm-topic-table-body" class="divide-y divide-gray-200 text-gray-800">
+                <!-- Filled dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Detailed 30 Queries Table -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h3 class="font-bold text-gray-800">2. Bảng Chi Tiết 30 Query & Thứ Hạng Truy Xuất (Top-10 Ranking)</h3>
+            <div class="flex items-center gap-3">
+              <select id="bm-filter-topic" onchange="filterBenchmarkQueries()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                <option value="all">Tất cả chủ đề</option>
+              </select>
+              <input type="text" id="bm-search-query" oninput="filterBenchmarkQueries()" placeholder="Tìm kiếm query..." class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="bg-gray-100 text-gray-700 uppercase text-xs font-semibold">
+                <tr>
+                  <th class="px-4 py-3 text-center">ID</th>
+                  <th class="px-4 py-3">Chủ đề</th>
+                  <th class="px-6 py-3">Câu hỏi kiểm thử</th>
+                  <th class="px-4 py-3">Nguồn đúng (Gold passage)</th>
+                  <th class="px-4 py-3 text-center">Gold Chunk</th>
+                  <th class="px-4 py-3 text-center">Vị trí (Top-10)</th>
+                  <th class="px-4 py-3 text-center">MRR</th>
+                  <th class="px-4 py-3 text-center">nDCG@5</th>
+                </tr>
+              </thead>
+              <tbody id="bm-queries-table-body" class="divide-y divide-gray-200 text-gray-800">
+                <!-- Filled dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+
     <!-- User Detail Modal -->
     <div id="user-detail-modal" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden z-50 flex items-center justify-center p-4">
       <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden">
@@ -488,7 +618,7 @@
     const itemsPerPage = 10;
 
     function switchTab(tab) {
-      ['users','data','stats','settings'].forEach(id => {
+      ['users','data','stats','settings','benchmark'].forEach(id => {
         document.getElementById('tab-' + id).classList.remove('bg-blue-800');
         document.getElementById('content-' + id).classList.add('hidden');
       });
@@ -498,6 +628,173 @@
       else if (tab === 'data') { currentDataPage = 1; loadDataView(); }
       else if (tab === 'stats') loadUsageStats();
       else if (tab === 'settings') loadSettings();
+      else if (tab === 'benchmark') loadBenchmark();
+    }
+
+    let benchmarkData = null;
+
+    async function loadBenchmark() {
+      const loader = document.getElementById('benchmark-loading');
+      const area = document.getElementById('benchmark-content-area');
+      loader.classList.remove('hidden');
+      area.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/admin/rag-benchmark', {
+          headers: { 'Authorization': token }
+        });
+        if (!res.ok) throw new Error('Không thể tải dữ liệu benchmark');
+        benchmarkData = await res.json();
+        renderBenchmarkUI(benchmarkData);
+        loader.classList.add('hidden');
+        area.classList.remove('hidden');
+      } catch (err) {
+        loader.classList.add('hidden');
+        alert('Lỗi tải benchmark: ' + err.message);
+      }
+    }
+
+    async function runBenchmarkAgain() {
+      const btn = document.getElementById('btn-run-benchmark');
+      btn.disabled = true;
+      const oldHtml = btn.innerHTML;
+      btn.innerHTML = '<span>Đang chạy...</span>';
+      try {
+        const res = await fetch('/api/admin/rag-benchmark/run', {
+          method: 'POST',
+          headers: { 'Authorization': token }
+        });
+        if (!res.ok) throw new Error('Chạy benchmark thất bại');
+        benchmarkData = await res.json();
+        renderBenchmarkUI(benchmarkData);
+        alert('Đã chạy xong 30 queries benchmark!');
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
+      }
+    }
+
+    function renderBenchmarkUI(data) {
+      if (!data) return;
+      document.getElementById('bm-stat-r1').textContent = (data.overallR1 * 100).toFixed(1) + '%';
+      const r1Count = Math.round(data.overallR1 * data.totalN);
+      document.getElementById('bm-stat-r1-sub').textContent = `${r1Count}/${data.totalN} đúng top 1`;
+
+      document.getElementById('bm-stat-r3').textContent = (data.overallR3 * 100).toFixed(1) + '%';
+      const r3Count = Math.round(data.overallR3 * data.totalN);
+      document.getElementById('bm-stat-r3-sub').textContent = `${r3Count}/${data.totalN} trong top 3`;
+
+      document.getElementById('bm-stat-r5').textContent = (data.overallR5 * 100).toFixed(1) + '%';
+      const r5Count = Math.round(data.overallR5 * data.totalN);
+      document.getElementById('bm-stat-r5-sub').textContent = `${r5Count}/${data.totalN} trong top 5`;
+
+      document.getElementById('bm-stat-mrr').textContent = data.overallMRR.toFixed(3);
+      document.getElementById('bm-stat-ndcg').textContent = data.overallNDCG.toFixed(3);
+
+      if (data.wilsonR1) {
+        document.getElementById('bm-wilson-interval').textContent = `[${data.wilsonR1.lower.toFixed(3)}, ${data.wilsonR1.upper.toFixed(3)}]`;
+      }
+
+      // Topic Breakdown Table
+      const topicTbody = document.getElementById('bm-topic-table-body');
+      topicTbody.innerHTML = '';
+      const filterSelect = document.getElementById('bm-filter-topic');
+      const currentFilter = filterSelect.value || 'all';
+      filterSelect.innerHTML = '<option value="all">Tất cả chủ đề</option>';
+
+      Object.entries(data.topicStats || {}).forEach(([topic, s]) => {
+        const tr1 = (s.r1 / s.count).toFixed(3);
+        const tr3 = (s.r3 / s.count).toFixed(3);
+        const tr5 = (s.r5 / s.count).toFixed(3);
+        const tmrr = (s.mrrSum / s.count).toFixed(3);
+        const tndcg = (s.ndcgSum / s.count).toFixed(3);
+
+        const row = document.createElement('tr');
+        row.className = 'hover:bg-gray-50';
+        row.innerHTML = `
+          <td class="px-6 py-4 font-semibold text-gray-900">${topic}</td>
+          <td class="px-6 py-4 text-center font-mono">${s.count}</td>
+          <td class="px-6 py-4 text-center font-mono font-bold text-green-600">${tr1}</td>
+          <td class="px-6 py-4 text-center font-mono font-bold text-blue-600">${tr3}</td>
+          <td class="px-6 py-4 text-center font-mono font-bold text-indigo-600">${tr5}</td>
+          <td class="px-6 py-4 text-center font-mono font-bold text-purple-600">${tmrr}</td>
+          <td class="px-6 py-4 text-center font-mono font-bold text-teal-600">${tndcg}</td>
+        `;
+        topicTbody.appendChild(row);
+
+        const opt = document.createElement('option');
+        opt.value = topic;
+        opt.textContent = topic;
+        filterSelect.appendChild(opt);
+      });
+      filterSelect.value = currentFilter;
+
+      // Summary Row
+      const sumRow = document.createElement('tr');
+      sumRow.className = 'bg-gray-100 font-bold border-t-2 border-gray-300';
+      sumRow.innerHTML = `
+        <td class="px-6 py-4 text-gray-900 uppercase">TỔNG / TRUNG BÌNH</td>
+        <td class="px-6 py-4 text-center font-mono">${data.totalN}</td>
+        <td class="px-6 py-4 text-center font-mono text-green-700">${data.overallR1.toFixed(3)}</td>
+        <td class="px-6 py-4 text-center font-mono text-blue-700">${data.overallR3.toFixed(3)}</td>
+        <td class="px-6 py-4 text-center font-mono text-indigo-700">${data.overallR5.toFixed(3)}</td>
+        <td class="px-6 py-4 text-center font-mono text-purple-700">${data.overallMRR.toFixed(3)}</td>
+        <td class="px-6 py-4 text-center font-mono text-teal-700">${data.overallNDCG.toFixed(3)}</td>
+      `;
+      topicTbody.appendChild(sumRow);
+
+      filterBenchmarkQueries();
+    }
+
+    function filterBenchmarkQueries() {
+      if (!benchmarkData || !benchmarkData.detailedRows) return;
+      const topic = document.getElementById('bm-filter-topic').value;
+      const search = (document.getElementById('bm-search-query').value || '').toLowerCase().trim();
+
+      const tbody = document.getElementById('bm-queries-table-body');
+      tbody.innerHTML = '';
+
+      const filtered = benchmarkData.detailedRows.filter(r => {
+        if (topic !== 'all' && r.topic !== topic) return false;
+        if (search) {
+          const matchQuery = (r.query || '').toLowerCase().includes(search);
+          const matchRule = (r.gold_rule || '').toLowerCase().includes(search);
+          const matchId = (r.query_id || '').toLowerCase().includes(search);
+          if (!matchQuery && !matchRule && !matchId) return false;
+        }
+        return true;
+      });
+
+      filtered.forEach(r => {
+        let posBadge = '';
+        if (r.position === 1) {
+          posBadge = '<span class="bg-green-100 text-green-800 font-bold px-2.5 py-1 rounded-full text-xs">Hạng 1</span>';
+        } else if (r.position >= 2 && r.position <= 3) {
+          posBadge = `<span class="bg-blue-100 text-blue-800 font-bold px-2.5 py-1 rounded-full text-xs">Hạng ${r.position}</span>`;
+        } else if (r.position >= 4 && r.position <= 5) {
+          posBadge = `<span class="bg-yellow-100 text-yellow-800 font-bold px-2.5 py-1 rounded-full text-xs">Hạng ${r.position}</span>`;
+        } else if (r.position > 5) {
+          posBadge = `<span class="bg-red-100 text-red-800 font-bold px-2.5 py-1 rounded-full text-xs">Hạng ${r.position}</span>`;
+        } else {
+          posBadge = '<span class="bg-gray-200 text-gray-800 px-2 py-0.5 rounded text-xs">Ngoài top 10</span>';
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50';
+        tr.innerHTML = `
+          <td class="px-4 py-3 text-center font-mono font-bold text-gray-700">${r.query_id}</td>
+          <td class="px-4 py-3 text-xs text-gray-500">${r.topic}</td>
+          <td class="px-6 py-3 font-medium text-gray-900">${r.query}</td>
+          <td class="px-4 py-3 text-xs text-gray-700">${r.gold_rule}</td>
+          <td class="px-4 py-3 text-center font-mono text-xs text-gray-500">${r.gold_chunk}</td>
+          <td class="px-4 py-3 text-center">${posBadge}</td>
+          <td class="px-4 py-3 text-center font-mono text-xs font-semibold">${r.mrr}</td>
+          <td class="px-4 py-3 text-center font-mono text-xs font-semibold">${r.ndcg}</td>
+        `;
+        tbody.appendChild(tr);
+      });
     }
 
     function showDashboard() {
