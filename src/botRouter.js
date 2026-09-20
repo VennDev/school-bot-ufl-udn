@@ -2,7 +2,7 @@ const db = require("./db");
 const crypto = require("./crypto");
 const messenger = require("./messenger");
 const { askAI } = require("./ai");
-const { calculateGPA, extractGPA, extractDRL, getAcademicEvaluation, getScholarshipAndActivityAdvice } = require("./gpaHelper");
+const { calculateGPA, extractGPA, extractDRL, getAcademicEvaluation, getScholarshipAndActivityAdvice, getElectiveGroup } = require("./gpaHelper");
 const { lookupProgramFramework, findKnownProgram } = require("./programFramework");
 const { PAGES, hasUsableData, parseMajorFromClassName } = require("./pages");
 const { exec } = require("child_process");
@@ -116,10 +116,12 @@ function useGradeTableCredits(gpa, courses) {
 
 // Portal trả cùng bảng điểm tích lũy cho mọi năm/kỳ, nên một học phần lặp nhiều
 // lần. Giữ một bản ghi mỗi học phần, ưu tiên điểm cao nhất (trường hợp học lại).
+// Với các nhóm môn tự chọn (ví dụ Ngoại ngữ 2), dùng mã nhóm làm key để giữ môn có điểm cao nhất.
 function gradeRows(gradeTables) {
   const best = new Map();
   gradeTables.flatMap(table => table.rows || []).forEach((row) => {
-    const key = `${String(row[1] || "").trim()}|${String(row[2] || "").trim()}`.toLowerCase();
+    const electiveGroup = getElectiveGroup(row[2]);
+    const key = electiveGroup || `${String(row[1] || "").trim()}|${String(row[2] || "").trim()}`.toLowerCase();
     const current = best.get(key);
     if (!current) return void best.set(key, row);
     const score = parseFloat(row[6]);
@@ -2093,4 +2095,5 @@ module.exports = {
   formatKetQuaHocTap,
   formatTienDo,
   formatTietHoc,
+  gradeRows,
 };

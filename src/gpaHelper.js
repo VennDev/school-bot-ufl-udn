@@ -399,5 +399,6 @@ module.exports = {
   extractDRL, 
   getGradePoints, 
   getAcademicEvaluation, 
-  getScholarshipAndActivityAdvice 
+  getScholarshipAndActivityAdvice,
+  getElectiveGroup
 };
