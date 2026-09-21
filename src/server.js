@@ -4,6 +4,7 @@ if (!global.crypto) {
 }
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 const { exec } = require("child_process");
 const db = require("./db");
 const crypto = require("./crypto");
