@@ -469,15 +469,15 @@
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <button id="btn-run-benchmark" onclick="runBenchmarkAgain()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5">
+            <button id="btn-run-benchmark" onclick="runBenchmarkAgain()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5 cursor-pointer">
               <span>Chạy lại Benchmark</span>
             </button>
-            <a href="/api/admin/rag-benchmark/csv" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5">
+            <button onclick="downloadBenchmarkFile('csv')" class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5 cursor-pointer">
               <span>Tải CSV</span>
-            </a>
-            <a href="/api/admin/rag-benchmark/report" class="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5">
+            </button>
+            <button onclick="downloadBenchmarkFile('report')" class="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5 cursor-pointer">
               <span>Tải Báo cáo MD</span>
-            </a>
+            </button>
           </div>
         </div>
 
@@ -672,6 +672,30 @@
       } finally {
         btn.disabled = false;
         btn.innerHTML = oldHtml;
+      }
+    }
+
+    async function downloadBenchmarkFile(type) {
+      const endpoint = type === 'csv' ? '/api/admin/rag-benchmark/csv' : '/api/admin/rag-benchmark/report';
+      const defaultFilename = type === 'csv' ? 'retrieval_benchmark_results.csv' : 'retrieval_benchmark_report.md';
+      try {
+        const res = await fetch(endpoint, {
+          headers: { 'Authorization': token }
+        });
+        if (!res.ok) {
+          throw new Error('Mã lỗi ' + res.status);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = defaultFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Lỗi tải file: ' + err.message);
       }
     }
 

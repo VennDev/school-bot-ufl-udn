@@ -240,7 +240,7 @@ function runBenchmark() {
   }).join("\n");
 
   const csvOutPath = path.resolve(__dirname, "../docs/retrieval_benchmark_results.csv");
-  fs.writeFileSync(csvOutPath, csvHeaders + csvLines, "utf8");
+  fs.writeFileSync(csvOutPath, "\uFEFF" + csvHeaders + csvLines, "utf8");
   console.log(`[benchmark] Exported full evaluation results to: ${csvOutPath}`);
 
   // Export Markdown Report (Bảng báo cáo trong luận văn Section 12)

@@ -1,4 +1,4 @@
-query_id,topic,gold_chunk,gold_rule,rank_1,rank_2,rank_3,rank_4,rank_5,rank_6,rank_7,rank_8,rank_9,rank_10,position,mrr,ndcg
+﻿query_id,topic,gold_chunk,gold_rule,rank_1,rank_2,rank_3,rank_4,rank_5,rank_6,rank_7,rank_8,rank_9,rank_10,position,mrr,ndcg
 CA01,"Cảnh báo học tập",chunk_020,"Quy chế đào tạo, Điều 22 khoản 1(a)",chunk_020,chunk_018,chunk_014,chunk_019,chunk_114,chunk_025,chunk_446,chunk_449,chunk_451,chunk_455,1,1,1
 CA02,"Cảnh báo học tập",chunk_020,"Quy chế đào tạo, Điều 22 khoản 1(a)",chunk_020,chunk_018,chunk_025,chunk_011,chunk_019,chunk_012,chunk_114,chunk_016,chunk_023,chunk_021,1,1,1
 CA03,"Cảnh báo học tập",chunk_020,"Quy chế đào tạo, Điều 22 khoản 1(b)",chunk_020,chunk_018,chunk_025,chunk_019,chunk_024,chunk_016,chunk_395,chunk_155,chunk_179,chunk_393,1,1,1

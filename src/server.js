@@ -54,7 +54,7 @@ app.use((req, res, next) => {
 
 // Admin Authentication Middleware
 function requireAdmin(req, res, next) {
-  const authHeader = req.headers["authorization"] || "";
+  const authHeader = req.headers["authorization"] || req.query.token || "";
   const token = authHeader.replace("Bearer ", "").trim();
   try {
     if (token && crypto.decrypt(token) === "admin-session") {
@@ -574,6 +574,9 @@ app.post("/api/admin/rag-benchmark/run", requireAdmin, async (req, res) => {
 
 app.get("/api/admin/rag-benchmark/csv", requireAdmin, (req, res) => {
   const csvPath = path.resolve(__dirname, "../docs/retrieval_benchmark_results.csv");
+  if (!fs.existsSync(csvPath)) {
+    runBenchmark();
+  }
   if (fs.existsSync(csvPath)) {
     res.setHeader("Content-Disposition", 'attachment; filename="retrieval_benchmark_results.csv"');
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -584,6 +587,9 @@ app.get("/api/admin/rag-benchmark/csv", requireAdmin, (req, res) => {
 
 app.get("/api/admin/rag-benchmark/report", requireAdmin, (req, res) => {
   const mdPath = path.resolve(__dirname, "../docs/retrieval_benchmark_report.md");
+  if (!fs.existsSync(mdPath)) {
+    runBenchmark();
+  }
   if (fs.existsSync(mdPath)) {
     res.setHeader("Content-Disposition", 'attachment; filename="retrieval_benchmark_report.md"');
     res.setHeader("Content-Type", "text/markdown; charset=utf-8");
