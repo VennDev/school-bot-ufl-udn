@@ -29,6 +29,23 @@ function snapshotStats(data) {
   return { tables, rows: keys.size, keys };
 }
 
+function extractTableYear(table, row) {
+  if (table?.year) return String(table.year).trim();
+  if (table?.sourceYear) return String(table.sourceYear).trim();
+  const headers = (table?.headers || []).map(normalize);
+  const yearIdx = headers.findIndex(h => h.includes("nam hoc"));
+  if (yearIdx >= 0 && row && row[yearIdx]) return String(row[yearIdx]).trim();
+  return "";
+}
+
+function extractTableSemester(table, row) {
+  if (table?.semester) return String(table.semester).trim();
+  const headers = (table?.headers || []).map(normalize);
+  const semIdx = headers.findIndex(h => h.includes("hoc ky"));
+  if (semIdx >= 0 && row && row[semIdx]) return String(row[semIdx]).trim();
+  return "";
+}
+
 // A portal scrape can suddenly return more historical semesters than the
 // baseline had. Those rows are recovered old data, not new grades. One-time
 // silent re-baseline prevents a notification storm; the merged snapshot is
@@ -43,14 +60,15 @@ function isLikelyGradeBaselineExpansion(oldData, newData) {
   const yearStart = value => Number(String(value || "").match(/^(\d{4})/)?.[1] || 0);
   let latestYear = 0;
   newStats.tables.forEach(table => {
-    const year = String(table.year || "").trim();
-    const semester = String(table.semester || "").trim();
-    latestYear = Math.max(latestYear, yearStart(year));
     (table.rows || []).forEach(row => {
+      const year = extractTableYear(table, row);
+      const semester = extractTableSemester(table, row);
+      const start = yearStart(year);
+      latestYear = Math.max(latestYear, start);
       const key = gradeKey(table, row);
       if (key && !oldStats.keys.has(key)) {
         newOnlyKeys.add(key);
-        newOnlyGroups.set(`${year}|${semester}`, yearStart(year));
+        newOnlyGroups.set(`${year}|${semester}`, start);
       }
     });
   });
@@ -61,7 +79,7 @@ function isLikelyGradeBaselineExpansion(oldData, newData) {
     [...newOnlyGroups.values()].every(start => start > 0 && start < latestYear);
   return added >= 5 &&
     newStats.rows >= oldStats.rows * 1.1 &&
-    (newOnlyGroups.size >= 2 || (onlyHistorical && newOnlyKeys.size >= 2));
+    (newOnlyGroups.size >= 2 || (onlyHistorical && newOnlyKeys.size >= 2) || (latestYear === 0 && added >= 5));
 }
 
 function isLikelyGradeSnapshotShrink(oldData, newData) {

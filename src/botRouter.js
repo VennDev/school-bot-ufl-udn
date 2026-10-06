@@ -1205,6 +1205,11 @@ async function processMessage(senderPsid, messageText) {
     exec(execCmd, async (err) => {
       try {
         scrapingInProgress.delete(senderPsid);
+        const stillExists = await db.getUser(senderPsid);
+        if (!stillExists) {
+          // Stale user deleted (e.g. password changed), scraper already sent the login button
+          return;
+        }
         if (err) {
           const complete = await isSyncComplete(senderPsid);
           await messenger.sendTextMessage(senderPsid, complete
@@ -1956,7 +1961,9 @@ async function processMessage(senderPsid, messageText) {
   if (finalRegs && finalRegs.length > 0) {
     regContextText = "\n[!] QUY CHẾ ĐÀO TẠO & HƯỚNG DẪN THAM KHẢO (Được trích xuất từ tài liệu UFLS):\n";
     finalRegs.forEach((r, idx) => {
-      regContextText += `\nĐoạn ${idx + 1} (Nguồn: ${r.title || "Sổ tay sinh viên"} - ${r.source_url || "UFLS"}):\n${r.content}\n`;
+      const pageInfo = r.start_page ? (r.end_page && r.end_page !== r.start_page ? `Trang ${r.start_page}-${r.end_page}` : `Trang ${r.start_page}`) : "";
+      const pagePart = pageInfo ? ` | ${pageInfo}` : "";
+      regContextText += `\nĐoạn ${idx + 1} (Nguồn: ${r.title || "Sổ tay sinh viên"}${pagePart} | ${r.source_url || "UFLS"}):\n${r.content}\n`;
     });
   }
 

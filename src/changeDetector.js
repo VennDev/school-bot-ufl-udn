@@ -118,6 +118,24 @@ function detectGrades(oldData, newData) {
     }
   });
 
+  const yearHeaderIdx = findHeader(/nam hoc/);
+  const rowYear = (row, table) => {
+    if (yearHeaderIdx >= 0 && row && row[yearHeaderIdx]) {
+      const m = String(row[yearHeaderIdx]).match(/\b(\d{4})\b/);
+      if (m) return Number(m[1]);
+    }
+    const val = table?.year || table?.sourceYear || table?.yearValue || "";
+    const m = String(val).match(/\b(\d{4})\b/);
+    return m ? Number(m[1]) : 0;
+  };
+  let latestNewYear = 0;
+  newTables.forEach(table => {
+    (table.rows || []).forEach(row => {
+      const y = rowYear(row, table);
+      if (y > latestNewYear) latestNewYear = y;
+    });
+  });
+
   // Key-overlap guard: if the vast majority of OLD rows cannot be matched
   // in the new snapshot by key, the old snapshot is structurally
   // incompatible (misaligned columns, changed year/semester labels,
@@ -128,27 +146,35 @@ function detectGrades(oldData, newData) {
   // Compare by BASE key (subject identity) — semester-tag drift must not
   // count as an incompatible snapshot.
   const newRowsByBaseKey = new Map();
-  newTables.flatMap(t => t.rows || []).forEach(row => {
-    const bk = baseKey(row);
-    const existing = newRowsByBaseKey.get(bk);
-    if (!existing || normScore(row[scoreIdx]) > normScore(existing[scoreIdx])) {
-      newRowsByBaseKey.set(bk, row);
-    }
+  newTables.forEach(table => {
+    (table.rows || []).forEach(row => {
+      const bk = baseKey(row);
+      const y = rowYear(row, table);
+      const existing = newRowsByBaseKey.get(bk);
+      if (!existing || normScore(row[scoreIdx]) > normScore(existing.row[scoreIdx])) {
+        newRowsByBaseKey.set(bk, { row, year: y });
+      }
+    });
   });
   if (oldBaseRowsByKey.size > 0) {
     const matchedOld = [...oldBaseRowsByKey.keys()].filter(key => newRowsByBaseKey.has(key)).length;
     if (matchedOld / oldBaseRowsByKey.size < 0.5) return [];
   }
-  const alerts = [];
+  const newGradeAlerts = [];
+  const changedGradeAlerts = [];
   const seenAlerts = new Set();
   // Iterate unique subjects in NEW (best row per subject), not raw rows, so a
   // subject repeated across semester tables is reported at most once.
-  [...newRowsByBaseKey.values()].forEach(row => {
+  [...newRowsByBaseKey.values()].forEach(({ row, year }) => {
     const name = String(row[nameIdx] || "").trim();
     if (!name || /^tên học phần$/i.test(name)) return;
     const oldRow = oldBaseRowsByKey.get(baseKey(row));
-    let alert = null;
     if (!oldRow) {
+      // Historical course guard: an un-baselined course from an earlier academic year
+      // than the latest academic year present in the transcript is an old course being recovered,
+      // never a newly announced grade.
+      if (latestNewYear > 0 && year > 0 && year < latestNewYear) return;
+
       const parts = [`[=] Điểm mới môn: ${name}`];
       if (componentIdx >= 0 && row[componentIdx]) parts.push(`TP: ${_normComponentScoreForDisplay(row[componentIdx])}`);
       if (examIdx >= 0 && row[examIdx]) parts.push(`Thi: ${row[examIdx]}`);
@@ -162,7 +188,11 @@ function detectGrades(oldData, newData) {
       } else {
         parts.push(`TBCHP: ${row[scoreIdx] || "(trống)"} (${row[charIdx] || "?"})`);
       }
-      alert = parts.join(" | ");
+      const alert = parts.join(" | ");
+      if (!seenAlerts.has(alert)) {
+        seenAlerts.add(alert);
+        newGradeAlerts.push(alert);
+      }
     } else {
       const changes = [];
       // Detect TBCHP change
@@ -210,15 +240,19 @@ function detectGrades(oldData, newData) {
         }
       }
       if (changes.length) {
-        alert = `(->) Thay đổi điểm môn: ${name} | ${changes.join(" | ")}`;
+        const alert = `(->) Thay đổi điểm môn: ${name} | ${changes.join(" | ")}`;
+        if (!seenAlerts.has(alert)) {
+          seenAlerts.add(alert);
+          changedGradeAlerts.push(alert);
+        }
       }
     }
-    if (alert && !seenAlerts.has(alert)) {
-      seenAlerts.add(alert);
-      alerts.push(alert);
-    }
   });
-  return alerts;
+
+  // Sudden surge of new-course alerts (>= 5) indicates an expanded/recovered baseline,
+  // not individual new course grades. Suppress them to avoid notification storms.
+  const validNewGrades = newGradeAlerts.length >= 5 ? [] : newGradeAlerts;
+  return [...validNewGrades, ...changedGradeAlerts];
 }
 
 function detectExams(oldData, newData) {

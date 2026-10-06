@@ -221,8 +221,16 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
     
     const invalidCredentials = e.message === "INVALID_CREDENTIALS" || e.errors?.some(error => error.message === "INVALID_CREDENTIALS");
     if (progressRunId) syncProgress.accountAttempt(progressRunId, account.fb_id, 0, `Đăng nhập thất bại: ${loginDetails.split(" | ")[0]}`);
-    // Background sync should never delete users for transient network failures.
-    if (!silent || (notifyLoginFailure && invalidCredentials)) {
+    if (invalidCredentials) {
+      await db.deleteUser(account.fb_id);
+      await messenger.sendButtons(account.fb_id, "[X] Đăng nhập thất bại: Tài khoản hoặc mật khẩu cổng sinh viên không chính xác (hoặc bạn vừa đổi mật khẩu). Tài khoản đã được gỡ để tránh lỗi hệ thống. Nhấn nút bên dưới để đăng nhập lại:", [
+        {
+          type: "postback",
+          title: "Đăng nhập lại",
+          payload: "LOGIN_POSTBACK"
+        }
+      ]).catch(err => console.error(`  [${account.username}] Failed to send login failure button:`, err.message));
+    } else if (!silent) {
       await db.deleteUser(account.fb_id);
       await messenger.sendButtons(account.fb_id, "[X] Đăng nhập thất bại. Mã sinh viên hoặc mật khẩu cổng sinh viên không chính xác. Nhấn nút bên dưới để thử đăng nhập lại:", [
         {
@@ -230,7 +238,7 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
           title: "Đăng nhập lại",
           payload: "LOGIN_POSTBACK"
         }
-      ]);
+      ]).catch(err => console.error(`  [${account.username}] Failed to send login failure button:`, err.message));
     }
     return { scraped: {}, blocked: true, invalidCredentials };
   }
@@ -342,7 +350,8 @@ async function scrapeAccountUnlocked(account, torIdx, useTor, silent = false, no
     // Invalid credentials are definitive: do not retry 20 times or spam logs.
     if (invalidCredentials) {
       console.log(`  [${account.username}] INVALID_CREDENTIALS — aborting, no retry.`);
-      if (progressRunId) syncProgress.accountFinished(progressRunId, account.fb_id, "failed", "Sai mã sinh viên hoặc mật khẩu");
+      await db.deleteUser(account.fb_id);
+      if (progressRunId) syncProgress.accountFinished(progressRunId, account.fb_id, "failed", "Sai mã sinh viên hoặc mật khẩu (hoặc đã đổi mật khẩu)");
       return result;
     }
 
