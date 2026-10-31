@@ -3,6 +3,7 @@ const path = require("path");
 const db = require("./db");
 const messenger = require("./messenger");
 const mailer = require("./mailer");
+const { parseTuitionData } = require("./changeDetector");
 
 const scraperPath = path.resolve(__dirname, "./scrape.js");
 let schedulerInterval = null;
@@ -85,30 +86,16 @@ async function checkExamReminders() {
         const hocPhi = JSON.parse(data.hoc_phi);
 
         if (lichThi && lichThi.length >= 2 && hocPhi && hocPhi.length > 0) {
-          // Check if any tuition is still unpaid/has debt
-          let hasTuitionDebt = false;
-          let debtDetails = [];
-          
-          hocPhi.forEach((t, idx) => {
-            if (t.rows) {
-              t.rows.forEach((r) => {
-                const cleaned = r.map(cell => cell.trim().replace(/\s+/g, " ")).filter(Boolean);
-                // Check for debt rows
-                const isDebtRow = cleaned.some(cell => cell.toLowerCase().includes("còn nợ") || cell.toLowerCase().includes("nợ"));
-                if (isDebtRow) {
-                  const valStr = cleaned.join(" | ");
-                  // Exclude debt rows that clearly specify 0 debt
-                  const zeroDebt = cleaned.some(cell => cell.includes(": 0") || cell.match(/:\s*0\b/));
-                  if (!zeroDebt) {
-                    hasTuitionDebt = true;
-                    debtDetails.push(`Đợt ${idx + 1}: ${valStr}`);
-                  }
-                }
-              });
+          const terms = parseTuitionData(hocPhi);
+          const debtDetails = [];
+          for (const [label, info] of terms) {
+            if (info.debt) {
+              const amt = info.amount ? ` (${info.amount.toLocaleString("vi-VN")}đ)` : "";
+              debtDetails.push(`${label}: Còn nợ${amt}`);
             }
-          });
+          }
 
-          if (hasTuitionDebt) {
+          if (debtDetails.length > 0) {
             // Find exams within 7 days
             const upcomingExams = [];
             for (const exam of lichThi.slice(1)) {

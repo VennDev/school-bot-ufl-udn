@@ -5,6 +5,7 @@ const { askAI } = require("./ai");
 const { calculateGPA, extractGPA, extractDRL, getAcademicEvaluation, getScholarshipAndActivityAdvice, getElectiveGroup } = require("./gpaHelper");
 const { lookupProgramFramework, findKnownProgram } = require("./programFramework");
 const { PAGES, hasUsableData, parseMajorFromClassName } = require("./pages");
+const { parseTuitionData } = require("./changeDetector");
 const { exec } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -336,68 +337,9 @@ function formatLichThi(data, showAll = false, selectedRows = null) {
   return txt;
 }
 
-function tuitionMoney(value) {
-  const text = String(value || "").trim();
-  if (!text || /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}$/.test(text) || !/[.,]\d{2}|₫|đ/i.test(text)) return null;
-  let number = text.replace(/[^\d.,-]/g, "");
-  const comma = number.lastIndexOf(",");
-  const dot = number.lastIndexOf(".");
-  if (comma >= 0 && dot >= 0) {
-    number = comma > dot ? number.replace(/\./g, "").replace(",", ".") : number.replace(/,/g, "");
-  } else if (comma >= 0) {
-    number = /,\d{1,2}$/.test(number) ? number.replace(",", ".") : number.replace(/,/g, "");
-  } else if ((number.match(/\./g) || []).length > 1) {
-    number = number.replace(/\./g, "");
-  }
-  const parsed = Number(number);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function tuitionRowStatus(row, headers = []) {
-  const cells = row.map(cell => String(cell ?? "").replace(/\s+/g, " ").trim()).filter(Boolean);
-  const normalizedHeaders = headers.map(normalizeScheduleHeader);
-  const debtIndex = normalizedHeaders.findIndex(header => /còn nợ|con no|nợ|no phai nop|chua nop/.test(header));
-  const paidIndex = normalizedHeaders.findIndex(header => /đã nộp|da nop|đã đóng|da dong|đã thanh toán|da thanh toan/.test(header));
-  const debtValues = debtIndex >= 0 ? [tuitionMoney(row[debtIndex])] : [];
-  const paidValues = paidIndex >= 0 ? [tuitionMoney(row[paidIndex])] : [];
-  const amounts = cells.map(tuitionMoney).filter(value => value !== null);
-  const explicitDebt = cells.some(cell => /còn nợ|con no|chưa nộp|chua nop/i.test(cell) && !/(?:0[,.]0{1,2})\b/.test(cell));
-  const debt = debtValues.some(value => value !== null && value > 0) || explicitDebt || (debtIndex < 0 && amounts.length >= 2 && amounts.at(-1) > 0);
-  const paid = paidValues.some(value => value !== null && value > 0) || (!debt && amounts.length >= 2 && amounts.slice(0, -1).some(value => value > 0));
-  return { debt, paid };
-}
-
-function tuitionTerm(row, table, current) {
-  const cells = row.map(cell => String(cell ?? "").trim());
-  const year = cells.find(cell => /\b\d{4}\s*[-–]\s*\d{4}\b/.test(cell)) || current.year || table.year || "";
-  const term = cells.find(cell => /^(?:học\s*kỳ|ky|kỳ|đợt)\s*\d+$/i.test(cell)) ||
-    cells.find(cell => /^[1-3]$/.test(cell)) || current.term || table.semester || table.semesterValue || "";
-  const termText = String(term).replace(/^học\s*kỳ\s*/i, "Kỳ ").replace(/^kỳ\s*/i, "Kỳ ").replace(/^đợt\s*/i, "Đợt ");
-  return { year: year.replace(/[–—]/g, "-"), term: /^[1-3]$/.test(termText) ? `Kỳ ${termText}` : termText };
-}
-
 function formatHocPhi(data) {
   if (!Array.isArray(data) || !data.length) return "Chưa có dữ liệu học phí.";
-  const terms = new Map();
-  data.forEach((table, tableIndex) => {
-    const headers = Array.isArray(table?.headers) ? table.headers : [];
-    let current = { year: table?.year || table?.yearValue || "", term: table?.semester || table?.semesterValue || "" };
-    (table?.rows || []).forEach(row => {
-      if (!Array.isArray(row)) return;
-      const cells = row.map(cell => String(cell ?? "").trim()).filter(Boolean);
-      if (!cells.length) return;
-      const next = tuitionTerm(row, table, current);
-      if (next.year) current.year = next.year;
-      if (next.term) current.term = next.term;
-      if (!cells.some(cell => /học phí|hoc phi/i.test(cell)) && cells.map(tuitionMoney).filter(value => value !== null).length < 2) return;
-      const label = [current.year, current.term || `Kỳ/đợt ${tableIndex + 1}`].filter(Boolean).join(" - ") || `Kỳ/đợt ${tableIndex + 1}`;
-      const summary = terms.get(label) || { debt: false, paid: false };
-      const status = tuitionRowStatus(row, headers);
-      summary.debt ||= status.debt;
-      summary.paid ||= status.paid;
-      terms.set(label, summary);
-    });
-  });
+  const terms = parseTuitionData(data);
   if (!terms.size) return "Chưa có dữ liệu học phí.";
   const lines = [...terms].map(([label, status]) => `- ${label}: ${status.debt ? "Còn nợ" : status.paid ? "Đã nộp" : "Chưa xác định"}`);
   return `[$] TÌNH TRẠNG HỌC PHÍ:\n\n${lines.join("\n")}`;

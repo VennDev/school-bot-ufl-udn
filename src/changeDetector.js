@@ -25,6 +25,16 @@ function _normCell(text) {
   return String(text || "").trim();
 }
 
+function _normHeader(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // Parse component score text like "TP1 : 8 - TP2 : 8" or "CC:8, GK:7.5"
 // into a stable, comparable key-sorted string: "TP1:8|TP2:8"
 function _normComponentScores(value) {
@@ -553,12 +563,15 @@ function _parseMoney(value) {
 // Only treat bare digits (1-3) as a term when the table has a term-like column,
 // otherwise a credit-count cell ("3") gets misread as "Kỳ 3".
 function _parseTuitionTerm(cells, table, headers = []) {
-  const year = cells.find(c => /\b\d{4}\s*[-–]\s*\d{4}\b/.test(c)) || table.year || "";
-  const termCol = headers.findIndex(h => /hoc ky|học kỳ|ky|kỳ|dot|đợt/.test(h));
+  const normHeaders = headers.map(_normHeader);
+  const yearCell = cells.find(c => /\b\d{4}\s*[-–]\s*\d{4}\b/.test(c));
+  const yearMatch = yearCell ? yearCell.match(/\b\d{4}\s*[-–]\s*\d{4}\b/) : null;
+  const year = yearMatch ? yearMatch[0] : (table?.year || "");
+  const termCol = normHeaders.findIndex(h => /hoc ky|ky|dot/.test(h));
   const hasTermColumn = termCol >= 0;
   const term = cells.find(c => /^(?:học\s*kỳ|kỳ|đợt)\s*\d+$/i.test(c)) ||
     (hasTermColumn && cells.find(c => /^[1-3]$/.test(c))) ||
-    table.semester || "";
+    table?.semester || "";
   const termText = String(term).replace(/^học\s*kỳ\s*/i, "Kỳ ").replace(/^kỳ\s*/i, "Kỳ ").replace(/^đợt\s*/i, "Đợt ");
   return {
     year: String(year).replace(/[–—]/g, "-").trim(),
@@ -566,15 +579,18 @@ function _parseTuitionTerm(cells, table, headers = []) {
   };
 }
 
-// Parse tuition table array into Map<"year - term", { debt, amount }>.
+// Parse tuition table array into Map<"year - term", { debt, amount, paid }>.
 function _parseTuitionData(data) {
   if (!Array.isArray(data)) return new Map();
   const result = new Map();
   data.forEach((table, idx) => {
-    const headers = (table?.headers || []).map(h =>
-      String(h).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-    );
-    const debtCol = headers.findIndex(h => /con no|no\b|chua nop/.test(h));
+    const headers = (table?.headers || []).map(_normHeader);
+    if (headers.some(h => /loai thu|ngay nop/.test(h))) return;
+
+    const debtCol = headers.findIndex(h => /thua thieu|con no|chua nop|\bno\b/.test(h));
+    const dueCol = headers.findIndex(h => /so tien phai nop|phai nop|muc hoc phi/.test(h));
+    const paidCol = headers.findIndex(h => /so tien da nop|da nop|da dong|da thanh toan/.test(h));
+
     let current = { year: table?.year || "", term: table?.semester || "" };
     (table?.rows || []).forEach(row => {
       if (!Array.isArray(row)) return;
@@ -585,19 +601,44 @@ function _parseTuitionData(data) {
       if (next.term) current.term = next.term;
 
       const label = [current.year, current.term || `Đợt ${idx + 1}`].filter(Boolean).join(" - ");
+      if (!label) return;
+
+      let debtAmount = null;
       const hasDebtText = cells.some(c =>
         /còn nợ|con no|chưa nộp|chua nop/i.test(c) && !/(?:0[,.]0{1,2})\b/.test(c)
       );
-      let debtAmount = null;
-      if (debtCol >= 0) debtAmount = _parseMoney(row[debtCol]);
+
+      if (debtCol >= 0) {
+        debtAmount = _parseMoney(row[debtCol]);
+      } else if (dueCol >= 0 && paidCol >= 0) {
+        const due = _parseMoney(row[dueCol]);
+        const paid = _parseMoney(row[paidCol]);
+        if (due !== null && paid !== null) debtAmount = due - paid;
+      }
+
       if (debtAmount === null && hasDebtText) {
         const amounts = cells.map(_parseMoney).filter(v => v !== null);
         debtAmount = amounts.length >= 2 ? amounts[amounts.length - 1] : (amounts[0] || null);
       }
-      const hasDebt = hasDebtText || (debtAmount !== null && debtAmount > 0);
 
-      if (!result.has(label) || hasDebt) {
-        result.set(label, { debt: hasDebt, amount: debtAmount });
+      const hasDebt = hasDebtText || (debtAmount !== null && debtAmount > 0);
+      const paidAmount = paidCol >= 0 ? _parseMoney(row[paidCol]) : null;
+      const isPaid = (paidAmount !== null && paidAmount > 0 && !hasDebt) || (debtAmount !== null && debtAmount <= 0);
+
+      const existing = result.get(label);
+      if (!existing) {
+        result.set(label, {
+          debt: hasDebt,
+          amount: debtAmount !== null && debtAmount > 0 ? debtAmount : 0,
+          paid: isPaid,
+        });
+      } else if (hasDebt) {
+        const totalDebt = (existing.debt ? existing.amount : 0) + (debtAmount !== null && debtAmount > 0 ? debtAmount : 0);
+        result.set(label, {
+          debt: true,
+          amount: totalDebt,
+          paid: false,
+        });
       }
     });
   });
@@ -609,24 +650,28 @@ function detectTuition(oldData, newData) {
 
   const oldTerms = _parseTuitionData(oldData);
   const newTerms = _parseTuitionData(newData);
+  if (!oldTerms.size) return []; // Ignore first sync baseline to prevent spam
   const alerts = [];
 
   for (const [label, info] of newTerms) {
-    if (!info.debt) continue;
     const prev = oldTerms.get(label);
 
     if (!prev) {
       const amt = info.amount ? ` ${info.amount.toLocaleString("vi-VN")}đ` : "";
-      alerts.push(`[$] Học phí mới: ${label}: Còn nợ${amt}`);
-    } else if (!prev.debt) {
+      alerts.push(info.debt
+        ? `[$] Học phí mới: ${label}: Còn nợ${amt}`
+        : `[$] Học phí mới: ${label}: Đã nộp`
+      );
+    } else if (!prev.debt && info.debt) {
       const amt = info.amount ? ` ${info.amount.toLocaleString("vi-VN")}đ` : "";
       alerts.push(`[$] Học phí thay đổi: ${label}: Đã nộp → Còn nợ${amt}`);
-    } else if (prev.amount !== info.amount && info.amount !== null) {
+    } else if (prev.debt && !info.debt) {
+      alerts.push(`[$] Học phí thay đổi: ${label}: Đã hoàn thành (Hết nợ)`);
+    } else if (prev.debt && info.debt && prev.amount !== info.amount && info.amount > 0) {
       const oldAmt = prev.amount ? prev.amount.toLocaleString("vi-VN") : "?";
       const newAmt = info.amount.toLocaleString("vi-VN");
       alerts.push(`[$] Học phí thay đổi: ${label}: Còn nợ ${oldAmt}đ → ${newAmt}đ`);
     }
-    // ponytail: if debt resolved (prev.debt && !info.debt), add alert here.
   }
 
   return alerts;
@@ -787,4 +832,12 @@ async function checkAndNotify(fbId, oldRaw, newRaw, settings) {
   }
 }
 
-module.exports = { checkAndNotify, detectGrades, detectExams, detectAnnouncements, detectSchedule, detectTuition };
+module.exports = {
+  checkAndNotify,
+  detectGrades,
+  detectExams,
+  detectAnnouncements,
+  detectSchedule,
+  detectTuition,
+  parseTuitionData: _parseTuitionData,
+};
