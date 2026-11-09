@@ -18,6 +18,19 @@ function heartbeatPath(lockPath) {
 
 function isStale(lockPath) {
   try {
+    const ownerFile = path.join(lockPath, "owner.json");
+    if (fs.existsSync(ownerFile)) {
+      const owner = JSON.parse(fs.readFileSync(ownerFile, "utf8"));
+      if (owner.pid) {
+        try {
+          process.kill(owner.pid, 0);
+        } catch (e) {
+          if (e.code === "ESRCH") return true;
+        }
+      }
+    }
+  } catch {}
+  try {
     return Date.now() - fs.statSync(heartbeatPath(lockPath)).mtimeMs > STALE_MS;
   } catch {
     try { return Date.now() - fs.statSync(lockPath).mtimeMs > STALE_MS; } catch { return false; }
