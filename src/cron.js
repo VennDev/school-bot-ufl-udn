@@ -145,7 +145,7 @@ async function runScraper() {
   const mode = await db.getSystemSetting("scraper_mode", "parallel");
   const cmd = `node ${scraperPath} --silent ${mode === "parallel" ? "--parallel" : ""}`;
 
-  exec(cmd, (err, stdout, stderr) => {
+  exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
     scraperRunning = false;
     if (err) {
       console.error("[cron] Scraper failed:", err.message);

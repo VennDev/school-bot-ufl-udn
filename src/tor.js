@@ -134,7 +134,10 @@ async function checkTor(idx = 0) {
     proxy: { server: socksUrl(idx) },
   });
   try {
-    const page = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
+    const page = await (await browser.newContext({
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+      ignoreHTTPSErrors: true,
+    })).newPage();
     await page.goto("https://check.torproject.org", { timeout: 20000 });
     const text = await page.textContent("body");
     const ok = text.includes("Congratulations");

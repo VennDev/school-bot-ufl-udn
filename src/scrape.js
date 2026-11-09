@@ -30,6 +30,7 @@ function computeMaxParallel(totalAccounts) {
 }
 const PAGE_TIMEOUT_MS = Math.max(30000, Number.parseInt(process.env.SCRAPER_PAGE_TIMEOUT_MS || "120000", 10) || 120000);
 const BROWSER_CLOSED_RE = /(?:Target page|context or browser has been closed|Browser has been closed|Target closed|Browser closed)/i;
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const withTimeout = (promise, ms, label) => Promise.race([
@@ -148,12 +149,15 @@ async function scrapeBatch(account, pages, torProxy, silent = false, notifyLogin
       throw e;
     }
 
-    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const context = await browser.newContext({ userAgent: USER_AGENT, ignoreHTTPSErrors: true });
     const page = await context.newPage();
 
     try {
       console.log(`  [${account.username}] Attempting login via ${label}...`);
-      await page.goto(`${BASE}/DangNhap/Login`, { waitUntil: "domcontentloaded", timeout: 25000 });
+      const response = await page.goto(`${BASE}/DangNhap/Login`, { waitUntil: "domcontentloaded", timeout: 25000 });
+      if (response && response.status() >= 400) {
+        throw new Error(`HTTP_${response.status()}`);
+      }
       await page.selectOption("#cmbRole", account.role || "0");
       await page.fill("#UserName", account.username);
       await page.fill("#Password", account.password);
